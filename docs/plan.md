@@ -224,7 +224,12 @@ Each phase ends deployed on Render and checked in the browser. Each is split int
   - [x] Holdings API: fund list, overview, holdings by asset, sleeve, manager, asset loop-back; instrument-type filter
   - [x] Screens: fund overview and holdings, sleeve (managers, assets, overlap, mandate checks on positions), manager positions, asset across the fund
   - Not in this phase: returns and benchmark (Phase 3), risk and liquidity (Phase 4), alerts (Phase 5)
-- [ ] **Phase 3 — Performance and benchmarks**: returns, contribution, benchmark comparison at all four levels; BTC, any single asset, and the CoinDesk 20 approximating basket. Covers R8.
+- [ ] **Phase 3 — Performance and benchmarks**
+  - [x] Time-weighted returns with cash flows; volatility, Sharpe, Sortino, drawdown; beta, correlation, tracking error, information ratio
+  - [x] Performance API and tabs for fund, sleeve and manager: cumulative chart against the benchmark, drawdown, period and monthly returns, children against the benchmark, profit split by sleeve or manager, instrument type and asset
+  - [x] Asset price return against the benchmark on the asset page
+  - [x] Benchmarks: BTC, ETH, cash; period and benchmark selectors kept across pages; chart component copied from Katalepsis
+  - [ ] CoinDesk 20 approximating basket (needs the index's current constituents and weights)
 - [ ] **Phase 4 — Risk, volatility, liquidity**: scenario matrix, VaR, volatility and correlation, liquidity ladder.
 - [ ] **Phase 5 — Alerts and actions**: rules, evaluation, inbox, workflow, Slack/email.
 - [ ] **Phase 6 — Live connection framework + first venues**: read-only adapter interface, encrypted key storage, streaming worker, cache, live push to the browser; Binance, Bybit, OKX, Deribit.

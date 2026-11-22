@@ -16,6 +16,7 @@ export const routes: Routes = [
       { path: '', pathMatch: 'full', loadComponent: () => import('./pages/home.page').then((m) => m.HomePage) },
       { path: 'funds/:fundId', loadComponent: () => import('./funds/fund-overview.page').then((m) => m.FundOverviewPage) },
       { path: 'funds/:fundId/holdings', loadComponent: () => import('./funds/fund-holdings.page').then((m) => m.FundHoldingsPage) },
+      { path: 'funds/:fundId/performance', loadComponent: () => import('./funds/fund-performance.page').then((m) => m.FundPerformancePage) },
       { path: 'funds/:fundId/assets/:symbol', loadComponent: () => import('./funds/asset.page').then((m) => m.AssetPage) },
       { path: 'sleeves/:sleeveId', loadComponent: () => import('./funds/sleeve.page').then((m) => m.SleevePage) },
       { path: 'managers/:managerId', loadComponent: () => import('./funds/manager.page').then((m) => m.ManagerPage) },

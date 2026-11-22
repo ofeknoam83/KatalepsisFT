@@ -28,6 +28,7 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
     <nav>
       <a [routerLink]="['/funds', fundId()]" routerLinkActive="on" [routerLinkActiveOptions]="{ exact: true }">Overview</a>
       <a [routerLink]="['/funds', fundId(), 'holdings']" routerLinkActive="on">Holdings</a>
+      <a [routerLink]="['/funds', fundId(), 'performance']" routerLinkActive="on">Performance</a>
     </nav>
   `,
 })

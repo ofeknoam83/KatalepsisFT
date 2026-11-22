@@ -3,16 +3,18 @@ import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/c
 import { RouterLink } from '@angular/router';
 import { NzAlertModule } from 'ng-zorro-antd/alert';
 import { NzTableModule } from 'ng-zorro-antd/table';
+import { NzTabsModule } from 'ng-zorro-antd/tabs';
 import { NzTagModule } from 'ng-zorro-antd/tag';
 import { ExposureBar } from '../shared/exposure-bar';
 import { FORMAT_PIPES } from '../shared/format';
 import { pageData } from '../shared/page-data';
+import { PerformancePanel } from '../performance/performance-panel';
 import { PageHead } from '../shared/page-head';
 import { FundsApi } from './funds.api';
 
 @Component({
   selector: 'app-manager-page',
-  imports: [DatePipe, DecimalPipe, RouterLink, NzAlertModule, NzTableModule, NzTagModule, ExposureBar, PageHead, ...FORMAT_PIPES],
+  imports: [DatePipe, DecimalPipe, RouterLink, NzAlertModule, NzTableModule, NzTabsModule, NzTagModule, ExposureBar, PageHead, PerformancePanel, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (page.failed()) {
@@ -35,6 +37,8 @@ import { FundsApi } from './funds.api';
         <div class="tile"><div class="k">Unrealised PnL</div><div class="v" [class]="unrealised() | tone">{{ unrealised() | usd: 2 }}</div><div class="d">Open positions</div></div>
       </div>
 
+      <nz-tabs [nzAnimated]="false">
+        <nz-tab nzTitle="Positions">
       <div class="panel">
         <h3>Positions <span class="hint">Click an instrument to see the asset across the fund</span></h3>
         <nz-table #positions [nzData]="d.positions" [nzShowPagination]="false" [nzFrontPagination]="false" nzSize="small" [nzScroll]="{ x: '1000px' }">
@@ -98,6 +102,13 @@ import { FundsApi } from './funds.api';
           </tbody>
         </nz-table>
       </div>
+        </nz-tab>
+        <nz-tab nzTitle="Performance">
+          <ng-template nz-tab>
+            <app-performance-panel scope="Manager" [scopeId]="d.manager.id" />
+          </ng-template>
+        </nz-tab>
+      </nz-tabs>
     }
   `,
 })

@@ -1,5 +1,13 @@
-import { DecimalPipe } from '@angular/common';
+import { DatePipe, DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { ActivatedRoute } from '@angular/router';
+import { Store } from '@ngxs/store';
+import { catchError, combineLatest, of, switchMap } from 'rxjs';
+import { PerformanceApi } from '../performance/performance.api';
+import { PerformanceControls } from '../performance/performance-controls';
+import { RiaChartComponent, RiaChartSeries } from '../shared/ria-chart.component';
+import { ViewState } from './view.state';
 import { RouterLink } from '@angular/router';
 import { NzAlertModule } from 'ng-zorro-antd/alert';
 import { NzTableModule } from 'ng-zorro-antd/table';
@@ -13,7 +21,7 @@ import { SLEEVE_COLORS } from './models';
 
 @Component({
   selector: 'app-asset-page',
-  imports: [DecimalPipe, RouterLink, NzAlertModule, NzTableModule, NzTagModule, ExposureBar, PageHead, ...FORMAT_PIPES],
+  imports: [DatePipe, DecimalPipe, RouterLink, PerformanceControls, RiaChartComponent, NzAlertModule, NzTableModule, NzTagModule, ExposureBar, PageHead, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (page.failed()) {
@@ -82,6 +90,14 @@ import { SLEEVE_COLORS } from './models';
         </nz-table>
       </div>
 
+      @if (performance(); as p) {
+        <div class="panel">
+          <h3>{{ d.asset.symbol }} against {{ p.benchmark.name }} <span class="hint">Cumulative price return · excess {{ p.comparison.excessReturn | pct }} · beta {{ p.comparison.beta === null ? '–' : (p.comparison.beta | number: '1.2-2') }}</span></h3>
+          <app-performance-controls [benchmarks]="p.benchmarks" [current]="p.benchmark" [range]="(p.from | date: 'd MMM y' : 'UTC') + ' – ' + (p.asOf | date: 'd MMM y' : 'UTC')" />
+          <app-ria-chart [labels]="p.dates" [series]="lines()" yFormat="percent" [height]="240" [ariaLabel]="'Price return of ' + d.asset.symbol + ' against ' + p.benchmark.name" testId="asset-chart" />
+        </div>
+      }
+
       <div class="cols">
         <div class="panel">
           <h3>By sleeve</h3>
@@ -125,4 +141,23 @@ export class AssetPage {
     return d && volume ? `${(d.grossUsd / volume).toFixed(2)}× a day's volume` : 'not comparable';
   });
   protected readonly abs = Math.abs;
+
+  private readonly store = inject(Store);
+  private readonly performanceApi = inject(PerformanceApi);
+  protected readonly performance = toSignal(
+    combineLatest([inject(ActivatedRoute).paramMap, this.store.select(ViewState.benchmarkId), this.store.select(ViewState.period)]).pipe(
+      // An asset without price history simply has no chart.
+      switchMap(([params, benchmarkId, period]) => this.performanceApi.asset(params.get('symbol') ?? '', benchmarkId, period).pipe(catchError(() => of(null)))),
+    ),
+    { initialValue: null },
+  );
+  protected readonly lines = computed<RiaChartSeries[]>(() => {
+    const p = this.performance();
+    return p
+      ? [
+          { label: p.symbol, data: p.asset, color: '#0d366b', width: 2.2 },
+          { label: p.benchmark.name, data: p.benchmarkSeries, color: '#898781', dash: [5, 4] },
+        ]
+      : [];
+  });
 }
