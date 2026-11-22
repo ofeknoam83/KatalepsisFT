@@ -34,7 +34,7 @@ public sealed class TestDatabase : IAsyncLifetime
         Uri server = new(_serverUrl);
         Url = new UriBuilder(server) { Path = "/" + _name }.Uri.ToString();
 
-        using IServiceScope scope = CreateApp().Services.CreateScope();
+        using IServiceScope scope = App.Services.CreateScope();
         await scope.ServiceProvider.GetRequiredService<FtDbContext>().Database.MigrateAsync();
         InitialAdminSeeder seeder = ActivatorUtilities.CreateInstance<InitialAdminSeeder>(scope.ServiceProvider);
         await seeder.EnsureRolesAsync();
@@ -50,6 +50,12 @@ public sealed class TestDatabase : IAsyncLifetime
         NpgsqlConnection.ClearAllPools();
         await ExecuteOnServerAsync($"drop database if exists {_name} with (force)");
     }
+
+    private WebApplicationFactory<Program>? _app;
+
+    /// <summary>The web service on this database, shared by the tests of a class. Starting one per test is slow and makes EF Core
+    /// complain about the number of data sources.</summary>
+    public WebApplicationFactory<Program> App => _app ??= CreateApp();
 
     /// <summary>A separate instance of the web service on this database, like one of the two instances on Render.</summary>
     public WebApplicationFactory<Program> CreateApp(string? databaseUrl = null)
@@ -90,6 +96,13 @@ public sealed class TestDatabase : IAsyncLifetime
 
         await users.AddToRoleAsync(user, role);
         return email;
+    }
+
+    /// <summary>Whether the demo fund has already been seeded into this database by an earlier test of the class.</summary>
+    public async Task<bool> IsSeededAsync(WebApplicationFactory<Program> app)
+    {
+        using IServiceScope scope = app.Services.CreateScope();
+        return await scope.ServiceProvider.GetRequiredService<FtDbContext>().Funds.AnyAsync();
     }
 
     private async Task ExecuteOnServerAsync(string sql)

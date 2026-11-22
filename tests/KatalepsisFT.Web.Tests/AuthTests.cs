@@ -17,7 +17,7 @@ public class AuthTests(TestDatabase database) : IClassFixture<TestDatabase>
     [Fact]
     public async Task Login_ValidCredentials_ReturnsSessionAndMeWorks()
     {
-        WebApplicationFactory<Program> app = database.CreateApp();
+        WebApplicationFactory<Program> app = database.App;
         string email = await database.AddUserAsync(app, Roles.Viewer);
         HttpClient client = TestDatabase.CreateClient(app);
 
@@ -33,7 +33,7 @@ public class AuthTests(TestDatabase database) : IClassFixture<TestDatabase>
     [Fact]
     public async Task Login_WrongPasswordOrUnknownEmail_Returns401WithTheSameMessage()
     {
-        WebApplicationFactory<Program> app = database.CreateApp();
+        WebApplicationFactory<Program> app = database.App;
         string email = await database.AddUserAsync(app, Roles.Viewer);
         HttpClient client = TestDatabase.CreateClient(app);
 
@@ -48,7 +48,7 @@ public class AuthTests(TestDatabase database) : IClassFixture<TestDatabase>
     [Fact]
     public async Task Login_AfterFiveFailures_IsLockedEvenWithTheRightPassword()
     {
-        WebApplicationFactory<Program> app = database.CreateApp();
+        WebApplicationFactory<Program> app = database.App;
         string email = await database.AddUserAsync(app, Roles.Viewer);
         HttpClient client = TestDatabase.CreateClient(app);
 
@@ -65,7 +65,7 @@ public class AuthTests(TestDatabase database) : IClassFixture<TestDatabase>
     [Fact]
     public async Task Me_WithoutSession_Returns401NotARedirect()
     {
-        HttpClient client = TestDatabase.CreateClient(database.CreateApp());
+        HttpClient client = TestDatabase.CreateClient(database.App);
 
         HttpResponseMessage response = await client.GetAsync("/api/auth/me");
 
@@ -75,7 +75,7 @@ public class AuthTests(TestDatabase database) : IClassFixture<TestDatabase>
     [Fact]
     public async Task Post_WithoutTheRequestHeader_Returns400()
     {
-        WebApplicationFactory<Program> app = database.CreateApp();
+        WebApplicationFactory<Program> app = database.App;
         string email = await database.AddUserAsync(app, Roles.Viewer);
         HttpClient client = app.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
 
@@ -87,7 +87,7 @@ public class AuthTests(TestDatabase database) : IClassFixture<TestDatabase>
     [Fact]
     public async Task Logout_EndsTheSession()
     {
-        WebApplicationFactory<Program> app = database.CreateApp();
+        WebApplicationFactory<Program> app = database.App;
         string email = await database.AddUserAsync(app, Roles.Viewer);
         HttpClient client = TestDatabase.CreateClient(app);
         await LoginAsync(client, email, TestDatabase.Password);
@@ -102,7 +102,7 @@ public class AuthTests(TestDatabase database) : IClassFixture<TestDatabase>
     [Fact]
     public async Task SystemStatus_ViewerIsRefused_AdminIsAllowed()
     {
-        WebApplicationFactory<Program> app = database.CreateApp();
+        WebApplicationFactory<Program> app = database.App;
         string viewer = await database.AddUserAsync(app, Roles.Viewer);
         string admin = await database.AddUserAsync(app, Roles.Admin);
         HttpClient viewerClient = TestDatabase.CreateClient(app);
@@ -122,7 +122,7 @@ public class AuthTests(TestDatabase database) : IClassFixture<TestDatabase>
     [Fact]
     public async Task MustChangePassword_BlocksEverythingButAuth_UntilThePasswordIsChanged()
     {
-        WebApplicationFactory<Program> app = database.CreateApp();
+        WebApplicationFactory<Program> app = database.App;
         string email = await database.AddUserAsync(app, Roles.Admin, mustChangePassword: true);
         HttpClient client = TestDatabase.CreateClient(app);
 
@@ -141,7 +141,7 @@ public class AuthTests(TestDatabase database) : IClassFixture<TestDatabase>
     [Fact]
     public async Task ChangePassword_WeakNewPassword_IsRejectedAndTheOldOneStillWorks()
     {
-        WebApplicationFactory<Program> app = database.CreateApp();
+        WebApplicationFactory<Program> app = database.App;
         string email = await database.AddUserAsync(app, Roles.Viewer);
         HttpClient client = TestDatabase.CreateClient(app);
         await LoginAsync(client, email, TestDatabase.Password);
@@ -156,7 +156,7 @@ public class AuthTests(TestDatabase database) : IClassFixture<TestDatabase>
     [Fact]
     public async Task Session_IssuedByOneInstance_IsAcceptedByAnother()
     {
-        WebApplicationFactory<Program> first = database.CreateApp();
+        WebApplicationFactory<Program> first = database.App;
         WebApplicationFactory<Program> second = database.CreateApp();
         string email = await database.AddUserAsync(first, Roles.Viewer);
         HttpClient onFirst = TestDatabase.CreateClient(first);

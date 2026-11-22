@@ -10,7 +10,7 @@ public class HealthEndpointTests(TestDatabase database) : IClassFixture<TestData
     [Fact]
     public async Task Health_WithoutSignIn_Returns200()
     {
-        HttpClient client = TestDatabase.CreateClient(database.CreateApp());
+        HttpClient client = TestDatabase.CreateClient(database.App);
 
         HttpResponseMessage response = await client.GetAsync("/health");
 
@@ -20,7 +20,7 @@ public class HealthEndpointTests(TestDatabase database) : IClassFixture<TestData
     [Fact]
     public async Task Ready_WhenPostgresAnswers_Returns200AndNoDetail()
     {
-        HttpClient client = TestDatabase.CreateClient(database.CreateApp());
+        HttpClient client = TestDatabase.CreateClient(database.App);
 
         HttpResponseMessage response = await client.GetAsync("/health/ready");
         JsonElement body = await response.Content.ReadFromJsonAsync<JsonElement>();

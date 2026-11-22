@@ -1,4 +1,6 @@
+using System.Text.Json.Serialization;
 using FluentValidation;
+using KatalepsisFT.Application;
 using KatalepsisFT.Application.Auth;
 using KatalepsisFT.Infrastructure;
 using KatalepsisFT.Infrastructure.Health;
@@ -63,7 +65,8 @@ builder.Services.AddDataProtection().SetApplicationName("KatalepsisFT").PersistK
 
 builder.Services.AddScoped<IValidator<LoginRequest>, LoginRequestValidator>();
 builder.Services.AddScoped<IValidator<ChangePasswordRequest>, ChangePasswordRequestValidator>();
-builder.Services.AddControllers();
+builder.Services.AddApplication();
+builder.Services.AddControllers().AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
 // Render terminates HTTPS in front of the service; trust its forwarded scheme so the app knows the request was secure.
 builder.Services.Configure<ForwardedHeadersOptions>(options =>

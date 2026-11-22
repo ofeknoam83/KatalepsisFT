@@ -63,6 +63,21 @@ services:
     buildFilter: *workerFilter
     envVars: *workerEnv
 
+  # Loads yesterday's prices and brings the demo fund up to date, shortly after the day closes (UTC).
+  - type: cron
+    name: katalepsis-ft-daily
+    runtime: docker
+    region: frankfurt
+    plan: starter
+    schedule: "20 0 * * *"
+    dockerfilePath: ./Dockerfile
+    dockerCommand: /app/run.sh jobs demo
+    autoDeployTrigger: checksPass
+    buildFilter: *workerFilter
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase: { name: katalepsis-ft-db, property: connectionString }
+
   - type: keyvalue
     name: katalepsis-ft-kv
     region: frankfurt

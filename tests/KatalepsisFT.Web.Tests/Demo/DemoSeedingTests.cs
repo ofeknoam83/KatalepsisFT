@@ -10,49 +10,14 @@ namespace KatalepsisFT.Web.Tests.Demo;
 
 public class DemoSeedingTests(TestDatabase database) : IClassFixture<TestDatabase>
 {
-    private sealed class Clock(DateTimeOffset now) : TimeProvider
-    {
-        public DateTimeOffset Now { get; set; } = now;
-
-        public override DateTimeOffset GetUtcNow() => Now;
-    }
-
-    /// <summary>Prices that fall 1% of their starting value every 10 days, the same for every asset, with a fixed volume.</summary>
-    private sealed class FakePrices : IDailyPriceSource
-    {
-        public HashSet<string> Unknown { get; } = [];
-        public List<(string Asset, DateOnly From, DateOnly To)> Requests { get; } = [];
-
-        public string Name => "fake";
-
-        public static decimal PriceOn(DateOnly date) => 100m - (date.DayNumber - DemoFundDefinition.HistoryStart.DayNumber) / 10 * 0.5m;
-
-        public Task<IReadOnlyList<DailyBar>?> GetDailyBarsAsync(string assetSymbol, DateOnly from, DateOnly to, CancellationToken cancellationToken)
-        {
-            Requests.Add((assetSymbol, from, to));
-            if (Unknown.Contains(assetSymbol))
-            {
-                return Task.FromResult<IReadOnlyList<DailyBar>?>(null);
-            }
-
-            List<DailyBar> bars = [];
-            for (DateOnly day = from; day <= to; day = day.AddDays(1))
-            {
-                bars.Add(new DailyBar(day, PriceOn(day), 2_000_000m));
-            }
-
-            return Task.FromResult<IReadOnlyList<DailyBar>?>(bars);
-        }
-    }
-
     // One scenario in order: each step depends on the rows the previous one left behind.
     [Fact]
     public async Task Backfill_ThenSeed_ThenRollForward()
     {
-        using IServiceScope scope = database.CreateApp().Services.CreateScope();
+        using IServiceScope scope = database.App.Services.CreateScope();
         FtDbContext db = scope.ServiceProvider.GetRequiredService<FtDbContext>();
         FakePrices prices = new();
-        Clock clock = new(new DateTimeOffset(2026, 1, 11, 9, 0, 0, TimeSpan.Zero));
+        FixedClock clock = new(new DateTimeOffset(2026, 1, 11, 9, 0, 0, TimeSpan.Zero));
         PriceBackfillService backfill = new(db, prices, clock);
         DemoFundSeeder seeder = new(db);
 

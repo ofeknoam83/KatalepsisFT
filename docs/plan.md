@@ -18,7 +18,7 @@ This is a planning document. The decisions in section 12 are answered; no code i
 | R6 | Click an asset anywhere and loop back up: where it sits across all sleeves and managers | Asset page |
 | R7 | All of the above per instrument type; fund performance spot vs perps vs options | Instrument-type filter on every page + attribution table |
 | R8 | Performance at asset, manager, sleeve and fund level against a chosen benchmark (BTC, CoinDesk 20, …) | Benchmark selector on every performance chart |
-| R9 | Traditional instruments in the mix (e.g. Coinbase stock, CME BTC futures) | Instrument model, section 3 |
+| R9 | Traditional instruments in the mix: equities such as Coinbase stock. CME futures were dropped by the owner on 22 Nov 2026 | Instrument model, section 3 |
 | R10 | Built-in example: a liquid master fund with three sleeves — Beta, Market Neutral, Directional — several managers each, unique and shared tokens | Seeded demo fund, section 6 |
 | R11 | Per sleeve and aggregated: alerts, actions, risk matrix, volatility, liquidity analysis | Risk page, Alerts page, sections 5 and 7 |
 
@@ -77,7 +77,7 @@ Fund (master) → Sleeve → Manager account → Position → Instrument → Ass
 - **Asset**: the thing exposure is measured in (BTC, ETH, COIN, …). This is the key that the loop-back view (R6) groups on.
 - **Instrument**: what is actually held. Type: Spot, Perp, Future (dated), Option, Equity, Cash. Fields: underlying asset, venue, multiplier, expiry, strike, call/put, quote currency.
   - Coinbase stock is an Equity instrument whose asset is COIN.
-  - A CME BTC future is a Future instrument whose underlying asset is BTC, so it rolls up with BTC spot and BTC perps on the asset page.
+  - A dated future is a Future instrument whose underlying asset is the asset it settles on, so it rolls up with that asset's spot and perps on the asset page. (CME futures themselves are out of scope.)
 - **Position snapshot** (one row per manager, instrument, day): quantity, price, market value, notional, delta, delta-adjusted exposure, unrealised PnL, entry price.
 - **Cash flow**: subscriptions, redemptions and transfers per manager account, needed for time-weighted returns.
 - **NAV snapshot**: per manager per day; sleeve and fund NAV are sums.
@@ -172,7 +172,7 @@ Seeded on first start; deterministic, so screenshots and tests are stable.
 
 | Sleeve | Managers | Character |
 |---|---|---|
-| Beta | 2 | Long-only large caps, close to a market-cap basket; one holds COIN stock and CME BTC futures |
+| Beta | 2 | Long-only large caps, close to a market-cap basket; one holds COIN stock |
 | Market Neutral | 3 | Spot long against perp short (basis), funding capture, an options volatility book; net exposure near zero |
 | Directional | 3–4 | Concentrated long/short, mid-cap tokens, some options; several tokens shared between managers and with the Beta sleeve, a few unique |
 
@@ -217,8 +217,8 @@ Each phase ends deployed on Render and checked in the browser. Each is split int
   - [x] Daily crypto prices from Binance public market data (client copied from Katalepsis)
   - [x] Demo fund: three sleeves, nine managers, spot and perp books on real prices, ONDO held by five managers; rolled forward on every deploy
   - [ ] Options in the demo fund (needs the option pricer from Katalepsis)
-  - [ ] Traditional instruments in the demo fund (needs the free equity and futures price source to be chosen)
-  - [ ] Daily scheduled job, so the demo fund and prices advance without a deploy
+  - [ ] Equities in the demo fund (needs the free equity price source to be chosen; CME futures are out of scope)
+  - [x] Daily scheduled job at 00:20 UTC, so the demo fund and prices advance without a deploy
   - [ ] Key Value internal authentication: a switch in the Render dashboard, not available through the blueprint or API
 - [ ] **Phase 2 — Holdings and drill-down**: aggregation queries; Fund, Sleeve, Manager and Asset pages; gross/net; instrument-type filter; loop-back navigation. Covers R1–R7.
 - [ ] **Phase 3 — Performance and benchmarks**: returns, contribution, benchmark comparison at all four levels; BTC, any single asset, and the CoinDesk 20 approximating basket. Covers R8.
@@ -260,7 +260,7 @@ Tests per phase: xUnit for calculators and handlers (returns, exposure, aggregat
 
 ## 11. Facts not yet verified
 
-- Which free live source to use for equity and CME futures prices, and what its terms, delay and rate limits are. Free feeds are often delayed by about 15 minutes; the screen will show the price time. To be chosen and checked in Phase 1.
+- Which free live source to use for equity prices, and what its terms, delay and rate limits are. Free feeds are often delayed by about 15 minutes; the screen will show the price time. To be chosen and checked in Phase 1.
 - The current constituents and weighting rule of CoinDesk 20, needed to build the approximating basket.
 - What each of the three new CeFi venues and five DeFi venues exposes for read-only positions and streams; checked at the start of its phase.
 - Whether each venue lets us read a key's permissions, for the read-only check.

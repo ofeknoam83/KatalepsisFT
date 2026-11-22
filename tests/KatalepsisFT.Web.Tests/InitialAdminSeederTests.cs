@@ -13,7 +13,7 @@ public class InitialAdminSeederTests(TestDatabase database) : IClassFixture<Test
     [Fact]
     public async Task EnsureInitialAdmin_CreatesOnceAndOnlyWhenConfigured()
     {
-        WebApplicationFactory<Program> app = database.CreateApp();
+        WebApplicationFactory<Program> app = database.App;
         using IServiceScope scope = app.Services.CreateScope();
         InitialAdminSeeder seeder = ActivatorUtilities.CreateInstance<InitialAdminSeeder>(scope.ServiceProvider);
         UserManager<AppUser> users = scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>();
