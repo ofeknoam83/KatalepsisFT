@@ -4,3 +4,6 @@
 .git
 tests
 docs
+**/dist
+**/.angular
+**/wwwroot

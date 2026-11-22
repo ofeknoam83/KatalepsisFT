@@ -76,6 +76,9 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 WebApplication app = builder.Build();
 
 app.UseForwardedHeaders();
+// The Angular app: files are public, the data behind them is not.
+app.UseDefaultFiles();
+app.UseStaticFiles();
 app.UseAuthentication();
 app.UseApiGuards();
 app.UseAuthorization();
@@ -95,6 +98,10 @@ app.MapGet(
     .AllowAnonymous();
 
 app.MapControllers();
+
+// Unknown API paths are a 404; any other unknown path is a page inside the Angular app.
+app.MapFallback("/api/{**rest}", () => Results.NotFound()).AllowAnonymous();
+app.MapFallbackToFile("index.html").AllowAnonymous();
 
 app.Run();
 

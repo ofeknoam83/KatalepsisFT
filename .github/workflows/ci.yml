@@ -26,5 +26,13 @@ jobs:
       - run: dotnet restore KatalepsisFT.sln
       - run: dotnet build KatalepsisFT.sln -c Release --no-restore
       - run: dotnet test KatalepsisFT.sln -c Release --no-build
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/KatalepsisFT.Web/ClientApp/package-lock.json
+      - name: Build the Angular app
+        working-directory: src/KatalepsisFT.Web/ClientApp
+        run: npm ci && npx ng build
       - name: Build the image Render will run
         run: docker build -t katalepsis-ft:ci .

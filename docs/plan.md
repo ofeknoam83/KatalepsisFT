@@ -209,7 +209,7 @@ Each phase ends deployed on Render and checked in the browser. Each is split int
   - [x] Health and readiness endpoints; worker heartbeats over Key Value pub/sub
   - [x] Database migrations run in the pre-deploy step
   - [x] Built-in sign-in (Admin, Viewer), session keys stored in Postgres so both web instances accept a session
-  - [ ] Angular app shell served by the web service
+  - [x] Angular app shell served by the web service: sign-in, change password, layout, system status page
   - [ ] Key Value internal authentication switched on
 - [ ] **Phase 1 — Model and data**: entities, migrations, price ingestion (crypto public data, free live feed for equities and futures), valuation, end-of-day snapshot job, demo fund seeded with history.
 - [ ] **Phase 2 — Holdings and drill-down**: aggregation queries; Fund, Sleeve, Manager and Asset pages; gross/net; instrument-type filter; loop-back navigation. Covers R1–R7.
