@@ -1,0 +1,66 @@
+import { DatePipe } from '@angular/common';
+import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core';
+import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
+import { Store } from '@ngxs/store';
+import { NzBreadCrumbModule } from 'ng-zorro-antd/breadcrumb';
+import { NzSegmentedModule } from 'ng-zorro-antd/segmented';
+import { NzTagModule } from 'ng-zorro-antd/tag';
+import { InstrumentFilter } from '../funds/models';
+import { SetInstrumentFilter, ViewState } from '../funds/view.state';
+
+export interface Crumb {
+  label: string;
+  link?: unknown[];
+}
+
+/** Breadcrumb, title, the day the numbers are from, and the instrument filter that follows the user across pages. */
+@Component({
+  selector: 'app-page-head',
+  imports: [DatePipe, FormsModule, RouterLink, NzBreadCrumbModule, NzSegmentedModule, NzTagModule],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <nz-breadcrumb style="margin-bottom:8px">
+      @for (crumb of crumbs(); track crumb.label) {
+        <nz-breadcrumb-item>
+          @if (crumb.link) {
+            <a [routerLink]="crumb.link">{{ crumb.label }}</a>
+          } @else {
+            {{ crumb.label }}
+          }
+        </nz-breadcrumb-item>
+      }
+    </nz-breadcrumb>
+    <div class="page-head">
+      <h1>{{ title() }}</h1>
+      @if (demo()) {
+        <nz-tag nzColor="gold">Demo fund</nz-tag>
+      }
+      <span class="sub">{{ sub() }}</span>
+      <span class="grow"></span>
+      @if (asOf()) {
+        <span class="sub">As of end of {{ asOf() | date: 'd MMM y' : 'UTC' }} (UTC)</span>
+      }
+      @if (showFilter()) {
+        <nz-segmented [nzOptions]="options" [ngModel]="filter()" (nzValueChange)="setFilter($event)" data-testid="instrument-filter" />
+      }
+    </div>
+  `,
+})
+export class PageHead {
+  private readonly store = inject(Store);
+
+  readonly crumbs = input<Crumb[]>([]);
+  readonly title = input.required<string>();
+  readonly sub = input('');
+  readonly asOf = input<string | null>(null);
+  readonly demo = input(false);
+  readonly showFilter = input(true);
+
+  protected readonly options: InstrumentFilter[] = ['All', 'Spot', 'Perp', 'Option', 'TradFi'];
+  protected readonly filter = this.store.selectSignal(ViewState.filter);
+
+  protected setFilter(value: string | number): void {
+    this.store.dispatch(new SetInstrumentFilter(value as InstrumentFilter));
+  }
+}

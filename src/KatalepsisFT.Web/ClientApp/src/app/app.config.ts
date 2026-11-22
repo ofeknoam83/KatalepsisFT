@@ -7,6 +7,7 @@ import { en_US, provideNzI18n } from 'ng-zorro-antd/i18n';
 import { routes } from './app.routes';
 import { apiInterceptor } from './core/api.interceptor';
 import { SessionState } from './core/session.state';
+import { ViewState } from './funds/view.state';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -16,6 +17,6 @@ export const appConfig: ApplicationConfig = {
     provideHttpClient(withInterceptors([apiInterceptor])),
     provideAnimationsAsync(),
     provideNzI18n(en_US),
-    provideStore([SessionState]),
+    provideStore([SessionState, ViewState]),
   ],
 };

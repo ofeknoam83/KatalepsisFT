@@ -6,6 +6,7 @@ import { NzDropDownModule } from 'ng-zorro-antd/dropdown';
 import { NzLayoutModule } from 'ng-zorro-antd/layout';
 import { NzMenuModule } from 'ng-zorro-antd/menu';
 import { Logout, SessionState } from '../core/session.state';
+import { ViewState } from '../funds/view.state';
 
 @Component({
   selector: 'app-shell',
@@ -66,8 +67,16 @@ import { Logout, SessionState } from '../core/session.state';
       <nz-layout>
         <nz-sider nzWidth="220px" nzTheme="light">
           <ul nz-menu nzMode="inline" style="border-inline-end:0;padding-top:8px">
-            <li nz-menu-item routerLink="/" routerLinkActive="ant-menu-item-selected" [routerLinkActiveOptions]="{ exact: true }">Fund</li>
+            <li nz-menu-item [routerLink]="fundId() ? ['/funds', fundId()] : ['/']" routerLinkActive="ant-menu-item-selected">Fund</li>
           </ul>
+          @if (sleeves().length > 0) {
+            <div class="group">Sleeves</div>
+            <ul nz-menu nzMode="inline" style="border-inline-end:0">
+              @for (sleeve of sleeves(); track sleeve.id) {
+                <li nz-menu-item [routerLink]="['/sleeves', sleeve.id]" routerLinkActive="ant-menu-item-selected">{{ sleeve.name }}</li>
+              }
+            </ul>
+          }
           @if (isAdmin()) {
             <div class="group">Admin</div>
             <ul nz-menu nzMode="inline" style="border-inline-end:0">
@@ -86,6 +95,8 @@ export class Shell {
 
   protected readonly session = this.store.selectSignal(SessionState.session);
   protected readonly isAdmin = this.store.selectSignal(SessionState.isAdmin);
+  protected readonly fundId = this.store.selectSignal(ViewState.fundId);
+  protected readonly sleeves = this.store.selectSignal(ViewState.sleeves);
   protected readonly initials = computed(() => {
     const name = this.session()?.displayName || this.session()?.email || '';
     return name

@@ -220,7 +220,10 @@ Each phase ends deployed on Render and checked in the browser. Each is split int
   - [ ] Equities in the demo fund (needs the free equity price source to be chosen; CME futures are out of scope)
   - [x] Daily scheduled job at 00:20 UTC, so the demo fund and prices advance without a deploy
   - [ ] Key Value internal authentication: a switch in the Render dashboard, not available through the blueprint or API
-- [ ] **Phase 2 — Holdings and drill-down**: aggregation queries; Fund, Sleeve, Manager and Asset pages; gross/net; instrument-type filter; loop-back navigation. Covers R1–R7.
+- [x] **Phase 2 — Holdings and drill-down**
+  - [x] Holdings API: fund list, overview, holdings by asset, sleeve, manager, asset loop-back; instrument-type filter
+  - [x] Screens: fund overview and holdings, sleeve (managers, assets, overlap, mandate checks on positions), manager positions, asset across the fund
+  - Not in this phase: returns and benchmark (Phase 3), risk and liquidity (Phase 4), alerts (Phase 5)
 - [ ] **Phase 3 — Performance and benchmarks**: returns, contribution, benchmark comparison at all four levels; BTC, any single asset, and the CoinDesk 20 approximating basket. Covers R8.
 - [ ] **Phase 4 — Risk, volatility, liquidity**: scenario matrix, VaR, volatility and correlation, liquidity ladder.
 - [ ] **Phase 5 — Alerts and actions**: rules, evaluation, inbox, workflow, Slack/email.
