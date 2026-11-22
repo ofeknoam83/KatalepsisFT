@@ -3,11 +3,13 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using FluentAssertions;
+using KatalepsisFT.Application.Alerts;
 using KatalepsisFT.Application.Auth;
 using KatalepsisFT.Application.Connections;
 using KatalepsisFT.Application.Holdings;
 using KatalepsisFT.Application.Structure;
 using KatalepsisFT.Domain.Access;
+using KatalepsisFT.Domain.Alerts;
 using KatalepsisFT.Domain.Connections;
 using KatalepsisFT.Domain.Funds;
 using KatalepsisFT.Domain.Instruments;
@@ -263,6 +265,25 @@ public class ConnectionsApiTests(TestDatabase database) : IClassFixture<TestData
         manager.Positions.Should().HaveCount(3);
         one.NavUsd.Should().Be(101_250m);
         (await Get<ConnectionsDto>($"/api/funds/{fundId}/connections")).Connections.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task EachRead_ChecksTheFundsAlertRules()
+    {
+        (int fundId, int managerId) = await NewFundAsync();
+        SaveAlertRuleRequest rule = new(AlertScopeKind.Fund, fundId, AlertMetric.NetExposureOverNav, AlertOperator.Above, 0.5m, AlertSeverity.Warning, true);
+        await _admin.PostAsJsonAsync($"/api/funds/{fundId}/alert-rules", rule, Json);
+        (await Get<AlertListDto>($"/api/funds/{fundId}/alerts")).Alerts.Should().BeEmpty();
+
+        // Net exposure 70,000 on a NAV of 101,250 is 69%.
+        ConnectionDto connection = (await (await AddAsync(managerId, "key-with-alert")).Content.ReadFromJsonAsync<ConnectionDto>(Json))!;
+        AlertDto raised = (await Get<AlertListDto>($"/api/funds/{fundId}/alerts")).Alerts.Single();
+        Deribit.SnapshotsByKey["key-with-alert"] = new VenueSnapshot(DateTimeOffset.UtcNow, [new VenuePosition(InstrumentType.Cash, "USDC", 1_000m, 1m)]);
+        await _admin.PostAsJsonAsync($"/api/connections/{connection.Id}/sync", new { });
+
+        raised.Value.Should().BeApproximately(70_000m / 101_250m, 0.000001m);
+        (await Get<AlertListDto>($"/api/funds/{fundId}/alerts")).Alerts.Should().BeEmpty();
+        (await Get<AlertListDto>($"/api/funds/{fundId}/alerts?state=Resolved")).Alerts.Single().Actions[^1].Kind.Should().Be(AlertActionKind.Recovered);
     }
 
     [Fact]

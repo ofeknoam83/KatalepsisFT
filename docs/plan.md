@@ -260,7 +260,8 @@ Each phase ends deployed on Render and checked in the browser. Each is split int
   - [ ] Binance: coin-margined futures, margin and options accounts, funding wallet; a holding with no USD pair fails the read. Bybit: funding account, classic accounts
   - [ ] Streams instead of polling, live book in Key Value, live push to the browser (SignalR), 5-minute samples
   - [ ] Deposits and withdrawals read from the venue, so they are not counted as performance
-  - [ ] OKX funding account; editing a fund's structure after creation; alert evaluation after each read
+  - [x] Alert rules are checked after every read of a connection
+  - [ ] OKX funding account; editing a fund's structure after creation
 - [ ] **Phase 7 — Remaining copied CeFi venues**: Coinbase (Prime + Exchange), KuCoin, MEXC.
 - [ ] **Phase 8 — New CeFi venues**: Bitget, Gate, Kraken.
 - [ ] **Phase 9 — DeFi venues**: Hyperliquid, dYdX, GMX, then Uniswap and Aerodrome pool positions.

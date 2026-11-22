@@ -36,6 +36,8 @@ if (hasPostgres && group.ToLowerInvariant() is WorkerGroups.Cefi or WorkerGroups
     builder.Services.AddVenueAdapters();
     builder.Services.AddScoped<VenueAdapterRegistry>();
     builder.Services.AddScoped<ManagerBookWriter>();
+    builder.Services.AddScoped<KatalepsisFT.Application.Risk.RiskService>();
+    builder.Services.AddScoped<KatalepsisFT.Application.Alerts.AlertEvaluator>();
     builder.Services.AddScoped<ConnectionSyncService>();
     builder.Services.AddHostedService<ConnectionSyncWorker>();
 }
