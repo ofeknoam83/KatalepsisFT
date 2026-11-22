@@ -1,3 +1,4 @@
+using KatalepsisFT.Domain.Alerts;
 using KatalepsisFT.Domain.Benchmarks;
 using KatalepsisFT.Domain.Funds;
 using KatalepsisFT.Domain.Instruments;
@@ -21,6 +22,9 @@ public interface IFtDbContext
     DbSet<PriceBar> PriceBars { get; }
     DbSet<Benchmark> Benchmarks { get; }
     DbSet<BenchmarkConstituent> BenchmarkConstituents { get; }
+    DbSet<AlertRule> AlertRules { get; }
+    DbSet<Alert> Alerts { get; }
+    DbSet<AlertAction> AlertActions { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken);
 }

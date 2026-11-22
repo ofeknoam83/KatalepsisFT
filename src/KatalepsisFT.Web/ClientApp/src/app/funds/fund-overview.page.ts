@@ -6,6 +6,7 @@ import { NzTableModule } from 'ng-zorro-antd/table';
 import { ExposureBar } from '../shared/exposure-bar';
 import { FORMAT_PIPES } from '../shared/format';
 import { pageData } from '../shared/page-data';
+import { AlertStrip } from '../alerts/alert-strip';
 import { PageHead } from '../shared/page-head';
 import { FundTabs } from './fund-tabs';
 import { FundsApi } from './funds.api';
@@ -14,7 +15,7 @@ import { SetFundSleeves } from './view.state';
 
 @Component({
   selector: 'app-fund-overview-page',
-  imports: [RouterLink, NzAlertModule, NzTableModule, ExposureBar, PageHead, FundTabs, ...FORMAT_PIPES],
+  imports: [RouterLink, NzAlertModule, NzTableModule, ExposureBar, PageHead, FundTabs, ...FORMAT_PIPES, AlertStrip],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (page.failed()) {
@@ -29,6 +30,7 @@ import { SetFundSleeves } from './view.state';
         [asOf]="d.asOf"
       />
       <app-fund-tabs [fundId]="d.fund.id" />
+      <app-alert-strip [fundId]="d.fund.id" />
 
       <div class="tiles">
         <div class="tile"><div class="k">Net asset value</div><div class="v">{{ d.totals.navUsd | usd }}</div><div class="d">Cash {{ d.totals.cashUsd | usd }}</div></div>

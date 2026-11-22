@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using FluentValidation;
 using KatalepsisFT.Application;
+using KatalepsisFT.Application.Alerts;
 using KatalepsisFT.Application.Auth;
 using KatalepsisFT.Infrastructure;
 using KatalepsisFT.Infrastructure.Health;
@@ -65,6 +66,9 @@ builder.Services.AddDataProtection().SetApplicationName("KatalepsisFT").PersistK
 
 builder.Services.AddScoped<IValidator<LoginRequest>, LoginRequestValidator>();
 builder.Services.AddScoped<IValidator<ChangePasswordRequest>, ChangePasswordRequestValidator>();
+builder.Services.AddScoped<IValidator<SaveAlertRuleRequest>, SaveAlertRuleRequestValidator>();
+builder.Services.AddScoped<IValidator<SnoozeRequest>, SnoozeRequestValidator>();
+builder.Services.AddScoped<IValidator<NoteRequest>, NoteRequestValidator>();
 builder.Services.AddApplication();
 builder.Services.AddControllers().AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 

@@ -1,4 +1,6 @@
+using KatalepsisFT.Application.Alerts;
 using KatalepsisFT.Application.Demo;
+using KatalepsisFT.Application.Risk;
 using KatalepsisFT.Application.Prices;
 using KatalepsisFT.Infrastructure;
 using KatalepsisFT.Infrastructure.MarketData;
@@ -15,7 +17,7 @@ using StackExchange.Redis;
 // One-shot commands, run by hand, by Render's pre-deploy step or by a cron job.
 //   check    verifies that Postgres and Key Value answer
 //   migrate  brings the database schema up to date, creates the roles and, when the system has no user, the first Admin
-//   demo     loads daily prices and brings the demo fund up to the latest day with prices
+//   demo     loads daily prices, brings the demo fund up to the latest day with prices and evaluates its alert rules
 //   deploy   migrate, then demo; run by Render before each deploy. A failure of the demo step does not stop the deploy.
 const string Usage = "Usage: KatalepsisFT.Jobs check | migrate | demo | deploy";
 string command = args.Length > 0 ? args[0] : string.Empty;
@@ -52,6 +54,9 @@ services.AddScoped<InitialAdminSeeder>();
 services.AddMarketData();
 services.AddScoped<PriceBackfillService>();
 services.AddScoped<DemoFundSeeder>();
+services.AddScoped<RiskService>();
+services.AddScoped<AlertEvaluator>();
+services.AddSingleton(TimeProvider.System);
 await using ServiceProvider provider = services.BuildServiceProvider();
 await using AsyncServiceScope scope = provider.CreateAsyncScope();
 
@@ -101,4 +106,13 @@ static async Task RunDemoAsync(IServiceProvider services)
     Console.WriteLine(demo.WaitingFor is not null
         ? $"Demo fund: waiting for {demo.WaitingFor}."
         : $"Demo fund: {(demo.FundCreated ? "created, " : string.Empty)}{demo.DaysAdded} day(s) and {demo.PositionRowsAdded} position rows added.");
+    if (demo.WaitingFor is null)
+    {
+        FtDbContext db = services.GetRequiredService<FtDbContext>();
+        foreach (int fundId in await db.Funds.Select(f => f.Id).ToListAsync())
+        {
+            EvaluationResultDto alerts = await services.GetRequiredService<AlertEvaluator>().EvaluateAsync(fundId, CancellationToken.None);
+            Console.WriteLine($"Alerts: {alerts.Raised} raised, {alerts.Recovered} recovered, {alerts.Active} active.");
+        }
+    }
 }

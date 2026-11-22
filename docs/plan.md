@@ -238,8 +238,14 @@ Each phase ends deployed on Render and checked in the browser. Each is split int
   - [x] Liquidity: days to liquidate per asset at a chosen share of daily volume, ladder for the scope and each child, who holds the slowest asset
   - [x] Risk and Liquidity tabs on fund, sleeve and manager
   - [ ] Funding income on perps is not modelled in the demo fund, so basis and funding managers show zero volatility
-  - [ ] The breach banner on the sleeve page checks only the single-asset limit; Phase 5 alerts replace it with every limit
-- [ ] **Phase 5 — Alerts and actions**: rules, evaluation, inbox, workflow, Slack/email.
+- [ ] **Phase 5 — Alerts and actions**
+  - [x] Rules on a fund, a sleeve or a manager: figure, above or below, threshold, severity, on/off. One rule per mandate limit is kept in step with the limit; custom rules are free to edit
+  - [x] Evaluation after each daily close, on every rule change and on demand: one alert per breach, refreshed while it lasts, closed as recovered when it ends; state in Postgres
+  - [x] Workflow (Admin): acknowledge, assign, comment, snooze, resolve, with the full history on each alert. An alert resolved by hand is not raised again until the figure has recovered and breached anew
+  - [x] Alerts tab with inbox (whole fund or one sleeve; active, resolved, all) and rule editor; alert strip on the fund and sleeve pages
+  - [ ] Delivery to Slack and email (needs a Slack webhook and a mail provider)
+  - [ ] Rules on a single asset across the fund (for example, number of managers holding it)
+  - [ ] Evaluation moves into the core worker when live positions arrive (Phase 6)
 - [ ] **Phase 6 — Live connection framework + first venues**: read-only adapter interface, encrypted key storage, streaming worker, cache, live push to the browser; Binance, Bybit, OKX, Deribit.
 - [ ] **Phase 7 — Remaining copied CeFi venues**: Coinbase (Prime + Exchange), KuCoin, MEXC.
 - [ ] **Phase 8 — New CeFi venues**: Bitget, Gate, Kraken.

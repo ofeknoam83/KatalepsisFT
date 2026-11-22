@@ -57,3 +57,26 @@ public sealed record LiquidityDto(
     IReadOnlyList<LiquidityLineDto> Lines,
     IReadOnlyList<QueueLineDto> SlowestQueue
 );
+
+/// <summary>What alert rules and mandate limits look at for one fund, sleeve or manager. Ratios are fractions of its NAV.</summary>
+/// <param name="WorstDrawdown">Current drawdown of the manager furthest below its peak, negative.</param>
+/// <param name="SlowestDays">Days to close the slowest asset at the default share of daily volume.</param>
+public sealed record ScopeMetrics(
+    PerformanceScope Kind,
+    int Id,
+    string Name,
+    int? SleeveId,
+    decimal NavUsd,
+    decimal GrossOverNav,
+    decimal NetOverNav,
+    string? LargestAsset,
+    decimal LargestAssetOverNav,
+    string? WorstManager,
+    double? WorstDrawdown,
+    string? SlowestAsset,
+    double? SlowestDays,
+    decimal? VarOverNav,
+    double? DayReturn
+);
+
+public sealed record FundMetrics(DateOnly AsOf, IReadOnlyList<ScopeMetrics> Scopes);

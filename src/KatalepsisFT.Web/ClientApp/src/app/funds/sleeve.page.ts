@@ -8,6 +8,7 @@ import { NzTagModule } from 'ng-zorro-antd/tag';
 import { ExposureBar } from '../shared/exposure-bar';
 import { FORMAT_PIPES, pct } from '../shared/format';
 import { pageData } from '../shared/page-data';
+import { AlertStrip } from '../alerts/alert-strip';
 import { PerformancePanel } from '../performance/performance-panel';
 import { LiquidityPanel } from '../risk/liquidity-panel';
 import { RiskPanel } from '../risk/risk-panel';
@@ -32,7 +33,7 @@ function heat(value: number, max: number): Record<string, string> {
 
 @Component({
   selector: 'app-sleeve-page',
-  imports: [DecimalPipe, RouterLink, NzAlertModule, NzTableModule, NzTabsModule, NzTagModule, ExposureBar, PageHead, PerformancePanel, RiskPanel, LiquidityPanel, ...FORMAT_PIPES],
+  imports: [DecimalPipe, RouterLink, NzAlertModule, NzTableModule, NzTabsModule, NzTagModule, ExposureBar, PageHead, AlertStrip, PerformancePanel, RiskPanel, LiquidityPanel, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (page.failed()) {
@@ -55,9 +56,7 @@ function heat(value: number, max: number): Record<string, string> {
         <div class="tile"><div class="k">Net exposure</div><div class="v">{{ d.totals.netUsd / d.totals.navUsd | pct: 0 : false }}</div><div class="d">{{ d.totals.netUsd | usd }}</div></div>
       </div>
 
-      @for (check of breaches(); track check.rule) {
-        <nz-alert nzType="warning" nzShowIcon [nzMessage]="'Mandate breach: ' + check.rule + ' is ' + check.current + ' (limit ' + check.limit + ').'" style="display:block;margin-bottom:14px" />
-      }
+      <app-alert-strip [fundId]="d.fund.id" [sleeveId]="d.sleeve.id" />
 
       <nz-tabs [nzAnimated]="false">
         <nz-tab nzTitle="Managers">
@@ -267,7 +266,6 @@ export class SleevePage {
     const d = this.page.data();
     return d ? checks(d) : [];
   });
-  protected readonly breaches = computed(() => this.mandate().filter((c) => !c.ok));
   private readonly matrixMax = computed(() => Math.max(1, ...(this.page.data()?.assets ?? []).flatMap((a) => a.holders.map((h) => Math.abs(h.netUsd)))));
 
   protected readonly abs = Math.abs;

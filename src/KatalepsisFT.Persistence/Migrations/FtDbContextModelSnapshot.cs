@@ -22,6 +22,187 @@ namespace KatalepsisFT.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("KatalepsisFT.Domain.Alerts.Alert", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AssigneeName")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("assignee_name");
+
+                    b.Property<int?>("AssigneeUserId")
+                        .HasColumnType("integer")
+                        .HasColumnName("assignee_user_id");
+
+                    b.Property<DateOnly>("DataDate")
+                        .HasColumnType("date")
+                        .HasColumnName("data_date");
+
+                    b.Property<DateTimeOffset>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_seen_at");
+
+                    b.Property<DateTimeOffset>("RaisedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("raised_at");
+
+                    b.Property<DateTimeOffset?>("ResolvedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("resolved_at");
+
+                    b.Property<bool>("ResolvedWhileBreaching")
+                        .HasColumnType("boolean")
+                        .HasColumnName("resolved_while_breaching");
+
+                    b.Property<int>("RuleId")
+                        .HasColumnType("integer")
+                        .HasColumnName("rule_id");
+
+                    b.Property<DateTimeOffset?>("SnoozedUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("snoozed_until");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Subject")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("subject");
+
+                    b.Property<decimal>("Threshold")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("numeric(18,8)")
+                        .HasColumnName("threshold");
+
+                    b.Property<decimal>("Value")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("numeric(18,8)")
+                        .HasColumnName("value");
+
+                    b.HasKey("Id")
+                        .HasName("pk_alerts");
+
+                    b.HasIndex("RuleId", "Status")
+                        .HasDatabaseName("ix_alerts_rule_id_status");
+
+                    b.ToTable("alerts", (string)null);
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Alerts.AlertAction", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AlertId")
+                        .HasColumnType("integer")
+                        .HasColumnName("alert_id");
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("at");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("note");
+
+                    b.Property<int?>("UserId")
+                        .HasColumnType("integer")
+                        .HasColumnName("user_id");
+
+                    b.Property<string>("UserName")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("user_name");
+
+                    b.HasKey("Id")
+                        .HasName("pk_alert_actions");
+
+                    b.HasIndex("AlertId")
+                        .HasDatabaseName("ix_alert_actions_alert_id");
+
+                    b.ToTable("alert_actions", (string)null);
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Alerts.AlertRule", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("FundId")
+                        .HasColumnType("integer")
+                        .HasColumnName("fund_id");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_enabled");
+
+                    b.Property<int?>("MandateLimitId")
+                        .HasColumnType("integer")
+                        .HasColumnName("mandate_limit_id");
+
+                    b.Property<int>("Metric")
+                        .HasColumnType("integer")
+                        .HasColumnName("metric");
+
+                    b.Property<int>("Operator")
+                        .HasColumnType("integer")
+                        .HasColumnName("operator");
+
+                    b.Property<int>("ScopeId")
+                        .HasColumnType("integer")
+                        .HasColumnName("scope_id");
+
+                    b.Property<int>("ScopeKind")
+                        .HasColumnType("integer")
+                        .HasColumnName("scope_kind");
+
+                    b.Property<int>("Severity")
+                        .HasColumnType("integer")
+                        .HasColumnName("severity");
+
+                    b.Property<decimal>("Threshold")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("numeric(18,8)")
+                        .HasColumnName("threshold");
+
+                    b.HasKey("Id")
+                        .HasName("pk_alert_rules");
+
+                    b.HasIndex("FundId")
+                        .HasDatabaseName("ix_alert_rules_fund_id");
+
+                    b.HasIndex("MandateLimitId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_alert_rules_mandate_limit_id");
+
+                    b.ToTable("alert_rules", (string)null);
+                });
+
             modelBuilder.Entity("KatalepsisFT.Domain.Benchmarks.Benchmark", b =>
                 {
                     b.Property<int>("Id")
@@ -828,6 +1009,50 @@ namespace KatalepsisFT.Persistence.Migrations
                     b.ToTable("user_tokens", (string)null);
                 });
 
+            modelBuilder.Entity("KatalepsisFT.Domain.Alerts.Alert", b =>
+                {
+                    b.HasOne("KatalepsisFT.Domain.Alerts.AlertRule", "Rule")
+                        .WithMany("Alerts")
+                        .HasForeignKey("RuleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_alerts_alert_rules_rule_id");
+
+                    b.Navigation("Rule");
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Alerts.AlertAction", b =>
+                {
+                    b.HasOne("KatalepsisFT.Domain.Alerts.Alert", "Alert")
+                        .WithMany("Actions")
+                        .HasForeignKey("AlertId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_alert_actions_alerts_alert_id");
+
+                    b.Navigation("Alert");
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Alerts.AlertRule", b =>
+                {
+                    b.HasOne("KatalepsisFT.Domain.Funds.Fund", "Fund")
+                        .WithMany()
+                        .HasForeignKey("FundId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_alert_rules_funds_fund_id");
+
+                    b.HasOne("KatalepsisFT.Domain.Funds.MandateLimit", "MandateLimit")
+                        .WithMany()
+                        .HasForeignKey("MandateLimitId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_alert_rules_mandate_limits_mandate_limit_id");
+
+                    b.Navigation("Fund");
+
+                    b.Navigation("MandateLimit");
+                });
+
             modelBuilder.Entity("KatalepsisFT.Domain.Benchmarks.BenchmarkConstituent", b =>
                 {
                     b.HasOne("KatalepsisFT.Domain.Instruments.Asset", "Asset")
@@ -1028,6 +1253,16 @@ namespace KatalepsisFT.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_user_tokens_users_user_id");
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Alerts.Alert", b =>
+                {
+                    b.Navigation("Actions");
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Alerts.AlertRule", b =>
+                {
+                    b.Navigation("Alerts");
                 });
 
             modelBuilder.Entity("KatalepsisFT.Domain.Benchmarks.Benchmark", b =>

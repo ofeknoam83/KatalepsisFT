@@ -108,7 +108,7 @@ public sealed class RiskService(IFtDbContext database)
             grid,
             byChild,
             assets.Select(a => new AssetBetaDto(a.Asset, a.NetUsd, a.GrossUsd, betas[a.Asset].Beta, betas[a.Asset].Assumed)).ToList(),
-            await MandateAsync(context, history, market, cancellationToken),
+            Mandate(context, history, market),
             volatility,
             rollingDates,
             rolling,
@@ -154,6 +154,27 @@ public sealed class RiskService(IFtDbContext database)
             lines.Select(l => new LiquidityLineDto(l.Asset, l.GrossUsd, l.AverageDailyVolumeUsd, l.DailyCapacityUsd, l.Days, holders.GetValueOrDefault(l.Asset))).ToList(),
             queue
         );
+    }
+
+    /// <summary>The alert figures of a fund, each of its sleeves and each of its managers, from one read of the book.</summary>
+    public async Task<FundMetrics?> GetFundMetricsAsync(int fundId, CancellationToken cancellationToken)
+    {
+        FundBook? book = await new FundBookReader(database).LoadAsync(fundId, cancellationToken);
+        if (book is null || book.Rows.Count == 0)
+        {
+            return null;
+        }
+
+        Market market = await LoadMarketAsync(book.Rows.Select(r => r.Asset).Distinct().ToArray(), book.AsOf, cancellationToken);
+        NavHistory history = await NavHistory.LoadAsync(database, book.Managers.Select(m => m.Id).ToArray(), cancellationToken);
+        List<HoldingRow> all = book.Rows.ToList();
+        List<ScopeMetrics?> scopes =
+        [
+            Measure(book, PerformanceScope.Fund, book.Fund.Id, book.Fund.Name, null, all, book.Managers.Select(m => m.Id).ToArray(), history, market),
+            .. book.Sleeves.Select(s => Measure(book, PerformanceScope.Sleeve, s.Id, s.Name, s.Id, all.Where(r => r.SleeveId == s.Id).ToList(), book.Managers.Where(m => m.SleeveId == s.Id).Select(m => m.Id).ToArray(), history, market)),
+            .. book.Managers.Select(m => Measure(book, PerformanceScope.Manager, m.Id, m.Name, m.SleeveId, all.Where(r => r.ManagerId == m.Id).ToList(), [m.Id], history, market)),
+        ];
+        return new FundMetrics(book.AsOf, scopes.OfType<ScopeMetrics>().ToList());
     }
 
     // ---------------------------------------------------------------- scope
@@ -333,42 +354,64 @@ public sealed class RiskService(IFtDbContext database)
 
     // ---------------------------------------------------------------- mandate
 
-    private Task<List<MandateCheckDto>> MandateAsync(Context context, NavHistory history, Market market, CancellationToken cancellationToken)
+    private static List<MandateCheckDto> Mandate(Context context, NavHistory history, Market market)
     {
-        _ = cancellationToken;
         List<MandateCheckDto> result = [];
-        foreach (Sleeve sleeve in context.MandateSleeves)
+        foreach (Sleeve sleeve in context.MandateSleeves.Where(s => s.Limits.Count > 0))
         {
-            List<HoldingRow> rows = context.Book.Rows.Where(r => r.SleeveId == sleeve.Id).ToList();
-            BookTotals totals = HoldingsAggregator.Totals(rows);
-            if (totals.NavUsd <= 0m || sleeve.Limits.Count == 0)
+            int[] managerIds = context.Book.Managers.Where(m => m.SleeveId == sleeve.Id).Select(m => m.Id).ToArray();
+            ScopeMetrics? m = Measure(context.Book, PerformanceScope.Sleeve, sleeve.Id, sleeve.Name, sleeve.Id, context.Book.Rows.Where(r => r.SleeveId == sleeve.Id).ToList(), managerIds, history, market);
+            if (m is null)
             {
                 continue;
             }
 
-            AssetExposure? largest = HoldingsAggregator.ByAsset(rows).FirstOrDefault();
-            (string Name, double Drawdown)? worst = context
-                .Book.Managers.Where(m => m.SleeveId == sleeve.Id && history.Valued([m.Id]).Length == 1)
-                .Select(m => (m.Name, Drawdown: CurrentDrawdown(history.Series([m.Id], context.Book.AsOf).Returns())))
-                .OrderBy(m => m.Drawdown)
-                .Select(m => ((string Name, double Drawdown)?)m)
-                .FirstOrDefault();
-            LiquidityLine? slowest = Liquidity(rows, market, DefaultParticipation).Lines.FirstOrDefault(l => l.Days is not null);
-
-            MandateState state = new(
-                Math.Round(totals.GrossUsd / totals.NavUsd, 6),
-                Math.Round(totals.NetUsd / totals.NavUsd, 6),
-                largest?.Asset,
-                largest is null ? 0m : Math.Round(largest.GrossUsd / totals.NavUsd, 6),
-                worst?.Name,
-                worst?.Drawdown,
-                slowest?.Asset,
-                slowest?.Days
-            );
+            MandateState state = new(m.GrossOverNav, m.NetOverNav, m.LargestAsset, m.LargestAssetOverNav, m.WorstManager, m.WorstDrawdown, m.SlowestAsset, m.SlowestDays);
             result.AddRange(MandateChecker.Check(sleeve.Limits.Select(l => (l.Kind, l.Value)), state).Select(c => new MandateCheckDto(sleeve.Id, sleeve.Name, c.Kind, c.Rule, c.Current, c.Limit, c.WithinLimit)));
         }
 
-        return Task.FromResult(result);
+        return result;
+    }
+
+    /// <summary>The figures alert rules and mandate limits are compared with; null when the scope has no NAV.</summary>
+    private static ScopeMetrics? Measure(FundBook book, PerformanceScope kind, int id, string name, int? sleeveId, List<HoldingRow> rows, int[] managerIds, NavHistory history, Market market)
+    {
+        BookTotals totals = HoldingsAggregator.Totals(rows);
+        if (totals.NavUsd <= 0m)
+        {
+            return null;
+        }
+
+        IReadOnlyList<AssetExposure> assets = HoldingsAggregator.ByAsset(rows);
+        AssetExposure? largest = assets.FirstOrDefault();
+        (string Name, double Drawdown)? worst = book
+            .Managers.Where(m => managerIds.Contains(m.Id) && history.Valued([m.Id]).Length == 1)
+            .Select(m => (m.Name, Drawdown: CurrentDrawdown(history.Series([m.Id], book.AsOf).Returns())))
+            .OrderBy(m => m.Drawdown)
+            .Select(m => ((string Name, double Drawdown)?)m)
+            .FirstOrDefault();
+        LiquidityLine? slowest = Liquidity(rows, market, DefaultParticipation).Lines.FirstOrDefault(l => l.Days is not null);
+        VarResult var = HistoricalVar.Compute(HistoricalVar.HypotheticalPnl(assets.ToDictionary(a => a.Asset, a => a.NetUsd), market.Returns(VarLookbackDays)));
+        int[] valued = history.Valued(managerIds);
+        double[] returns = valued.Length == 0 ? [] : history.Series(valued, book.AsOf).Returns();
+
+        return new ScopeMetrics(
+            kind,
+            id,
+            name,
+            sleeveId,
+            totals.NavUsd,
+            Math.Round(totals.GrossUsd / totals.NavUsd, 6),
+            Math.Round(totals.NetUsd / totals.NavUsd, 6),
+            largest?.Asset,
+            largest is null ? 0m : Math.Round(largest.GrossUsd / totals.NavUsd, 6),
+            worst?.Name,
+            worst?.Drawdown,
+            slowest?.Asset,
+            slowest?.Days,
+            var.Days > 0 ? Math.Round(var.ValueAtRiskUsd / totals.NavUsd, 6) : null,
+            returns.Length > 0 ? returns[^1] : null
+        );
     }
 
     /// <summary>How far below its own high-water mark a return series stands today; 0 at a new high.</summary>

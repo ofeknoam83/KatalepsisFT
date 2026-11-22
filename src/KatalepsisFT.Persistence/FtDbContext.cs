@@ -1,4 +1,5 @@
 using KatalepsisFT.Application;
+using KatalepsisFT.Domain.Alerts;
 using KatalepsisFT.Domain.Benchmarks;
 using KatalepsisFT.Domain.Funds;
 using KatalepsisFT.Domain.Instruments;
@@ -31,6 +32,9 @@ public class FtDbContext(DbContextOptions<FtDbContext> options)
     public DbSet<PriceBar> PriceBars => Set<PriceBar>();
     public DbSet<Benchmark> Benchmarks => Set<Benchmark>();
     public DbSet<BenchmarkConstituent> BenchmarkConstituents => Set<BenchmarkConstituent>();
+    public DbSet<AlertRule> AlertRules => Set<AlertRule>();
+    public DbSet<Alert> Alerts => Set<Alert>();
+    public DbSet<AlertAction> AlertActions => Set<AlertAction>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
