@@ -22,6 +22,528 @@ namespace KatalepsisFT.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("KatalepsisFT.Domain.Benchmarks.Benchmark", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal?>("FixedAnnualRate")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("numeric(18,8)")
+                        .HasColumnName("fixed_annual_rate");
+
+                    b.Property<bool>("IsApproximation")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_approximation");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.HasKey("Id")
+                        .HasName("pk_benchmarks");
+
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasDatabaseName("ix_benchmarks_name");
+
+                    b.ToTable("benchmarks", (string)null);
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Benchmarks.BenchmarkConstituent", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AssetId")
+                        .HasColumnType("integer")
+                        .HasColumnName("asset_id");
+
+                    b.Property<int>("BenchmarkId")
+                        .HasColumnType("integer")
+                        .HasColumnName("benchmark_id");
+
+                    b.Property<decimal>("Weight")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("numeric(18,8)")
+                        .HasColumnName("weight");
+
+                    b.HasKey("Id")
+                        .HasName("pk_benchmark_constituents");
+
+                    b.HasIndex("AssetId")
+                        .HasDatabaseName("ix_benchmark_constituents_asset_id");
+
+                    b.HasIndex("BenchmarkId", "AssetId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_benchmark_constituents_benchmark_id_asset_id");
+
+                    b.ToTable("benchmark_constituents", (string)null);
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Funds.Fund", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("BaseCurrency")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasColumnName("base_currency");
+
+                    b.Property<int?>("BenchmarkId")
+                        .HasColumnType("integer")
+                        .HasColumnName("benchmark_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<bool>("IsDemo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_demo");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.HasKey("Id")
+                        .HasName("pk_funds");
+
+                    b.HasIndex("BenchmarkId")
+                        .HasDatabaseName("ix_funds_benchmark_id");
+
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasDatabaseName("ix_funds_name");
+
+                    b.ToTable("funds", (string)null);
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Funds.ManagerAccount", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("AllocatedCapitalUsd")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("allocated_capital_usd");
+
+                    b.Property<int>("DataSource")
+                        .HasColumnType("integer")
+                        .HasColumnName("data_source");
+
+                    b.Property<DateOnly>("InceptionDate")
+                        .HasColumnType("date")
+                        .HasColumnName("inception_date");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.Property<int>("SleeveId")
+                        .HasColumnType("integer")
+                        .HasColumnName("sleeve_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_manager_accounts");
+
+                    b.HasIndex("SleeveId", "Name")
+                        .IsUnique()
+                        .HasDatabaseName("ix_manager_accounts_sleeve_id_name");
+
+                    b.ToTable("manager_accounts", (string)null);
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Funds.MandateLimit", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer")
+                        .HasColumnName("kind");
+
+                    b.Property<int>("SleeveId")
+                        .HasColumnType("integer")
+                        .HasColumnName("sleeve_id");
+
+                    b.Property<decimal>("Value")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("numeric(18,8)")
+                        .HasColumnName("value");
+
+                    b.HasKey("Id")
+                        .HasName("pk_mandate_limits");
+
+                    b.HasIndex("SleeveId", "Kind")
+                        .IsUnique()
+                        .HasDatabaseName("ix_mandate_limits_sleeve_id_kind");
+
+                    b.ToTable("mandate_limits", (string)null);
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Funds.Sleeve", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("BenchmarkId")
+                        .HasColumnType("integer")
+                        .HasColumnName("benchmark_id");
+
+                    b.Property<int>("FundId")
+                        .HasColumnType("integer")
+                        .HasColumnName("fund_id");
+
+                    b.Property<int>("MandateType")
+                        .HasColumnType("integer")
+                        .HasColumnName("mandate_type");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.HasKey("Id")
+                        .HasName("pk_sleeves");
+
+                    b.HasIndex("BenchmarkId")
+                        .HasDatabaseName("ix_sleeves_benchmark_id");
+
+                    b.HasIndex("FundId", "Name")
+                        .IsUnique()
+                        .HasDatabaseName("ix_sleeves_fund_id_name");
+
+                    b.ToTable("sleeves", (string)null);
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Instruments.Asset", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AssetClass")
+                        .HasColumnType("integer")
+                        .HasColumnName("asset_class");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Symbol")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("symbol");
+
+                    b.HasKey("Id")
+                        .HasName("pk_assets");
+
+                    b.HasIndex("Symbol")
+                        .IsUnique()
+                        .HasDatabaseName("ix_assets_symbol");
+
+                    b.ToTable("assets", (string)null);
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Instruments.Instrument", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AssetId")
+                        .HasColumnType("integer")
+                        .HasColumnName("asset_id");
+
+                    b.Property<DateOnly?>("Expiry")
+                        .HasColumnType("date")
+                        .HasColumnName("expiry");
+
+                    b.Property<decimal>("Multiplier")
+                        .HasPrecision(28, 8)
+                        .HasColumnType("numeric(28,8)")
+                        .HasColumnName("multiplier");
+
+                    b.Property<int?>("OptionRight")
+                        .HasColumnType("integer")
+                        .HasColumnName("option_right");
+
+                    b.Property<decimal?>("Strike")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("numeric(18,8)")
+                        .HasColumnName("strike");
+
+                    b.Property<string>("Symbol")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("symbol");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("integer")
+                        .HasColumnName("type");
+
+                    b.HasKey("Id")
+                        .HasName("pk_instruments");
+
+                    b.HasIndex("AssetId")
+                        .HasDatabaseName("ix_instruments_asset_id");
+
+                    b.HasIndex("Symbol")
+                        .IsUnique()
+                        .HasDatabaseName("ix_instruments_symbol");
+
+                    b.ToTable("instruments", (string)null);
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Instruments.PriceBar", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("AssetId")
+                        .HasColumnType("integer")
+                        .HasColumnName("asset_id");
+
+                    b.Property<decimal>("Close")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("numeric(18,8)")
+                        .HasColumnName("close");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date")
+                        .HasColumnName("date");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("source");
+
+                    b.Property<decimal>("VolumeUsd")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("volume_usd");
+
+                    b.HasKey("Id")
+                        .HasName("pk_price_bars");
+
+                    b.HasIndex("AssetId", "Date")
+                        .IsUnique()
+                        .HasDatabaseName("ix_price_bars_asset_id_date");
+
+                    b.ToTable("price_bars", (string)null);
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Positions.CashFlow", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<decimal>("AmountUsd")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("amount_usd");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date")
+                        .HasColumnName("date");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer")
+                        .HasColumnName("kind");
+
+                    b.Property<int>("ManagerAccountId")
+                        .HasColumnType("integer")
+                        .HasColumnName("manager_account_id");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("note");
+
+                    b.HasKey("Id")
+                        .HasName("pk_cash_flows");
+
+                    b.HasIndex("ManagerAccountId", "Date")
+                        .HasDatabaseName("ix_cash_flows_manager_account_id_date");
+
+                    b.ToTable("cash_flows", (string)null);
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Positions.NavSnapshot", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date")
+                        .HasColumnName("date");
+
+                    b.Property<int>("ManagerAccountId")
+                        .HasColumnType("integer")
+                        .HasColumnName("manager_account_id");
+
+                    b.Property<decimal>("NavUsd")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("nav_usd");
+
+                    b.HasKey("Id")
+                        .HasName("pk_nav_snapshots");
+
+                    b.HasIndex("ManagerAccountId", "Date")
+                        .IsUnique()
+                        .HasDatabaseName("ix_nav_snapshots_manager_account_id_date");
+
+                    b.ToTable("nav_snapshots", (string)null);
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Positions.PositionSnapshot", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date")
+                        .HasColumnName("date");
+
+                    b.Property<decimal?>("Delta")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("numeric(18,8)")
+                        .HasColumnName("delta");
+
+                    b.Property<decimal?>("EntryPrice")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("numeric(18,8)")
+                        .HasColumnName("entry_price");
+
+                    b.Property<decimal>("ExposureUsd")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("exposure_usd");
+
+                    b.Property<int>("InstrumentId")
+                        .HasColumnType("integer")
+                        .HasColumnName("instrument_id");
+
+                    b.Property<int>("ManagerAccountId")
+                        .HasColumnType("integer")
+                        .HasColumnName("manager_account_id");
+
+                    b.Property<decimal>("MarkPrice")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("numeric(18,8)")
+                        .HasColumnName("mark_price");
+
+                    b.Property<decimal>("MarketValueUsd")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("market_value_usd");
+
+                    b.Property<decimal>("Quantity")
+                        .HasPrecision(28, 8)
+                        .HasColumnType("numeric(28,8)")
+                        .HasColumnName("quantity");
+
+                    b.Property<decimal>("UnderlyingPrice")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("numeric(18,8)")
+                        .HasColumnName("underlying_price");
+
+                    b.Property<decimal>("UnrealizedPnlUsd")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("unrealized_pnl_usd");
+
+                    b.HasKey("Id")
+                        .HasName("pk_position_snapshots");
+
+                    b.HasIndex("InstrumentId")
+                        .HasDatabaseName("ix_position_snapshots_instrument_id");
+
+                    b.HasIndex("Date", "InstrumentId")
+                        .HasDatabaseName("ix_position_snapshots_date_instrument_id");
+
+                    b.HasIndex("ManagerAccountId", "Date", "InstrumentId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_position_snapshots_manager_account_id_date_instrument_id");
+
+                    b.ToTable("position_snapshots", (string)null);
+                });
+
             modelBuilder.Entity("KatalepsisFT.Persistence.Identity.AppUser", b =>
                 {
                     b.Property<int>("Id")
@@ -306,6 +828,151 @@ namespace KatalepsisFT.Persistence.Migrations
                     b.ToTable("user_tokens", (string)null);
                 });
 
+            modelBuilder.Entity("KatalepsisFT.Domain.Benchmarks.BenchmarkConstituent", b =>
+                {
+                    b.HasOne("KatalepsisFT.Domain.Instruments.Asset", "Asset")
+                        .WithMany()
+                        .HasForeignKey("AssetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_benchmark_constituents_assets_asset_id");
+
+                    b.HasOne("KatalepsisFT.Domain.Benchmarks.Benchmark", "Benchmark")
+                        .WithMany("Constituents")
+                        .HasForeignKey("BenchmarkId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_benchmark_constituents_benchmarks_benchmark_id");
+
+                    b.Navigation("Asset");
+
+                    b.Navigation("Benchmark");
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Funds.Fund", b =>
+                {
+                    b.HasOne("KatalepsisFT.Domain.Benchmarks.Benchmark", "Benchmark")
+                        .WithMany()
+                        .HasForeignKey("BenchmarkId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_funds_benchmarks_benchmark_id");
+
+                    b.Navigation("Benchmark");
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Funds.ManagerAccount", b =>
+                {
+                    b.HasOne("KatalepsisFT.Domain.Funds.Sleeve", "Sleeve")
+                        .WithMany("Managers")
+                        .HasForeignKey("SleeveId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_manager_accounts_sleeves_sleeve_id");
+
+                    b.Navigation("Sleeve");
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Funds.MandateLimit", b =>
+                {
+                    b.HasOne("KatalepsisFT.Domain.Funds.Sleeve", "Sleeve")
+                        .WithMany("Limits")
+                        .HasForeignKey("SleeveId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_mandate_limits_sleeves_sleeve_id");
+
+                    b.Navigation("Sleeve");
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Funds.Sleeve", b =>
+                {
+                    b.HasOne("KatalepsisFT.Domain.Benchmarks.Benchmark", "Benchmark")
+                        .WithMany()
+                        .HasForeignKey("BenchmarkId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_sleeves_benchmarks_benchmark_id");
+
+                    b.HasOne("KatalepsisFT.Domain.Funds.Fund", "Fund")
+                        .WithMany("Sleeves")
+                        .HasForeignKey("FundId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_sleeves_funds_fund_id");
+
+                    b.Navigation("Benchmark");
+
+                    b.Navigation("Fund");
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Instruments.Instrument", b =>
+                {
+                    b.HasOne("KatalepsisFT.Domain.Instruments.Asset", "Asset")
+                        .WithMany()
+                        .HasForeignKey("AssetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_instruments_assets_asset_id");
+
+                    b.Navigation("Asset");
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Instruments.PriceBar", b =>
+                {
+                    b.HasOne("KatalepsisFT.Domain.Instruments.Asset", "Asset")
+                        .WithMany()
+                        .HasForeignKey("AssetId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_price_bars_assets_asset_id");
+
+                    b.Navigation("Asset");
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Positions.CashFlow", b =>
+                {
+                    b.HasOne("KatalepsisFT.Domain.Funds.ManagerAccount", "ManagerAccount")
+                        .WithMany()
+                        .HasForeignKey("ManagerAccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_cash_flows_manager_accounts_manager_account_id");
+
+                    b.Navigation("ManagerAccount");
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Positions.NavSnapshot", b =>
+                {
+                    b.HasOne("KatalepsisFT.Domain.Funds.ManagerAccount", "ManagerAccount")
+                        .WithMany()
+                        .HasForeignKey("ManagerAccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_nav_snapshots_manager_accounts_manager_account_id");
+
+                    b.Navigation("ManagerAccount");
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Positions.PositionSnapshot", b =>
+                {
+                    b.HasOne("KatalepsisFT.Domain.Instruments.Instrument", "Instrument")
+                        .WithMany()
+                        .HasForeignKey("InstrumentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_position_snapshots_instruments_instrument_id");
+
+                    b.HasOne("KatalepsisFT.Domain.Funds.ManagerAccount", "ManagerAccount")
+                        .WithMany()
+                        .HasForeignKey("ManagerAccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_position_snapshots_manager_accounts_manager_account_id");
+
+                    b.Navigation("Instrument");
+
+                    b.Navigation("ManagerAccount");
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<int>", b =>
                 {
                     b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole<int>", null)
@@ -361,6 +1028,23 @@ namespace KatalepsisFT.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_user_tokens_users_user_id");
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Benchmarks.Benchmark", b =>
+                {
+                    b.Navigation("Constituents");
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Funds.Fund", b =>
+                {
+                    b.Navigation("Sleeves");
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Funds.Sleeve", b =>
+                {
+                    b.Navigation("Limits");
+
+                    b.Navigation("Managers");
                 });
 #pragma warning restore 612, 618
         }

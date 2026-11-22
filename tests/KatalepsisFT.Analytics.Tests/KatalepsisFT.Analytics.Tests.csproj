@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\KatalepsisFT.Analytics\KatalepsisFT.Analytics.csproj" />
+    <ProjectReference Include="..\..\src\KatalepsisFT.Domain\KatalepsisFT.Domain.csproj" />
   </ItemGroup>
 
 </Project>
