@@ -207,8 +207,8 @@ Each phase ends deployed on Render and checked in the browser. Each is split int
   - [x] Repository, nine-project solution, CI
   - [x] Dockerfile and `render.yaml`; web (2 instances), three workers, Postgres and Key Value live on Render in Frankfurt
   - [x] Health and readiness endpoints; worker heartbeats over Key Value pub/sub
-  - [ ] Database migrations run in the pre-deploy step
-  - [ ] Built-in sign-in (Admin, Viewer), session keys stored in Postgres so both web instances accept a session
+  - [x] Database migrations run in the pre-deploy step
+  - [x] Built-in sign-in (Admin, Viewer), session keys stored in Postgres so both web instances accept a session
   - [ ] Angular app shell served by the web service
   - [ ] Key Value internal authentication switched on
 - [ ] **Phase 1 — Model and data**: entities, migrations, price ingestion (crypto public data, free live feed for equities and futures), valuation, end-of-day snapshot job, demo fund seeded with history.

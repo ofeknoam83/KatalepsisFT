@@ -9,9 +9,10 @@ Multi-manager portfolio monitor: a master fund split into sleeves, each run by s
 
 Phase 0, skeleton. What exists today:
 
-- A web service with `/health` (is the process up) and `/health/ready` (can it reach Postgres and Key Value, and when did it last hear each worker).
+- Built-in sign-in with two roles, Admin and Viewer: `/api/auth/login`, `logout`, `me`, `change-password`.
+- `/health` (is the process up) and `/health/ready` (can it reach its stores). Detail for Admins at `/api/system/status`.
 - A worker started as `cefi`, `defi` or `core` that publishes a heartbeat through Key Value.
-- A `check` command that verifies both stores answer.
+- Commands: `check` (both stores answer) and `migrate` (schema, roles, first Admin).
 
 ## Run locally
 
@@ -25,6 +26,13 @@ dotnet run --project src/KatalepsisFT.Worker -- --group core
 ```
 
 ```bash
+dotnet run --project src/KatalepsisFT.Jobs -- migrate
+```
+
+Tests need a Postgres server where the user may create databases:
+
+```bash
+export TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres
 dotnet test
 ```
 

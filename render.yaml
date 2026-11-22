@@ -1,5 +1,4 @@
 # Katalepsis FT on Render: one production environment.
-# Region and plans are placeholders until confirmed against the Render workspace.
 services:
   - type: web
     name: katalepsis-ft-web
@@ -10,6 +9,7 @@ services:
     dockerfilePath: ./Dockerfile
     dockerCommand: /app/run.sh web
     healthCheckPath: /health
+    preDeployCommand: /app/run.sh jobs migrate
     autoDeployTrigger: checksPass
     buildFilter:
       paths: [src/**, Dockerfile, run.sh, global.json, Directory.Build.props]
@@ -18,6 +18,11 @@ services:
         fromDatabase: { name: katalepsis-ft-db, property: connectionString }
       - key: KEYVALUE_URL
         fromService: { type: keyvalue, name: katalepsis-ft-kv, property: connectionString }
+      # First Admin, created by the migrate step only while the system has no account at all.
+      - key: INITIAL_ADMIN_EMAIL
+        sync: false
+      - key: INITIAL_ADMIN_PASSWORD
+        generateValue: true
 
   - type: worker
     name: katalepsis-ft-worker-core
