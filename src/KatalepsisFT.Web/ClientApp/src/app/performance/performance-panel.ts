@@ -9,18 +9,11 @@ import { NzTableModule } from 'ng-zorro-antd/table';
 import { catchError, combineLatest, of, switchMap, tap } from 'rxjs';
 import { ViewState } from '../funds/view.state';
 import { FORMAT_PIPES } from '../shared/format';
+import { heat } from '../shared/heat';
 import { RiaChartComponent, RiaChartSeries } from '../shared/ria-chart.component';
 import { PerformanceScope, PnlLine } from './models';
 import { PerformanceApi } from './performance.api';
 import { PerformanceControls } from './performance-controls';
-
-/** Diverging fill for a return: blue up, red down, on a neutral ground. */
-function heat(value: number, max: number): Record<string, string> {
-  const t = Math.max(-1, Math.min(1, value / max));
-  const to = t >= 0 ? [42, 120, 214] : [208, 59, 59];
-  const rgb = [240, 239, 236].map((c, i) => Math.round(c + (to[i] - c) * Math.abs(t)));
-  return { background: `rgb(${rgb.join(',')})`, color: Math.abs(t) > 0.5 ? '#fff' : '#1f1f1f' };
-}
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 

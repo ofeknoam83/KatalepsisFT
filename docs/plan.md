@@ -230,7 +230,15 @@ Each phase ends deployed on Render and checked in the browser. Each is split int
   - [x] Asset price return against the benchmark on the asset page
   - [x] Benchmarks: BTC, ETH, cash; period and benchmark selectors kept across pages; chart component copied from Katalepsis
   - [ ] CoinDesk 20 approximating basket (needs the index's current constituents and weights)
-- [ ] **Phase 4 — Risk, volatility, liquidity**: scenario matrix, VaR, volatility and correlation, liquidity ladder.
+- [ ] **Phase 4 — Risk, volatility, liquidity**
+  - [x] Scenario matrix (BTC move × how strongly other assets follow, by measured beta), also per sleeve or manager
+  - [x] Historical value at risk and expected shortfall (95%, today's book over the last 365 days of price moves), leverage, concentration
+  - [x] Mandate limits checked per sleeve: gross and net exposure, largest asset, deepest manager drawdown, days to liquidate
+  - [x] Volatility (30 and 90 days, rolling 30-day chart, share of variance) and manager correlation matrix
+  - [x] Liquidity: days to liquidate per asset at a chosen share of daily volume, ladder for the scope and each child, who holds the slowest asset
+  - [x] Risk and Liquidity tabs on fund, sleeve and manager
+  - [ ] Funding income on perps is not modelled in the demo fund, so basis and funding managers show zero volatility
+  - [ ] The breach banner on the sleeve page checks only the single-asset limit; Phase 5 alerts replace it with every limit
 - [ ] **Phase 5 — Alerts and actions**: rules, evaluation, inbox, workflow, Slack/email.
 - [ ] **Phase 6 — Live connection framework + first venues**: read-only adapter interface, encrypted key storage, streaming worker, cache, live push to the browser; Binance, Bybit, OKX, Deribit.
 - [ ] **Phase 7 — Remaining copied CeFi venues**: Coinbase (Prime + Exchange), KuCoin, MEXC.

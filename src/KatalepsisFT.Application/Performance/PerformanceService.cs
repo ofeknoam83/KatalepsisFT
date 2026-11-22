@@ -27,30 +27,16 @@ public sealed class PerformanceService(IFtDbContext database)
             return null;
         }
 
-        int[] fundManagerIds = resolved.FundManagers.Select(m => m.Id).ToArray();
-        var navRows = await database
-            .NavSnapshots.AsNoTracking()
-            .Where(n => fundManagerIds.Contains(n.ManagerAccountId))
-            .Select(n => new { n.ManagerAccountId, n.Date, n.NavUsd })
-            .ToListAsync(cancellationToken);
-        var flowRows = await database
-            .CashFlows.AsNoTracking()
-            .Where(f => fundManagerIds.Contains(f.ManagerAccountId))
-            .Select(f => new { f.ManagerAccountId, f.Date, f.AmountUsd })
-            .ToListAsync(cancellationToken);
-        Dictionary<int, SortedDictionary<DateOnly, decimal>> navs = navRows.GroupBy(n => n.ManagerAccountId).ToDictionary(g => g.Key, g => new SortedDictionary<DateOnly, decimal>(g.ToDictionary(n => n.Date, n => n.NavUsd)));
-        Dictionary<int, Dictionary<DateOnly, decimal>> flows = flowRows.GroupBy(f => f.ManagerAccountId).ToDictionary(g => g.Key, g => g.GroupBy(f => f.Date).ToDictionary(d => d.Key, d => d.Sum(f => f.AmountUsd)));
-
-        int[] scopeManagerIds = resolved.ScopeManagers.Select(m => m.Id).Where(navs.ContainsKey).ToArray();
+        NavHistory history = await NavHistory.LoadAsync(database, resolved.FundManagers.Select(m => m.Id).ToArray(), cancellationToken);
+        int[] scopeManagerIds = history.Valued(resolved.ScopeManagers.Select(m => m.Id));
         if (scopeManagerIds.Length == 0)
         {
             return null;
         }
 
-        // A fund never mixes days: the last day on which every manager in scope has been valued.
-        DateOnly asOf = scopeManagerIds.Min(m => navs[m].Keys.Max());
-        NavSeries series = BuildSeries(scopeManagerIds, navs, flows, asOf);
-        double[] returns = ReturnCalculator.DailyReturns(series.Navs, series.Flows);
+        DateOnly asOf = history.AsOf(scopeManagerIds);
+        NavSeries series = history.Series(scopeManagerIds, asOf);
+        double[] returns = series.Returns();
         double[] benchmarkReturns = await BenchmarkReturnsAsync(benchmark, series.Dates, cancellationToken);
 
         DateOnly from = PeriodStart(period, series.Dates[0], asOf);
@@ -69,14 +55,14 @@ public sealed class PerformanceService(IFtDbContext database)
         List<ChildPerformanceDto> children = [];
         foreach ((PerformanceScope kind, int childId, string name, int[] managerIds) in resolved.Children)
         {
-            int[] valued = managerIds.Where(navs.ContainsKey).ToArray();
+            int[] valued = history.Valued(managerIds);
             if (valued.Length == 0)
             {
                 continue;
             }
 
-            NavSeries child = BuildSeries(valued, navs, flows, asOf);
-            double[] childReturns = ReturnCalculator.DailyReturns(child.Navs, child.Flows);
+            NavSeries child = history.Series(valued, asOf);
+            double[] childReturns = child.Returns();
             // A child that started later than the scope is compared over its own days only.
             int childStart = Math.Max(0, child.Dates.FindIndex(d => d >= from));
             double[] childSlice = childReturns[childStart..];
@@ -223,51 +209,6 @@ public sealed class PerformanceService(IFtDbContext database)
                 );
             }
         }
-    }
-
-    // ---------------------------------------------------------------- NAV series
-
-    private sealed record NavSeries(List<DateOnly> Dates, List<decimal> Navs, List<decimal> Flows);
-
-    /// <summary>
-    /// Sums the managers' NAV per day. A manager that appears after the series began brings its first NAV in as a flow,
-    /// so its arrival is not counted as a gain. A manager with a missing day keeps its last NAV for that day.
-    /// </summary>
-    private static NavSeries BuildSeries(int[] managerIds, Dictionary<int, SortedDictionary<DateOnly, decimal>> navs, Dictionary<int, Dictionary<DateOnly, decimal>> flows, DateOnly asOf)
-    {
-        DateOnly first = managerIds.Min(m => navs[m].Keys.Min());
-        List<DateOnly> dates = [];
-        List<decimal> totals = [];
-        List<decimal> netFlows = [];
-        Dictionary<int, decimal> last = [];
-        for (DateOnly day = first; day <= asOf; day = day.AddDays(1))
-        {
-            decimal flow = 0m;
-            foreach (int manager in managerIds)
-            {
-                bool known = last.ContainsKey(manager);
-                if (navs[manager].TryGetValue(day, out decimal nav))
-                {
-                    if (!known && day > first)
-                    {
-                        flow += nav;
-                    }
-
-                    last[manager] = nav;
-                }
-
-                if (known && flows.TryGetValue(manager, out Dictionary<DateOnly, decimal>? byDay) && byDay.TryGetValue(day, out decimal amount))
-                {
-                    flow += amount;
-                }
-            }
-
-            dates.Add(day);
-            totals.Add(last.Values.Sum());
-            netFlows.Add(flow);
-        }
-
-        return new NavSeries(dates, totals, netFlows);
     }
 
     private static DateOnly PeriodStart(PerformancePeriod period, DateOnly first, DateOnly asOf)

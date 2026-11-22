@@ -9,6 +9,8 @@ import { ExposureBar } from '../shared/exposure-bar';
 import { FORMAT_PIPES, pct } from '../shared/format';
 import { pageData } from '../shared/page-data';
 import { PerformancePanel } from '../performance/performance-panel';
+import { LiquidityPanel } from '../risk/liquidity-panel';
+import { RiskPanel } from '../risk/risk-panel';
 import { PageHead } from '../shared/page-head';
 import { FundsApi } from './funds.api';
 import { AssetRow, MandateLimit, ManagerRow, SleeveDetail } from './models';
@@ -30,7 +32,7 @@ function heat(value: number, max: number): Record<string, string> {
 
 @Component({
   selector: 'app-sleeve-page',
-  imports: [DecimalPipe, RouterLink, NzAlertModule, NzTableModule, NzTabsModule, NzTagModule, ExposureBar, PageHead, PerformancePanel, ...FORMAT_PIPES],
+  imports: [DecimalPipe, RouterLink, NzAlertModule, NzTableModule, NzTabsModule, NzTagModule, ExposureBar, PageHead, PerformancePanel, RiskPanel, LiquidityPanel, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (page.failed()) {
@@ -241,6 +243,16 @@ function heat(value: number, max: number): Record<string, string> {
         <nz-tab nzTitle="Performance">
           <ng-template nz-tab>
             <app-performance-panel scope="Sleeve" [scopeId]="d.sleeve.id" />
+          </ng-template>
+        </nz-tab>
+        <nz-tab nzTitle="Risk">
+          <ng-template nz-tab>
+            <app-risk-panel scope="Sleeve" [scopeId]="d.sleeve.id" />
+          </ng-template>
+        </nz-tab>
+        <nz-tab nzTitle="Liquidity">
+          <ng-template nz-tab>
+            <app-liquidity-panel scope="Sleeve" [scopeId]="d.sleeve.id" />
           </ng-template>
         </nz-tab>
       </nz-tabs>
