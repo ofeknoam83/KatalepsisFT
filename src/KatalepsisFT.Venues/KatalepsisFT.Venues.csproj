@@ -7,6 +7,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Binance.Net" Version="12.11.1" />
+    <PackageReference Include="Bybit.Net" Version="6.10.0" />
     <PackageReference Include="JK.OKX.Net" Version="4.10.2" />
   </ItemGroup>
 

@@ -254,8 +254,10 @@ Each phase ends deployed on Render and checked in the browser. Each is split int
   - [x] A manager's book is the sum of its connections and feeds the existing screens (holdings, performance, risk, liquidity, alerts) through today's snapshot
   - [x] Connections tab: state, last read, and the account value computed from positions next to the value the venue itself states
   - [x] Deribit (spot balances, perps, dated futures, options; inverse and USDC-settled) and OKX (trading account: balances, swaps, futures, options)
-  - [ ] Deribit and OKX field readings are tested on hand-written answers and on the real venues' refusal of a bad key; a real read-only key has not been tried yet
-  - [ ] Binance and Bybit adapters (these venues cannot be reached from the build environment, only from Render)
+  - [ ] Field readings of all four venues are tested on hand-written answers; Deribit and OKX also on the real venues' refusal of a bad key; a real read-only key has not been tried yet
+  - [x] Binance (spot wallet incl. flexible savings, USDⓈ-M futures balances and positions) and Bybit (unified account: balances, linear and inverse perps and futures, options)
+  - [ ] Binance and Bybit have never been called for real: both block the build environment, so even the refusal of a bad key is untested until tried from Render
+  - [ ] Binance: coin-margined futures, margin and options accounts, funding wallet; a holding with no USD pair fails the read. Bybit: funding account, classic accounts
   - [ ] Streams instead of polling, live book in Key Value, live push to the browser (SignalR), 5-minute samples
   - [ ] Deposits and withdrawals read from the venue, so they are not counted as performance
   - [ ] OKX funding account; editing a fund's structure after creation; alert evaluation after each read

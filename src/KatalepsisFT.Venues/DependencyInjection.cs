@@ -1,4 +1,6 @@
 using KatalepsisFT.Application.Connections;
+using KatalepsisFT.Venues.Binance;
+using KatalepsisFT.Venues.Bybit;
 using KatalepsisFT.Venues.Deribit;
 using KatalepsisFT.Venues.Okx;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,6 +15,8 @@ public static class DependencyInjection
         services.AddHttpClient(DeribitAdapter.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(20));
         services.AddScoped<IVenueAdapter>(provider => new DeribitAdapter(provider.GetRequiredService<IHttpClientFactory>().CreateClient(DeribitAdapter.HttpClientName), provider.GetRequiredService<TimeProvider>()));
         services.AddScoped<IVenueAdapter, OkxAdapter>();
+        services.AddScoped<IVenueAdapter, BinanceAdapter>();
+        services.AddScoped<IVenueAdapter, BybitAdapter>();
         return services;
     }
 }
