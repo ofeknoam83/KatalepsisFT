@@ -23,6 +23,7 @@ services:
         sync: false
       - key: INITIAL_ADMIN_PASSWORD
         generateValue: true
+      - fromGroup: katalepsis-ft-secrets
 
   - type: worker
     name: katalepsis-ft-worker-core
@@ -40,6 +41,7 @@ services:
         fromDatabase: { name: katalepsis-ft-db, property: connectionString }
       - key: KEYVALUE_URL
         fromService: { type: keyvalue, name: katalepsis-ft-kv, property: connectionString }
+      - fromGroup: katalepsis-ft-secrets
 
   - type: worker
     name: katalepsis-ft-worker-cefi
@@ -84,6 +86,14 @@ services:
     plan: starter
     maxmemoryPolicy: noeviction
     ipAllowList: [] # private network only
+
+# The master key that venue API keys are encrypted with. Generated once by Render and shared by the web service and the
+# workers; if it is ever changed, every stored venue key becomes unreadable and has to be entered again.
+envVarGroups:
+  - name: katalepsis-ft-secrets
+    envVars:
+      - key: MASTER_KEY
+        generateValue: true
 
 databases:
   - name: katalepsis-ft-db

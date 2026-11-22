@@ -246,7 +246,19 @@ Each phase ends deployed on Render and checked in the browser. Each is split int
   - [ ] Delivery to Slack and email (needs a Slack webhook and a mail provider)
   - [ ] Rules on a single asset across the fund (for example, number of managers holding it)
   - [ ] Evaluation moves into the core worker when live positions arrive (Phase 6)
-- [ ] **Phase 6 — Live connection framework + first venues**: read-only adapter interface, encrypted key storage, streaming worker, cache, live push to the browser; Binance, Bybit, OKX, Deribit.
+- [ ] **Phase 6 — Live connection framework + first venues**
+  - [x] Real funds: an Admin creates a fund with its sleeves and managers; funds are listed in the navigation
+  - [x] Read-only adapter contract (check a key, read a whole account; nothing that trades), one normalised position shape, adapters registered by venue
+  - [x] Venue keys encrypted with the MASTER_KEY secret (AES-256-GCM); a key is checked with the venue before it is stored and refused if it can trade or withdraw
+  - [x] CeFi worker reads every connection about once a minute, with back-off on failure; a failed read keeps the last complete book and records why
+  - [x] A manager's book is the sum of its connections and feeds the existing screens (holdings, performance, risk, liquidity, alerts) through today's snapshot
+  - [x] Connections tab: state, last read, and the account value computed from positions next to the value the venue itself states
+  - [x] Deribit (spot balances, perps, dated futures, options; inverse and USDC-settled) and OKX (trading account: balances, swaps, futures, options)
+  - [ ] Deribit and OKX field readings are tested on hand-written answers and on the real venues' refusal of a bad key; a real read-only key has not been tried yet
+  - [ ] Binance and Bybit adapters (these venues cannot be reached from the build environment, only from Render)
+  - [ ] Streams instead of polling, live book in Key Value, live push to the browser (SignalR), 5-minute samples
+  - [ ] Deposits and withdrawals read from the venue, so they are not counted as performance
+  - [ ] OKX funding account; editing a fund's structure after creation; alert evaluation after each read
 - [ ] **Phase 7 — Remaining copied CeFi venues**: Coinbase (Prime + Exchange), KuCoin, MEXC.
 - [ ] **Phase 8 — New CeFi venues**: Bitget, Gate, Kraken.
 - [ ] **Phase 9 — DeFi venues**: Hyperliquid, dYdX, GMX, then Uniswap and Aerodrome pool positions.

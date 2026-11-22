@@ -1,5 +1,6 @@
 using KatalepsisFT.Domain.Alerts;
 using KatalepsisFT.Domain.Benchmarks;
+using KatalepsisFT.Domain.Connections;
 using KatalepsisFT.Domain.Funds;
 using KatalepsisFT.Domain.Instruments;
 using KatalepsisFT.Domain.Positions;
@@ -22,6 +23,7 @@ public interface IFtDbContext
     DbSet<PriceBar> PriceBars { get; }
     DbSet<Benchmark> Benchmarks { get; }
     DbSet<BenchmarkConstituent> BenchmarkConstituents { get; }
+    DbSet<VenueConnection> VenueConnections { get; }
     DbSet<AlertRule> AlertRules { get; }
     DbSet<Alert> Alerts { get; }
     DbSet<AlertAction> AlertActions { get; }

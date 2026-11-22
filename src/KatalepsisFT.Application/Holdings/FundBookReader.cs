@@ -60,7 +60,8 @@ public sealed class FundBookReader(IFtDbContext database)
             .MinAsync(cancellationToken);
         if (asOf is null)
         {
-            return new FundBook(fund, DateOnly.MinValue, sleeves, managers, []);
+            // Nothing has been read yet: an empty book as of today, so date arithmetic downstream stays in range.
+            return new FundBook(fund, DateOnly.FromDateTime(DateTime.UtcNow), sleeves, managers, []);
         }
 
         Dictionary<int, Sleeve> sleeveById = sleeves.ToDictionary(s => s.Id);

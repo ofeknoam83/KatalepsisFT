@@ -1,6 +1,5 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { Store } from '@ngxs/store';
 import { NzAlertModule } from 'ng-zorro-antd/alert';
 import { NzTableModule } from 'ng-zorro-antd/table';
 import { ExposureBar } from '../shared/exposure-bar';
@@ -11,7 +10,6 @@ import { PageHead } from '../shared/page-head';
 import { FundTabs } from './fund-tabs';
 import { FundsApi } from './funds.api';
 import { SLEEVE_COLORS } from './models';
-import { SetFundSleeves } from './view.state';
 
 @Component({
   selector: 'app-fund-overview-page',
@@ -116,21 +114,10 @@ import { SetFundSleeves } from './view.state';
 })
 export class FundOverviewPage {
   private readonly api = inject(FundsApi);
-  private readonly store = inject(Store);
 
   protected readonly colors = SLEEVE_COLORS;
   protected readonly page = pageData((params, filter) => this.api.overview(Number(params.get('fundId')), filter));
   protected readonly managerCount = computed(() => (this.page.data()?.sleeves ?? []).reduce((sum, s) => sum + s.managers, 0));
   protected readonly sleeveScale = computed(() => Math.max(1, ...(this.page.data()?.sleeves ?? []).flatMap((s) => [s.totals.longUsd, -s.totals.shortUsd])));
   protected readonly assetScale = computed(() => Math.max(1, ...(this.page.data()?.topAssets ?? []).flatMap((a) => [a.longUsd, -a.shortUsd])));
-
-  constructor() {
-    // The navigation lists the sleeves of the fund being looked at.
-    effect(() => {
-      const d = this.page.data();
-      if (d) {
-        this.store.dispatch(new SetFundSleeves(d.fund.id, d.sleeves.map((s) => s.sleeve)));
-      }
-    });
-  }
 }

@@ -1,18 +1,24 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable } from 'rxjs';
+import { Store } from '@ngxs/store';
+import { Observable, tap } from 'rxjs';
+import { SetFundSleeves } from './view.state';
 import { AssetDetail, FundHoldings, FundListItem, FundOverview, InstrumentFilter, ManagerDetail, SleeveDetail } from './models';
 
 @Injectable({ providedIn: 'root' })
 export class FundsApi {
   private readonly http = inject(HttpClient);
+  private readonly store = inject(Store);
 
   funds(): Observable<FundListItem[]> {
     return this.http.get<FundListItem[]>('/api/funds');
   }
 
+  /** Every fund page loads this, so it is also where the navigation learns which fund is open and what its sleeves are. */
   overview(fundId: number, filter: InstrumentFilter): Observable<FundOverview> {
-    return this.http.get<FundOverview>(`/api/funds/${fundId}/overview`, { params: { filter } });
+    return this.http
+      .get<FundOverview>(`/api/funds/${fundId}/overview`, { params: { filter } })
+      .pipe(tap((d) => this.store.dispatch(new SetFundSleeves(d.fund.id, d.sleeves.map((s) => s.sleeve)))));
   }
 
   holdings(fundId: number, filter: InstrumentFilter): Observable<FundHoldings> {

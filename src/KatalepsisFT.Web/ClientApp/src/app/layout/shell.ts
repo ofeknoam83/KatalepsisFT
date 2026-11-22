@@ -6,7 +6,7 @@ import { NzDropDownModule } from 'ng-zorro-antd/dropdown';
 import { NzLayoutModule } from 'ng-zorro-antd/layout';
 import { NzMenuModule } from 'ng-zorro-antd/menu';
 import { Logout, SessionState } from '../core/session.state';
-import { ViewState } from '../funds/view.state';
+import { LoadFunds, ViewState } from '../funds/view.state';
 
 @Component({
   selector: 'app-shell',
@@ -66,8 +66,11 @@ import { ViewState } from '../funds/view.state';
       </nz-header>
       <nz-layout>
         <nz-sider nzWidth="220px" nzTheme="light">
-          <ul nz-menu nzMode="inline" style="border-inline-end:0;padding-top:8px">
-            <li nz-menu-item [routerLink]="fundId() ? ['/funds', fundId()] : ['/']" routerLinkActive="ant-menu-item-selected">Fund</li>
+          <div class="group">Funds</div>
+          <ul nz-menu nzMode="inline" style="border-inline-end:0">
+            @for (fund of funds() ?? []; track fund.id) {
+              <li nz-menu-item [routerLink]="['/funds', fund.id]" [class.ant-menu-item-selected]="fund.id === fundId()">{{ fund.name }}@if (fund.isDemo) {<span style="color:#8c8c8c;font-size:11px;margin-left:6px">DEMO</span>}</li>
+            }
           </ul>
           @if (sleeves().length > 0) {
             <div class="group">Sleeves</div>
@@ -80,6 +83,7 @@ import { ViewState } from '../funds/view.state';
           @if (isAdmin()) {
             <div class="group">Admin</div>
             <ul nz-menu nzMode="inline" style="border-inline-end:0">
+              <li nz-menu-item routerLink="/admin/funds/new" routerLinkActive="ant-menu-item-selected">New fund</li>
               <li nz-menu-item routerLink="/admin/system" routerLinkActive="ant-menu-item-selected">System status</li>
             </ul>
           }
@@ -96,6 +100,7 @@ export class Shell {
   protected readonly session = this.store.selectSignal(SessionState.session);
   protected readonly isAdmin = this.store.selectSignal(SessionState.isAdmin);
   protected readonly fundId = this.store.selectSignal(ViewState.fundId);
+  protected readonly funds = this.store.selectSignal(ViewState.funds);
   protected readonly sleeves = this.store.selectSignal(ViewState.sleeves);
   protected readonly initials = computed(() => {
     const name = this.session()?.displayName || this.session()?.email || '';
@@ -106,6 +111,10 @@ export class Shell {
       .map((part) => part[0].toUpperCase())
       .join('');
   });
+
+  constructor() {
+    this.store.dispatch(new LoadFunds());
+  }
 
   protected signOut(): void {
     this.store.dispatch(new Logout()).subscribe(() => void this.router.navigate(['/login']));

@@ -10,6 +10,11 @@ public static class DependencyInjection
         services.AddMediatR(configuration => configuration.RegisterServicesFromAssembly(typeof(DependencyInjection).Assembly));
         services.AddScoped<Performance.PerformanceService>();
         services.AddScoped<Risk.RiskService>();
+        services.AddScoped<Connections.VenueAdapterRegistry>();
+        services.AddScoped<Connections.ManagerBookWriter>();
+        services.AddScoped<Connections.ConnectionSyncService>();
+        services.AddScoped<Connections.ConnectionService>();
+        services.AddScoped<Structure.StructureService>();
         services.AddScoped<Alerts.AlertEvaluator>();
         services.AddScoped<Alerts.AlertService>();
         services.TryAddSingleton(TimeProvider.System);

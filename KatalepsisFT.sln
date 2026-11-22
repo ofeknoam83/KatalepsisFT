@@ -31,6 +31,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KatalepsisFT.Infrastructure
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KatalepsisFT.Analytics.Tests", "tests\KatalepsisFT.Analytics.Tests\KatalepsisFT.Analytics.Tests.csproj", "{B9D257AA-487C-4152-B5E9-825CBBB03067}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KatalepsisFT.Venues.Tests", "tests\KatalepsisFT.Venues.Tests\KatalepsisFT.Venues.Tests.csproj", "{B256E202-160E-4639-BFDF-E92E53A9AD25}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -88,6 +90,10 @@ Global
 		{B9D257AA-487C-4152-B5E9-825CBBB03067}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B9D257AA-487C-4152-B5E9-825CBBB03067}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B9D257AA-487C-4152-B5E9-825CBBB03067}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B256E202-160E-4639-BFDF-E92E53A9AD25}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B256E202-160E-4639-BFDF-E92E53A9AD25}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B256E202-160E-4639-BFDF-E92E53A9AD25}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B256E202-160E-4639-BFDF-E92E53A9AD25}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{9E160C72-DD63-4451-BAD7-FE4E6B12B7DE} = {524E2EBC-D8E5-415E-9312-0BF9B2EDB87B}
@@ -102,5 +108,6 @@ Global
 		{97985C96-E612-4DBB-8EC8-E3B937C24AF2} = {396FFBE6-14D6-405A-8053-90E6F0C2EFF2}
 		{80812C87-F2C7-41B0-84A9-C06AB39F1B2A} = {396FFBE6-14D6-405A-8053-90E6F0C2EFF2}
 		{B9D257AA-487C-4152-B5E9-825CBBB03067} = {396FFBE6-14D6-405A-8053-90E6F0C2EFF2}
+		{B256E202-160E-4639-BFDF-E92E53A9AD25} = {396FFBE6-14D6-405A-8053-90E6F0C2EFF2}
 	EndGlobalSection
 EndGlobal

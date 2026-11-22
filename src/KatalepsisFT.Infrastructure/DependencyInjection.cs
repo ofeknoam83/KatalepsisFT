@@ -34,6 +34,13 @@ public static class DependencyInjection
         return (!string.IsNullOrWhiteSpace(postgresUrl), !string.IsNullOrWhiteSpace(keyValueUrl));
     }
 
+    /// <summary>Encryption of stored venue keys under the MASTER_KEY secret. Without the secret the vault reports itself unavailable.</summary>
+    public static IServiceCollection AddCredentialVault(this IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddSingleton<Application.Connections.ICredentialVault>(new Security.CredentialVault(configuration[Security.CredentialVault.MasterKeySetting]));
+        return services;
+    }
+
     /// <summary>Public market data: no credentials, read-only.</summary>
     public static IServiceCollection AddMarketData(this IServiceCollection services)
     {

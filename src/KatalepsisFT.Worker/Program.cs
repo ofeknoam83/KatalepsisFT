@@ -1,4 +1,8 @@
+using KatalepsisFT.Application.Connections;
 using KatalepsisFT.Infrastructure;
+using KatalepsisFT.Persistence;
+using KatalepsisFT.Venues;
+using KatalepsisFT.Worker;
 using KatalepsisFT.Infrastructure.Health;
 
 HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
@@ -11,15 +15,30 @@ if (group is null || !WorkerGroups.All.Contains(group, StringComparer.OrdinalIgn
     return 2;
 }
 
-(bool _, bool hasKeyValue) = builder.Services.AddStores(builder.Configuration);
+(bool hasPostgres, bool hasKeyValue) = builder.Services.AddStores(builder.Configuration);
 if (!hasKeyValue)
 {
-    Console.Error.WriteLine($"{DependencyInjection.KeyValueUrlKey} is not set; the worker has nothing to connect to.");
+    Console.Error.WriteLine($"{KatalepsisFT.Infrastructure.DependencyInjection.KeyValueUrlKey} is not set; the worker has nothing to connect to.");
     return 2;
 }
 
 builder.Services.AddSingleton(new WorkerIdentity(group.ToLowerInvariant()));
 builder.Services.AddHostedService<HeartbeatPublisher>();
+
+// The venue workers read their connections from Postgres and write the managers' books back to it.
+if (hasPostgres && group.ToLowerInvariant() is WorkerGroups.Cefi or WorkerGroups.Defi)
+{
+    // One line per SQL statement every minute would bury everything else.
+    builder.Logging.AddFilter("Microsoft.EntityFrameworkCore", LogLevel.Warning);
+    builder.Services.AddPersistence();
+    builder.Services.AddSingleton(TimeProvider.System);
+    builder.Services.AddCredentialVault(builder.Configuration);
+    builder.Services.AddVenueAdapters();
+    builder.Services.AddScoped<VenueAdapterRegistry>();
+    builder.Services.AddScoped<ManagerBookWriter>();
+    builder.Services.AddScoped<ConnectionSyncService>();
+    builder.Services.AddHostedService<ConnectionSyncWorker>();
+}
 
 await builder.Build().RunAsync();
 return 0;

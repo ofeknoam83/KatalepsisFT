@@ -18,6 +18,7 @@ namespace KatalepsisFT.Web.Tests;
 public sealed class TestDatabase : IAsyncLifetime
 {
     public const string Password = "Correct-Horse-9-Battery";
+    public const string MasterKey = "test-master-key-0123456789-abcdefghijklmnop";
 
     private readonly string _serverUrl =
         Environment.GetEnvironmentVariable("TEST_DATABASE_URL")
@@ -58,11 +59,17 @@ public sealed class TestDatabase : IAsyncLifetime
     public WebApplicationFactory<Program> App => _app ??= CreateApp();
 
     /// <summary>A separate instance of the web service on this database, like one of the two instances on Render.</summary>
-    public WebApplicationFactory<Program> CreateApp(string? databaseUrl = null)
+    public WebApplicationFactory<Program> CreateApp(string? databaseUrl = null, Action<IServiceCollection>? services = null)
     {
         WebApplicationFactory<Program> factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
-            builder.UseSetting("DATABASE_URL", databaseUrl ?? Url)
-        );
+        {
+            builder.UseSetting("DATABASE_URL", databaseUrl ?? Url);
+            builder.UseSetting("MASTER_KEY", MasterKey);
+            if (services is not null)
+            {
+                builder.ConfigureServices(services);
+            }
+        });
         _factories.Add(factory);
         return factory;
     }

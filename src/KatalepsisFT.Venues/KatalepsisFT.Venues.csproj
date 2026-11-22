@@ -3,6 +3,11 @@
   <ItemGroup>
     <ProjectReference Include="..\KatalepsisFT.Domain\KatalepsisFT.Domain.csproj" />
     <ProjectReference Include="..\KatalepsisFT.Application\KatalepsisFT.Application.csproj" />
+    <ProjectReference Include="..\KatalepsisFT.Infrastructure\KatalepsisFT.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="JK.OKX.Net" Version="4.10.2" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -276,6 +276,87 @@ namespace KatalepsisFT.Persistence.Migrations
                     b.ToTable("benchmark_constituents", (string)null);
                 });
 
+            modelBuilder.Entity("KatalepsisFT.Domain.Connections.VenueConnection", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ConsecutiveFailures")
+                        .HasColumnType("integer")
+                        .HasColumnName("consecutive_failures");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("EncryptedCredentials")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("encrypted_credentials");
+
+                    b.Property<string>("KeyHint")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasColumnName("key_hint");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("label");
+
+                    b.Property<DateTimeOffset?>("LastAttemptAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_attempt_at");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("last_error");
+
+                    b.Property<string>("LastSnapshotJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("last_snapshot_json");
+
+                    b.Property<DateTimeOffset?>("LastSuccessAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_success_at");
+
+                    b.Property<int>("ManagerAccountId")
+                        .HasColumnType("integer")
+                        .HasColumnName("manager_account_id");
+
+                    b.Property<bool>("PermissionsVerified")
+                        .HasColumnType("boolean")
+                        .HasColumnName("permissions_verified");
+
+                    b.Property<int>("State")
+                        .HasColumnType("integer")
+                        .HasColumnName("state");
+
+                    b.Property<int>("Venue")
+                        .HasColumnType("integer")
+                        .HasColumnName("venue");
+
+                    b.HasKey("Id")
+                        .HasName("pk_venue_connections");
+
+                    b.HasIndex("ManagerAccountId")
+                        .HasDatabaseName("ix_venue_connections_manager_account_id");
+
+                    b.ToTable("venue_connections", (string)null);
+                });
+
             modelBuilder.Entity("KatalepsisFT.Domain.Funds.Fund", b =>
                 {
                     b.Property<int>("Id")
@@ -1072,6 +1153,18 @@ namespace KatalepsisFT.Persistence.Migrations
                     b.Navigation("Asset");
 
                     b.Navigation("Benchmark");
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Connections.VenueConnection", b =>
+                {
+                    b.HasOne("KatalepsisFT.Domain.Funds.ManagerAccount", "ManagerAccount")
+                        .WithMany()
+                        .HasForeignKey("ManagerAccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_venue_connections_manager_accounts_manager_account_id");
+
+                    b.Navigation("ManagerAccount");
                 });
 
             modelBuilder.Entity("KatalepsisFT.Domain.Funds.Fund", b =>

@@ -1,4 +1,6 @@
-import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core';
+import { Store } from '@ngxs/store';
+import { SessionState } from '../core/session.state';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 
 @Component({
@@ -32,9 +34,13 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
       <a [routerLink]="['/funds', fundId(), 'risk']" routerLinkActive="on">Risk</a>
       <a [routerLink]="['/funds', fundId(), 'liquidity']" routerLinkActive="on">Liquidity</a>
       <a [routerLink]="['/funds', fundId(), 'alerts']" routerLinkActive="on">Alerts</a>
+      @if (isAdmin()) {
+        <a [routerLink]="['/funds', fundId(), 'connections']" routerLinkActive="on">Connections</a>
+      }
     </nav>
   `,
 })
 export class FundTabs {
   readonly fundId = input.required<number>();
+  protected readonly isAdmin = inject(Store).selectSignal(SessionState.isAdmin);
 }

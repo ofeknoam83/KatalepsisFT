@@ -3,6 +3,9 @@ using FluentValidation;
 using KatalepsisFT.Application;
 using KatalepsisFT.Application.Alerts;
 using KatalepsisFT.Application.Auth;
+using KatalepsisFT.Application.Connections;
+using KatalepsisFT.Application.Structure;
+using KatalepsisFT.Venues;
 using KatalepsisFT.Infrastructure;
 using KatalepsisFT.Infrastructure.Health;
 using KatalepsisFT.Persistence;
@@ -69,6 +72,10 @@ builder.Services.AddScoped<IValidator<ChangePasswordRequest>, ChangePasswordRequ
 builder.Services.AddScoped<IValidator<SaveAlertRuleRequest>, SaveAlertRuleRequestValidator>();
 builder.Services.AddScoped<IValidator<SnoozeRequest>, SnoozeRequestValidator>();
 builder.Services.AddScoped<IValidator<NoteRequest>, NoteRequestValidator>();
+builder.Services.AddScoped<IValidator<AddConnectionRequest>, AddConnectionRequestValidator>();
+builder.Services.AddScoped<IValidator<NewFundRequest>, NewFundRequestValidator>();
+builder.Services.AddCredentialVault(builder.Configuration);
+builder.Services.AddVenueAdapters();
 builder.Services.AddApplication();
 builder.Services.AddControllers().AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
