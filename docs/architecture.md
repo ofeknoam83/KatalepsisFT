@@ -255,9 +255,13 @@ Formerly proposed items, now answered:
 
 | A9a | Large quantities | Quantity columns are `decimal(28,8)`: 8 decimals, more whole digits. Prices stay `decimal(18,8)` |
 
-## 12. Not yet verified
+## 12. Verified since this was written
 
-- Pub/sub on Render Key Value. Valkey supports it, but the Render docs read do not say so. More now depends on it: workers receive prices through it and both web instances receive book changes through it. Checked first thing in Phase 0; if unavailable, the fallback is Valkey streams, or polling book versions.
+- Pub/sub works on Render Key Value (checked 22 Nov 2026 on the deployed services: the web service's `/health/ready` showed heartbeats from all three workers, which arrive only over a pub/sub channel).
+- The plan names in `render.yaml` (`starter`, `basic-256mb`) and `autoDeployTrigger: checksPass` were accepted by Render.
+
+## 13. Not yet verified
+
 - Whether maintained .NET client packages exist for Bitget, Gate, Kraken, Hyperliquid and dYdX in the library family Katalepsis uses.
 - Which venues let a key's permissions be read.
 - Render instance sizes needed for the worker with roughly 15–40 open streams; measured in Phase 6.

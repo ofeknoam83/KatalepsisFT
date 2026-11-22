@@ -203,7 +203,14 @@ Breadcrumb on every page (Fund › Sleeve › Manager › Asset), with global se
 
 Each phase ends deployed on Render and checked in the browser. Each is split into tasks of at most three files when work starts.
 
-- [ ] **Phase 0 — Skeleton**: new repository (created by the owner), solution, Angular app, Dockerfile, `render.yaml`, Postgres, Key Value, worker, built-in sign-in, health endpoint live on Render.
+- [ ] **Phase 0 — Skeleton**
+  - [x] Repository, nine-project solution, CI
+  - [x] Dockerfile and `render.yaml`; web (2 instances), three workers, Postgres and Key Value live on Render in Frankfurt
+  - [x] Health and readiness endpoints; worker heartbeats over Key Value pub/sub
+  - [ ] Database migrations run in the pre-deploy step
+  - [ ] Built-in sign-in (Admin, Viewer), session keys stored in Postgres so both web instances accept a session
+  - [ ] Angular app shell served by the web service
+  - [ ] Key Value internal authentication switched on
 - [ ] **Phase 1 — Model and data**: entities, migrations, price ingestion (crypto public data, free live feed for equities and futures), valuation, end-of-day snapshot job, demo fund seeded with history.
 - [ ] **Phase 2 — Holdings and drill-down**: aggregation queries; Fund, Sleeve, Manager and Asset pages; gross/net; instrument-type filter; loop-back navigation. Covers R1–R7.
 - [ ] **Phase 3 — Performance and benchmarks**: returns, contribution, benchmark comparison at all four levels; BTC, any single asset, and the CoinDesk 20 approximating basket. Covers R8.
