@@ -23,6 +23,7 @@ export interface Connection {
   positions: number;
   computedNavUsd: number | null;
   reportedEquityUsd: number | null;
+  transfersError: string | null;
 }
 
 export interface Connections {

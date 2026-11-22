@@ -49,6 +49,14 @@ public sealed class OkxAdapter(TimeProvider clock) : IVenueAdapter
         return OkxMapper.Map(clock.GetUtcNow(), balance, positions);
     }
 
+    /// <summary>Transfers between the trading account, which is what is read, and anywhere else. OKX keeps seven days of these.</summary>
+    public async Task<IReadOnlyList<VenueTransfer>> GetTransfersAsync(VenueCredentials credentials, DateTimeOffset since, CancellationToken cancellationToken)
+    {
+        using OKXRestClient client = Client(credentials);
+        OKXAccountBill[] bills = Data(await client.UnifiedApi.Account.GetBillHistoryAsync(billType: AccountBillType.Transfer, startTime: since.UtcDateTime, ct: cancellationToken), "transfers");
+        return OkxMapper.Transfers(bills);
+    }
+
     private static OKXRestClient Client(VenueCredentials credentials) =>
         new(options =>
         {
@@ -159,6 +167,10 @@ public static class OkxMapper
 
         return new VenueSnapshot(asOf, result, balance.TotalEquity);
     }
+
+    /// <summary>A transfer bill's balance change is already signed: positive into the trading account.</summary>
+    public static IReadOnlyList<VenueTransfer> Transfers(IEnumerable<OKXAccountBill> bills) =>
+        bills.Where(b => (b.BalanceChange ?? 0m) != 0m).Select(b => new VenueTransfer(Convert.ToString(b.BillId, CultureInfo.InvariantCulture)!, new DateTimeOffset(DateTime.SpecifyKind(b.Time, DateTimeKind.Utc)), b.Asset.ToUpperInvariant(), b.BalanceChange!.Value)).ToList();
 
     private static VenueException Missing(OKXPosition position, string what) => new(VenueFailure.Unavailable, $"OKX reported {position.Symbol} without {what}.");
 }

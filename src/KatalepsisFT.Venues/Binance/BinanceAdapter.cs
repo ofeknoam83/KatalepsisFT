@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using Binance.Net;
 using Binance.Net.Clients;
+using Binance.Net.Enums;
 using Binance.Net.Objects.Models.Futures;
 using Binance.Net.Objects.Models.Spot;
 using CryptoExchange.Net.Objects;
@@ -61,6 +62,18 @@ public sealed class BinanceAdapter(TimeProvider clock) : IVenueAdapter
 
         BinancePositionDetailsUsdt[] positions = Data(await client.UsdFuturesApi.Account.GetPositionInformationAsync(ct: cancellationToken), "futures positions");
         return BinanceMapper.Map(clock.GetUtcNow(), spot.Balances, prices, Data(futuresBalances, "futures balances"), positions);
+    }
+
+    /// <summary>
+    /// Deposits to and withdrawals from the account. Moves between the spot and futures wallets stay inside what is
+    /// read and are not flows.
+    /// </summary>
+    public async Task<IReadOnlyList<VenueTransfer>> GetTransfersAsync(VenueCredentials credentials, DateTimeOffset since, CancellationToken cancellationToken)
+    {
+        using BinanceRestClient client = Client(credentials);
+        BinanceDeposit[] deposits = Data(await client.SpotApi.Account.GetDepositHistoryAsync(startTime: since.UtcDateTime, ct: cancellationToken), "deposits");
+        BinanceWithdrawal[] withdrawals = Data(await client.SpotApi.Account.GetWithdrawalHistoryAsync(startTime: since.UtcDateTime, ct: cancellationToken), "withdrawals");
+        return BinanceMapper.Transfers(deposits, withdrawals);
     }
 
     private static BinanceRestClient Client(VenueCredentials credentials) =>
@@ -153,6 +166,15 @@ public static class BinanceMapper
 
         return new VenueSnapshot(asOf, result);
     }
+
+    public static IReadOnlyList<VenueTransfer> Transfers(IEnumerable<BinanceDeposit> deposits, IEnumerable<BinanceWithdrawal> withdrawals) =>
+        [
+            .. deposits.Where(d => d.Status == DepositStatus.Success).Select(d => new VenueTransfer("dep:" + d.Id, Utc(d.CompleteTime ?? d.InsertTime), d.Asset.ToUpperInvariant(), d.Quantity)),
+            // The fee leaves the account with the withdrawal.
+            .. withdrawals.Where(w => w.Status == WithdrawalStatus.Completed).Select(w => new VenueTransfer("wd:" + w.Id, Utc(w.CompleteTime ?? w.ApplyTime), w.Asset.ToUpperInvariant(), -(w.Quantity + w.TransactionFee))),
+        ];
+
+    private static DateTimeOffset Utc(DateTime time) => new(DateTime.SpecifyKind(time, DateTimeKind.Utc));
 
     private static decimal SpotPrice(string asset, IReadOnlyDictionary<string, decimal> prices)
     {

@@ -344,6 +344,15 @@ namespace KatalepsisFT.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("state");
 
+                    b.Property<DateTimeOffset?>("TransfersCheckedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("transfers_checked_at");
+
+                    b.Property<string>("TransfersError")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("transfers_error");
+
                     b.Property<int>("Venue")
                         .HasColumnType("integer")
                         .HasColumnName("venue");
@@ -675,6 +684,11 @@ namespace KatalepsisFT.Persistence.Migrations
                         .HasColumnType("date")
                         .HasColumnName("date");
 
+                    b.Property<string>("ExternalId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("external_id");
+
                     b.Property<int>("Kind")
                         .HasColumnType("integer")
                         .HasColumnName("kind");
@@ -693,6 +707,10 @@ namespace KatalepsisFT.Persistence.Migrations
 
                     b.HasIndex("ManagerAccountId", "Date")
                         .HasDatabaseName("ix_cash_flows_manager_account_id_date");
+
+                    b.HasIndex("ManagerAccountId", "ExternalId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_cash_flows_manager_account_id_external_id");
 
                     b.ToTable("cash_flows", (string)null);
                 });

@@ -50,6 +50,11 @@ public class VenueConnection
 
     /// <summary>The latest complete snapshot, normalised, as JSON. A manager's book is the sum over its connections.</summary>
     public string? LastSnapshotJson { get; set; }
+    /// <summary>When deposits and withdrawals were last read successfully.</summary>
+    public DateTimeOffset? TransfersCheckedAt { get; set; }
+
+    /// <summary>Why deposits and withdrawals could not be read; positions are unaffected.</summary>
+    public string? TransfersError { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public string? CreatedBy { get; set; }
 }

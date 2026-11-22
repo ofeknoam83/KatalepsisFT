@@ -23,4 +23,7 @@ public class CashFlow
     /// <summary>Signed: positive is money in.</summary>
     public decimal AmountUsd { get; set; }
     public string? Note { get; set; }
+
+    /// <summary>Set on flows read from a venue: venue, connection and the venue's own identifier. Unique per manager.</summary>
+    public string? ExternalId { get; set; }
 }

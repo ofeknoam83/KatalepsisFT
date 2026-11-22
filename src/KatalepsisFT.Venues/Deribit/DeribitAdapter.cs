@@ -20,6 +20,9 @@ public sealed class DeribitAdapter(HttpClient http, TimeProvider clock) : IVenue
     public const string HttpClientName = "venue:deribit";
     public const string BaseUrl = "https://www.deribit.com/api/v2/";
 
+    /// <summary>The newest entries per currency and kind; far more than arrive between two reads.</summary>
+    private const int TransferPageSize = 50;
+
     public Venue Venue => Venue.Deribit;
 
     public string DisplayName => "Deribit";
@@ -66,6 +69,29 @@ public sealed class DeribitAdapter(HttpClient http, TimeProvider clock) : IVenue
         }
 
         return DeribitMapper.Map(clock.GetUtcNow(), balances, index, positions);
+    }
+
+    /// <summary>Deposits, withdrawals and transfers between accounts, per currency. Needs the wallet:read scope.</summary>
+    public async Task<IReadOnlyList<VenueTransfer>> GetTransfersAsync(VenueCredentials credentials, DateTimeOffset since, CancellationToken cancellationToken)
+    {
+        (string token, string scope) = await SignInAsync(credentials, cancellationToken);
+        if (!scope.Contains("wallet:read", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new VenueException(VenueFailure.Rejected, "the key lacks the wallet:read scope, so deposits and withdrawals cannot be seen and will look like profit or loss.");
+        }
+
+        JsonElement summaries = await GetAsync("private/get_account_summaries", token, cancellationToken);
+        List<VenueTransfer> transfers = [];
+        foreach (string currency in summaries.GetProperty("summaries").EnumerateArray().Select(s => s.GetProperty("currency").GetString()!.ToUpperInvariant()).Distinct())
+        {
+            foreach (string method in DeribitMapper.TransferMethods)
+            {
+                JsonElement page = await GetAsync($"private/{method}?currency={currency}&count={TransferPageSize}", token, cancellationToken);
+                transfers.AddRange(DeribitMapper.Transfers(method, currency, page.GetProperty("data"), since));
+            }
+        }
+
+        return transfers;
     }
 
     private async Task<(string Token, string Scope)> SignInAsync(VenueCredentials credentials, CancellationToken cancellationToken)
@@ -223,6 +249,35 @@ public static class DeribitMapper
 
         return new VenueSnapshot(asOf, result, Math.Round(reportedEquity, 2));
     }
+
+    public static readonly string[] TransferMethods = ["get_deposits", "get_withdrawals", "get_transfers"];
+
+    /// <summary>Completed entries of one of Deribit's three lists, signed: money in is positive.</summary>
+    public static IEnumerable<VenueTransfer> Transfers(string method, string currency, JsonElement entries, DateTimeOffset since)
+    {
+        foreach (JsonElement entry in entries.EnumerateArray())
+        {
+            string state = entry.TryGetProperty("state", out JsonElement s) ? s.GetString() ?? string.Empty : string.Empty;
+            decimal amount = DeribitAdapter.Number(entry, "amount") ?? 0m;
+            (string id, string timeField, bool done, decimal signed) = method switch
+            {
+                "get_deposits" => ("dep:" + Text(entry, "transaction_id"), "received_timestamp", state == "completed", amount),
+                // The fee leaves the account with the withdrawal.
+                "get_withdrawals" => ("wd:" + Text(entry, "id"), "confirmed_timestamp", state == "completed", -(amount + (DeribitAdapter.Number(entry, "fee") ?? 0m))),
+                // Between this account and another: "payment" is money sent, "income" money received.
+                _ => ("tr:" + Text(entry, "id"), "updated_timestamp", state == "confirmed", Text(entry, "direction") == "payment" ? -amount : amount),
+            };
+            long milliseconds = entry.TryGetProperty(timeField, out JsonElement t) && t.ValueKind == JsonValueKind.Number ? t.GetInt64() : entry.TryGetProperty("created_timestamp", out JsonElement c) && c.ValueKind == JsonValueKind.Number ? c.GetInt64() : 0;
+            DateTimeOffset at = DateTimeOffset.FromUnixTimeMilliseconds(milliseconds);
+            if (done && at >= since)
+            {
+                yield return new VenueTransfer(id, at, currency, signed);
+            }
+        }
+    }
+
+    private static string Text(JsonElement entry, string property) =>
+        entry.TryGetProperty(property, out JsonElement value) ? (value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : value.GetRawText()) : string.Empty;
 
     private static decimal Required(JsonElement position, string property, string name) =>
         DeribitAdapter.Number(position, property) ?? throw new VenueException(VenueFailure.Unavailable, $"Deribit reported {name} without {property}.");

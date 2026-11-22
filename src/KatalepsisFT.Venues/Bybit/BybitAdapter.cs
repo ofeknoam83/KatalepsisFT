@@ -69,6 +69,31 @@ public sealed class BybitAdapter(TimeProvider clock) : IVenueAdapter
         return BybitMapper.Map(clock.GetUtcNow(), balance, positions);
     }
 
+    /// <summary>Transfers into and out of the unified account, from its transaction log. Bybit answers for seven days at a time.</summary>
+    public async Task<IReadOnlyList<VenueTransfer>> GetTransfersAsync(VenueCredentials credentials, DateTimeOffset since, CancellationToken cancellationToken)
+    {
+        using BybitRestClient client = Client(credentials);
+        DateTime now = clock.GetUtcNow().UtcDateTime;
+        DateTime start = since.UtcDateTime < now.AddDays(-7).AddMinutes(5) ? now.AddDays(-7).AddMinutes(5) : since.UtcDateTime;
+        List<BybitTransactionLog> entries = [];
+        foreach (TransactionLogType type in new[] { TransactionLogType.TransferIn, TransactionLogType.TransferOut })
+        {
+            string? cursor = null;
+            for (int page = 0; page < 20; page++)
+            {
+                BybitResponse<BybitTransactionLog> response = Data(await client.V5Api.Account.GetTransactionHistoryAsync(AccountType.Unified, type: type, startTime: start, endTime: now, limit: 50, cursor: cursor, ct: cancellationToken), "transfers");
+                entries.AddRange(response.List);
+                cursor = response.NextPageCursor;
+                if (string.IsNullOrEmpty(cursor) || !response.List.Any())
+                {
+                    break;
+                }
+            }
+        }
+
+        return BybitMapper.Transfers(entries);
+    }
+
     private static async Task<List<(Category Category, BybitPosition Position)>> PositionsAsync(BybitRestClient client, Category category, string? baseAsset, string? settleAsset, CancellationToken cancellationToken)
     {
         List<(Category Category, BybitPosition Position)> all = [];
@@ -205,6 +230,13 @@ public static class BybitMapper
 
         return new VenueSnapshot(asOf, result, balance.TotalEquity);
     }
+
+    /// <summary>The sign comes from the entry's type, so it does not depend on how the venue signs the amount.</summary>
+    public static IReadOnlyList<VenueTransfer> Transfers(IEnumerable<BybitTransactionLog> entries) =>
+        entries
+            .Where(e => e.Type is TransactionLogType.TransferIn or TransactionLogType.TransferOut && (e.Change ?? 0m) != 0m)
+            .Select(e => new VenueTransfer(e.Id, new DateTimeOffset(DateTime.SpecifyKind(e.TransactionTime, DateTimeKind.Utc)), e.Asset.ToUpperInvariant(), (e.Type == TransactionLogType.TransferIn ? 1m : -1m) * Math.Abs(e.Change!.Value)))
+            .ToList();
 
     private static string? Strip(string symbol, string[] suffixes)
     {

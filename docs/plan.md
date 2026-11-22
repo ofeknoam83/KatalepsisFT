@@ -259,7 +259,8 @@ Each phase ends deployed on Render and checked in the browser. Each is split int
   - [ ] Binance and Bybit have never been called for real: both block the build environment, so even the refusal of a bad key is untested until tried from Render
   - [ ] Binance: coin-margined futures, margin and options accounts, funding wallet; a holding with no USD pair fails the read. Bybit: funding account, classic accounts
   - [ ] Streams instead of polling, live book in Key Value, live push to the browser (SignalR), 5-minute samples
-  - [ ] Deposits and withdrawals read from the venue, so they are not counted as performance
+  - [x] Deposits, withdrawals and transfers read from all four venues every ten minutes and recorded as cash flows, so they are not counted as performance; a venue that will not show them is flagged on the connection
+  - [ ] Transfer readings are tested on hand-written answers only. Known limits: transfers before the connection was added are ignored; OKX and Bybit show seven days back; a Deribit key needs the wallet:read scope
   - [x] Alert rules are checked after every read of a connection
   - [ ] OKX funding account; editing a fund's structure after creation
 - [ ] **Phase 7 — Remaining copied CeFi venues**: Coinbase (Prime + Exchange), KuCoin, MEXC.

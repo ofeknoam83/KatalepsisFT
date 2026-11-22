@@ -52,7 +52,7 @@ const STATE_COLOR = { Live: 'green', Failed: 'red', Pending: 'blue', Disabled: '
         <div class="panel">
           <h3>
             Connections
-            <span class="hint">Read about once a minute. A key that can trade or withdraw is refused.</span>
+            <span class="hint">Positions are read about once a minute, deposits and withdrawals every ten. A key that can trade or withdraw is refused.</span>
             <button nz-button nzType="primary" nzSize="small" style="margin-left:12px" [disabled]="!c.canAddKeys || c.managers.length === 0" (click)="open()" data-testid="add-key">Add a key</button>
           </h3>
           <nz-table [nzData]="c.connections" nzTemplateMode [nzShowPagination]="false" nzSize="small" data-testid="connections-table">
@@ -70,6 +70,9 @@ const STATE_COLOR = { Live: 'green', Failed: 'red', Pending: 'blue', Disabled: '
                     <nz-tag [nzColor]="stateColor[row.state]">{{ row.state }}</nz-tag>
                     @if (row.lastError) {
                       <div style="color:#cf1322;font-size:12px;max-width:320px">{{ row.lastError }}</div>
+                    }
+                    @if (row.transfersError) {
+                      <div style="color:#ad6800;font-size:12px;max-width:320px">Deposits and withdrawals are not being read: {{ row.transfersError }}</div>
                     }
                   </td>
                   <td class="nowrap">{{ row.lastSuccessAt ? (row.lastSuccessAt | date: 'MM-dd-yyyy HH:mm' : 'UTC') : 'Never' }}</td>

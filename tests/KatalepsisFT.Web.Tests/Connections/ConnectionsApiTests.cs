@@ -13,6 +13,7 @@ using KatalepsisFT.Domain.Alerts;
 using KatalepsisFT.Domain.Connections;
 using KatalepsisFT.Domain.Funds;
 using KatalepsisFT.Domain.Instruments;
+using KatalepsisFT.Domain.Positions;
 using KatalepsisFT.Persistence;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
@@ -39,6 +40,12 @@ internal sealed class FakeVenue(Venue venue, bool needsPassphrase = false) : IVe
 
     public Task<VenueSnapshot> GetSnapshotAsync(VenueCredentials credentials, CancellationToken cancellationToken) =>
         Failure is null ? Task.FromResult(SnapshotsByKey[credentials.ApiKey]) : throw Failure;
+
+    public Dictionary<string, List<VenueTransfer>> TransfersByKey { get; } = [];
+    public VenueException? TransfersFailure { get; set; }
+
+    public Task<IReadOnlyList<VenueTransfer>> GetTransfersAsync(VenueCredentials credentials, DateTimeOffset since, CancellationToken cancellationToken) =>
+        TransfersFailure is null ? Task.FromResult<IReadOnlyList<VenueTransfer>>(TransfersByKey.GetValueOrDefault(credentials.ApiKey) ?? []) : throw TransfersFailure;
 }
 
 public class ConnectionsApiTests(TestDatabase database) : IClassFixture<TestDatabase>, IAsyncLifetime
@@ -284,6 +291,57 @@ public class ConnectionsApiTests(TestDatabase database) : IClassFixture<TestData
         raised.Value.Should().BeApproximately(70_000m / 101_250m, 0.000001m);
         (await Get<AlertListDto>($"/api/funds/{fundId}/alerts")).Alerts.Should().BeEmpty();
         (await Get<AlertListDto>($"/api/funds/{fundId}/alerts?state=Resolved")).Alerts.Single().Actions[^1].Kind.Should().Be(AlertActionKind.Recovered);
+    }
+
+    [Fact]
+    public async Task DepositsAndWithdrawals_BecomeCashFlows_Once()
+    {
+        (_, int managerId) = await NewFundAsync();
+        DateTimeOffset soon = DateTimeOffset.UtcNow.AddMinutes(1);
+        Deribit.TransfersByKey["key-with-transfers"] =
+        [
+            new VenueTransfer("dep:1", soon, "USDC", 5_000m),
+            // Valued at the 50,000 the account's own BTC is marked at.
+            new VenueTransfer("wd:7", soon, "btc", -0.1m),
+            new VenueTransfer("dep:old", DateTimeOffset.UtcNow.AddDays(-3), "USDC", 9_999m),
+        ];
+
+        ConnectionDto connection = (await (await AddAsync(managerId, "key-with-transfers")).Content.ReadFromJsonAsync<ConnectionDto>(Json))!;
+        using (IServiceScope scope = _app!.Services.CreateScope())
+        {
+            // Make the next read look for transfers again instead of waiting for the interval.
+            FtDbContext db = scope.ServiceProvider.GetRequiredService<FtDbContext>();
+            await db.VenueConnections.Where(c => c.Id == connection.Id).ExecuteUpdateAsync(u => u.SetProperty(c => c.TransfersCheckedAt, DateTimeOffset.UtcNow.AddHours(-1)));
+        }
+
+        await _admin.PostAsJsonAsync($"/api/connections/{connection.Id}/sync", new { });
+
+        using IServiceScope read = _app!.Services.CreateScope();
+        var flows = await read.ServiceProvider.GetRequiredService<FtDbContext>().CashFlows.Where(f => f.ManagerAccountId == managerId).OrderBy(f => f.AmountUsd).ToListAsync();
+        flows.Select(f => f.AmountUsd).Should().Equal(-5_000m, 5_000m);
+        flows.Select(f => f.Kind).Should().Equal(CashFlowKind.Redemption, CashFlowKind.Subscription);
+        flows.Should().OnlyContain(f => f.Date == DateOnly.FromDateTime(DateTime.UtcNow) || f.Date == DateOnly.FromDateTime(soon.UtcDateTime));
+        flows[0].Note.Should().Be("Deribit withdrawal of 0.1 BTC");
+        connection.TransfersError.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task TransfersThatCannotBeRead_AreReported_ButPositionsStillArrive()
+    {
+        (int fundId, int managerId) = await NewFundAsync();
+        Deribit.TransfersFailure = new VenueException(VenueFailure.Rejected, "the key lacks the wallet:read scope.");
+        try
+        {
+            ConnectionDto connection = (await (await AddAsync(managerId, "key-without-wallet-scope")).Content.ReadFromJsonAsync<ConnectionDto>(Json))!;
+
+            connection.State.Should().Be(ConnectionState.Live);
+            connection.TransfersError.Should().Be("the key lacks the wallet:read scope.");
+            (await Get<FundOverviewDto>($"/api/funds/{fundId}/overview")).Totals.NavUsd.Should().Be(101_250m);
+        }
+        finally
+        {
+            Deribit.TransfersFailure = null;
+        }
     }
 
     [Fact]

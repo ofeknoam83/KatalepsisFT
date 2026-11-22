@@ -133,7 +133,9 @@ internal sealed class CashFlowConfiguration : IEntityTypeConfiguration<CashFlow>
         flow.ToTable("cash_flows");
         flow.Property(x => x.AmountUsd).Usd();
         flow.Property(x => x.Note).HasMaxLength(500);
+        flow.Property(x => x.ExternalId).HasMaxLength(200);
         flow.HasIndex(x => new { x.ManagerAccountId, x.Date });
+        flow.HasIndex(x => new { x.ManagerAccountId, x.ExternalId }).IsUnique();
         flow.HasOne(x => x.ManagerAccount).WithMany().HasForeignKey(x => x.ManagerAccountId).OnDelete(DeleteBehavior.Cascade);
     }
 }

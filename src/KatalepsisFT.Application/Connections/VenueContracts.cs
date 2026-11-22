@@ -42,6 +42,10 @@ public sealed record VenuePosition(
 /// <param name="ReportedEquityUsd">The account value the venue itself states, to compare with the value computed from the positions.</param>
 public sealed record VenueSnapshot(DateTimeOffset AsOf, IReadOnlyList<VenuePosition> Positions, decimal? ReportedEquityUsd = null);
 
+/// <summary>Money or coins moved into (positive) or out of (negative) the account from outside it. Not a trade, not a fee.</summary>
+/// <param name="Id">The venue's own identifier, stable across reads, so a transfer is never counted twice.</param>
+public sealed record VenueTransfer(string Id, DateTimeOffset At, string Asset, decimal Quantity);
+
 public enum VenueFailure
 {
     /// <summary>The venue refused the key: wrong, expired, revoked, or not allowed from this address.</summary>
@@ -77,6 +81,12 @@ public interface IVenueAdapter
 
     /// <summary>Reads the whole account. Throws <see cref="VenueException"/> rather than return a partial book.</summary>
     Task<VenueSnapshot> GetSnapshotAsync(VenueCredentials credentials, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Completed deposits, withdrawals and transfers across the boundary of what <see cref="GetSnapshotAsync"/> reads,
+    /// since a moment. Needed so that they are not counted as performance. Throws <see cref="VenueException"/>.
+    /// </summary>
+    Task<IReadOnlyList<VenueTransfer>> GetTransfersAsync(VenueCredentials credentials, DateTimeOffset since, CancellationToken cancellationToken);
 }
 
 /// <summary>Encrypts venue keys for storage. Unavailable when the master key is not configured.</summary>

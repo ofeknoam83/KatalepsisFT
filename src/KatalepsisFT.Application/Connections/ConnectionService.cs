@@ -26,7 +26,8 @@ public sealed record ConnectionDto(
     string? LastError,
     int Positions,
     decimal? ComputedNavUsd,
-    decimal? ReportedEquityUsd
+    decimal? ReportedEquityUsd,
+    string? TransfersError
 );
 
 public sealed record ConnectionManagerDto(int Id, string Name, string Sleeve);
@@ -235,7 +236,8 @@ public sealed class ConnectionService(IFtDbContext database, VenueAdapterRegistr
             c.LastError,
             snapshot?.Positions.Count ?? 0,
             snapshot is null ? null : ManagerBookWriter.NavOf(snapshot),
-            snapshot?.ReportedEquityUsd
+            snapshot?.ReportedEquityUsd,
+            c.TransfersError
         );
     }
 }
