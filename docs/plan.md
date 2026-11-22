@@ -210,8 +210,16 @@ Each phase ends deployed on Render and checked in the browser. Each is split int
   - [x] Database migrations run in the pre-deploy step
   - [x] Built-in sign-in (Admin, Viewer), session keys stored in Postgres so both web instances accept a session
   - [x] Angular app shell served by the web service: sign-in, change password, layout, system status page
-  - [ ] Key Value internal authentication switched on
-- [ ] **Phase 1 — Model and data**: entities, migrations, price ingestion (crypto public data, free live feed for equities and futures), valuation, end-of-day snapshot job, demo fund seeded with history.
+- [ ] **Phase 1 — Model and data**
+  - [x] Fund, sleeve, manager, instrument, position, price and benchmark model with migration
+  - [x] Performance and statistics calculators copied from Katalepsis with their tests
+  - [x] Position valuer (spot, equity, cash, perp, future, option) and exposure summary
+  - [x] Daily crypto prices from Binance public market data (client copied from Katalepsis)
+  - [x] Demo fund: three sleeves, nine managers, spot and perp books on real prices, ONDO held by five managers; rolled forward on every deploy
+  - [ ] Options in the demo fund (needs the option pricer from Katalepsis)
+  - [ ] Traditional instruments in the demo fund (needs the free equity and futures price source to be chosen)
+  - [ ] Daily scheduled job, so the demo fund and prices advance without a deploy
+  - [ ] Key Value internal authentication: a switch in the Render dashboard, not available through the blueprint or API
 - [ ] **Phase 2 — Holdings and drill-down**: aggregation queries; Fund, Sleeve, Manager and Asset pages; gross/net; instrument-type filter; loop-back navigation. Covers R1–R7.
 - [ ] **Phase 3 — Performance and benchmarks**: returns, contribution, benchmark comparison at all four levels; BTC, any single asset, and the CoinDesk 20 approximating basket. Covers R8.
 - [ ] **Phase 4 — Risk, volatility, liquidity**: scenario matrix, VaR, volatility and correlation, liquidity ladder.

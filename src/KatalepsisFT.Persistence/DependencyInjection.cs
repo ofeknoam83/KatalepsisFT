@@ -14,6 +14,7 @@ public static class DependencyInjection
     public static IServiceCollection AddPersistence(this IServiceCollection services)
     {
         services.AddDbContext<FtDbContext>((provider, options) => Configure(options, provider.GetRequiredService<NpgsqlDataSource>()));
+        services.AddScoped<KatalepsisFT.Application.IFtDbContext>(provider => provider.GetRequiredService<FtDbContext>());
         return services;
     }
 

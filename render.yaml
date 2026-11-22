@@ -9,7 +9,7 @@ services:
     dockerfilePath: ./Dockerfile
     dockerCommand: /app/run.sh web
     healthCheckPath: /health
-    preDeployCommand: /app/run.sh jobs migrate
+    preDeployCommand: /app/run.sh jobs deploy
     autoDeployTrigger: checksPass
     buildFilter:
       paths: [src/**, Dockerfile, run.sh, global.json, Directory.Build.props]

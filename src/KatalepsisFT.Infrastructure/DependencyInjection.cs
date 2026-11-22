@@ -1,4 +1,6 @@
+using KatalepsisFT.Application.Prices;
 using KatalepsisFT.Infrastructure.Health;
+using KatalepsisFT.Infrastructure.MarketData;
 using KatalepsisFT.Infrastructure.KeyValue;
 using KatalepsisFT.Infrastructure.Postgres;
 using Microsoft.Extensions.Configuration;
@@ -30,5 +32,21 @@ public static class DependencyInjection
         }
 
         return (!string.IsNullOrWhiteSpace(postgresUrl), !string.IsNullOrWhiteSpace(keyValueUrl));
+    }
+
+    /// <summary>Public market data: no credentials, read-only.</summary>
+    public static IServiceCollection AddMarketData(this IServiceCollection services)
+    {
+        services.AddMemoryCache();
+        services.AddHttpClient(MarketDataHttpClients.Binance, client => client.Timeout = MarketDataHttpClients.Timeout);
+        services.AddHttpClient(MarketDataHttpClients.BinanceFutures, client => client.Timeout = MarketDataHttpClients.Timeout);
+        services.AddSingleton(TimeProvider.System);
+        services.AddSingleton<BinancePublicClient>(provider => new BinancePublicClient(
+            provider.GetRequiredService<IHttpClientFactory>(),
+            provider.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>(),
+            provider.GetRequiredService<TimeProvider>()
+        ));
+        services.AddSingleton<IDailyPriceSource, BinanceDailyPriceSource>();
+        return services;
     }
 }

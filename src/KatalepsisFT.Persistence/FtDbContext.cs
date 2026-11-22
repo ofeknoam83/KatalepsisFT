@@ -1,3 +1,4 @@
+using KatalepsisFT.Application;
 using KatalepsisFT.Domain.Benchmarks;
 using KatalepsisFT.Domain.Funds;
 using KatalepsisFT.Domain.Instruments;
@@ -12,7 +13,8 @@ namespace KatalepsisFT.Persistence;
 
 public class FtDbContext(DbContextOptions<FtDbContext> options)
     : IdentityDbContext<AppUser, IdentityRole<int>, int>(options),
-        IDataProtectionKeyContext
+        IDataProtectionKeyContext,
+        IFtDbContext
 {
     /// <summary>Keys that protect sign-in cookies. Stored here so every web instance can read a session another instance issued.</summary>
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
