@@ -1,0 +1,33 @@
+# Katalepsis FT
+
+Multi-manager portfolio monitor: a master fund split into sleeves, each run by several managers, across spot, perps, options and traditional instruments. Monitoring and reporting; no trading.
+
+- What it does and the delivery phases: [docs/plan.md](docs/plan.md)
+- How it is put together: [docs/architecture.md](docs/architecture.md)
+
+## Status
+
+Phase 0, skeleton. What exists today:
+
+- A web service with `/health` (is the process up) and `/health/ready` (can it reach Postgres and Key Value, and when did it last hear each worker).
+- A worker started as `cefi`, `defi` or `core` that publishes a heartbeat through Key Value.
+- A `check` command that verifies both stores answer.
+
+## Run locally
+
+Needs the .NET 8 SDK, Postgres and Redis or Valkey.
+
+```bash
+export DATABASE_URL=postgresql://user:password@localhost:5432/katalepsis_ft
+export KEYVALUE_URL=redis://localhost:6379
+dotnet run --project src/KatalepsisFT.Web
+dotnet run --project src/KatalepsisFT.Worker -- --group core
+```
+
+```bash
+dotnet test
+```
+
+## Deploy
+
+`render.yaml` describes the production environment on Render: two web instances, three workers, Postgres and Key Value. Every push to `main` that passes CI is deployed.

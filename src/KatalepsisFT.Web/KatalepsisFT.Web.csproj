@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\KatalepsisFT.Application\KatalepsisFT.Application.csproj" />
+    <ProjectReference Include="..\KatalepsisFT.Persistence\KatalepsisFT.Persistence.csproj" />
+    <ProjectReference Include="..\KatalepsisFT.Infrastructure\KatalepsisFT.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+
+</Project>

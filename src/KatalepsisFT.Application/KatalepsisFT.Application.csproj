@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\KatalepsisFT.Domain\KatalepsisFT.Domain.csproj" />
+    <ProjectReference Include="..\KatalepsisFT.Analytics\KatalepsisFT.Analytics.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+
+</Project>
