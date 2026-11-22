@@ -64,6 +64,8 @@ public sealed class DemoFundSeeder(IFtDbContext database)
             fund = await CreateStructureAsync(assets, cancellationToken);
         }
 
+        await EnsureBenchmarksAsync(fund, assets, cancellationToken);
+
         List<ManagerAccount> managers = await database.ManagerAccounts.Where(m => m.Sleeve.FundId == fund.Id).ToListAsync(cancellationToken);
         Dictionary<(string Asset, InstrumentType Type), Instrument> instruments = await database
             .Instruments.Include(i => i.Asset)
@@ -137,6 +139,40 @@ public sealed class DemoFundSeeder(IFtDbContext database)
         }
 
         return new DemoSeedResult(created, daysAdded, rowsAdded, null);
+    }
+
+    /// <summary>
+    /// The other benchmarks the demo offers, and the market-neutral sleeve measured against cash. Runs on every pass so
+    /// that a fund created by an earlier version gets them too.
+    /// </summary>
+    private async Task EnsureBenchmarksAsync(Fund fund, Dictionary<string, Asset> assets, CancellationToken cancellationToken)
+    {
+        HashSet<string> existing = (await database.Benchmarks.Select(b => b.Name).ToListAsync(cancellationToken)).ToHashSet();
+        if (!existing.Contains(DemoFundDefinition.EthBenchmarkName))
+        {
+            database.Benchmarks.Add(
+                new Benchmark
+                {
+                    Name = DemoFundDefinition.EthBenchmarkName,
+                    Kind = BenchmarkKind.SingleAsset,
+                    Constituents = [new BenchmarkConstituent { AssetId = assets["ETH"].Id, Weight = 1m }],
+                }
+            );
+        }
+
+        if (!existing.Contains(DemoFundDefinition.CashBenchmarkName))
+        {
+            database.Benchmarks.Add(new Benchmark { Name = DemoFundDefinition.CashBenchmarkName, Kind = BenchmarkKind.FixedRate, FixedAnnualRate = 0m });
+        }
+
+        await database.SaveChangesAsync(cancellationToken);
+
+        Sleeve? neutral = await database.Sleeves.FirstOrDefaultAsync(s => s.FundId == fund.Id && s.MandateType == MandateType.MarketNeutral && s.BenchmarkId == null, cancellationToken);
+        if (neutral is not null)
+        {
+            neutral.BenchmarkId = await database.Benchmarks.Where(b => b.Name == DemoFundDefinition.CashBenchmarkName).Select(b => b.Id).FirstAsync(cancellationToken);
+            await database.SaveChangesAsync(cancellationToken);
+        }
     }
 
     /// <summary>Fund-wide quantity of the crowded asset: a multiple of its recent average daily volume, at the latest price.</summary>

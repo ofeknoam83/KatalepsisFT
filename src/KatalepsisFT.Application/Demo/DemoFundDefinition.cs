@@ -22,6 +22,8 @@ public static class DemoFundDefinition
 {
     public const string FundName = "Liquid Master Fund";
     public const string BenchmarkName = "BTC";
+    public const string EthBenchmarkName = "ETH";
+    public const string CashBenchmarkName = "Cash (0%)";
     public const string CashAsset = "USDC";
     public const string CrowdedAsset = "ONDO";
 
