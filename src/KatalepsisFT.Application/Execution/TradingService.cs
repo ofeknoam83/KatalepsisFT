@@ -195,7 +195,7 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
     public const int MaxOrdersListed = 300;
 
     /// <summary>The venues real orders can be sent to. The others trade on paper only.</summary>
-    public static readonly IReadOnlyList<Venue> LiveVenues = [Venue.Kucoin, Venue.Binance, Venue.Bybit, Venue.Okx, Venue.Bitget];
+    public static readonly IReadOnlyList<Venue> LiveVenues = [Venue.Kucoin, Venue.Binance, Venue.Bybit, Venue.Okx, Venue.Bitget, Venue.Deribit];
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 

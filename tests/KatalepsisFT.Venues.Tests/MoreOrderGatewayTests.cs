@@ -9,6 +9,7 @@ using KatalepsisFT.Domain.Execution;
 using KatalepsisFT.Domain.Instruments;
 using KatalepsisFT.Venues.Binance;
 using KatalepsisFT.Venues.Bybit;
+using KatalepsisFT.Venues.Deribit;
 using KatalepsisFT.Venues.Okx;
 using KatalepsisFT.Venues.Rest;
 
@@ -368,5 +369,61 @@ public class MoreOrderGatewayTests
         // A code that is not known is taken to allow trading, never to be harmless.
         Check("\"stor\",\"newthing\"").Should().Be(new CredentialCheck(true, false));
         BitgetAdapter.Permissions(JsonDocument.Parse("""{"userId":"1"}""").RootElement).Should().Be(new CredentialCheck(null, null));
+    }
+
+    // ------------------------------------------------------------ Deribit
+
+    [Fact]
+    public async Task Deribit_PutsTheSideInTheCall_AndAsksByItsOwnIdOnceItIsKnown()
+    {
+        (HttpClient http, Stub handler) = Client((request, _) => request.RequestUri!.AbsolutePath switch
+        {
+            "/api/v2/private/sell" => (HttpStatusCode.OK, """{"jsonrpc":"2.0","result":{"trades":[],"order":{"order_id":"USDC-584","order_state":"open","label":"kft42xa1b2c3d4e5f6","filled_amount":0,"amount":0.25}}}"""),
+            "/api/v2/private/get_order_state" => (HttpStatusCode.OK, """{"jsonrpc":"2.0","result":{"order_id":"USDC-584","order_state":"cancelled","label":"kft42xa1b2c3d4e5f6","filled_amount":0.1,"average_price":61006.0,"amount":0.25,"cancel_reason":"user_request"}}"""),
+            "/api/v2/private/get_user_trades_by_order" => (HttpStatusCode.OK, """{"jsonrpc":"2.0","result":[{"trade_id":"1","order_id":"USDC-584","price":61006.0,"amount":0.1,"fee":2.13521,"fee_currency":"USDC","liquidity":"T"}]}"""),
+            "/api/v2/private/get_order_state_by_label" when request.RequestUri.Query.Contains("kft1x", StringComparison.Ordinal) => (HttpStatusCode.OK, """{"jsonrpc":"2.0","result":[]}"""),
+            _ => (HttpStatusCode.OK, """{"jsonrpc":"2.0","result":[{"order_id":"USDC-584","order_state":"open","label":"kft42xa1b2c3d4e5f6","filled_amount":0.05,"average_price":61000.0,"creation_timestamp":2},{"order_id":"USDC-1","order_state":"open","label":"someone-elses","filled_amount":9,"average_price":1,"creation_timestamp":3}]}"""),
+        });
+        DeribitOrderGateway gateway = new(http, new SetClock());
+        VenueInstrument btc = new("BTC_USDC-PERPETUAL", 0.0001m, 0.1m, 0.0001m, 0m);
+
+        string? id = await gateway.PlaceAsync(Key, btc, Order(InstrumentType.Perp, OrderSide.Sell, 0.25m, 61_000.5m, TimeInForce.PostOnly, reduceOnly: true), CancellationToken.None);
+        VenueOrderReport byLabel = await gateway.FindAsync(Key, btc, InstrumentType.Perp, Names, CancellationToken.None);
+        VenueOrderReport byId = await gateway.FindAsync(Key, btc, InstrumentType.Perp, Names with { VenueId = id }, CancellationToken.None);
+        VenueOrderReport none = await gateway.FindAsync(Key, btc, InstrumentType.Perp, new OrderNames("kft1x000000000000", null), CancellationToken.None);
+        await gateway.CancelAsync(Key, btc, InstrumentType.Perp, Names with { VenueId = id }, CancellationToken.None);
+        await gateway.CancelAsync(Key, btc, InstrumentType.Perp, Names, CancellationToken.None);
+
+        id.Should().Be("USDC-584");
+        handler.Sent[0].Request.RequestUri!.PathAndQuery.Should().Be("/api/v2/private/sell?instrument_name=BTC_USDC-PERPETUAL&amount=0.25&type=limit&price=61000.5&label=kft42xa1b2c3d4e5f6&time_in_force=good_til_cancelled&post_only=true&reject_post_only=true&reduce_only=true");
+        handler.Sent[0].Request.Headers.Authorization!.ToString().Should().Be("Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes("key-1:secret-1")));
+        byLabel.Should().Be(new VenueOrderReport(VenueOrderState.Open, 0.05m, 3_050m, null, "USDC-584"));
+        byId.Should().Be(new VenueOrderReport(VenueOrderState.Done, 0.1m, 6_100.6m, 2.13521m, "USDC-584"));
+        none.State.Should().Be(VenueOrderState.NotFound);
+        handler.Sent[^2].Request.RequestUri!.PathAndQuery.Should().Be("/api/v2/private/cancel?order_id=USDC-584");
+        handler.Sent[^1].Request.RequestUri!.PathAndQuery.Should().Be("/api/v2/private/cancel_by_label?label=kft42xa1b2c3d4e5f6&currency=USDC");
+    }
+
+    [Theory]
+    [InlineData("""{"jsonrpc":"2.0","error":{"code":10009,"message":"not_enough_funds"}}""", true)]
+    [InlineData("""{"jsonrpc":"2.0","error":{"code":13009,"message":"unauthorized","data":{"reason":"bad_ip"}}}""", true)]
+    [InlineData("""{"jsonrpc":"2.0","error":{"code":11054,"message":"post_only_reject"}}""", true)]
+    [InlineData("""{"jsonrpc":"2.0","error":{"code":13028,"message":"temporarily_unavailable"}}""", false)]
+    [InlineData("""{"jsonrpc":"2.0","error":{"code":10047,"message":"matching_engine_queue_full"}}""", false)]
+    public async Task Deribit_TellsAClearNoFromNoAnswerAtAll(string body, bool refused)
+    {
+        (HttpClient http, _) = Client((_, _) => (HttpStatusCode.BadRequest, body));
+        DeribitOrderGateway gateway = new(http, new SetClock());
+
+        Func<Task> place = () => gateway.PlaceAsync(Key, new VenueInstrument("BTC_USDC-PERPETUAL", 0.0001m, 0.1m, 0.0001m, 0m), Order(InstrumentType.Perp, OrderSide.Buy, 0.01m, 61_000m), CancellationToken.None);
+
+        if (refused)
+        {
+            await place.Should().ThrowAsync<VenueRefusedException>();
+        }
+        else
+        {
+            await place.Should().ThrowAsync<VenueUnclearException>();
+        }
     }
 }

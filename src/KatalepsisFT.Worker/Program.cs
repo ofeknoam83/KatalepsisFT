@@ -122,6 +122,9 @@ if (hasPostgres && group.ToLowerInvariant() is WorkerGroups.Exec)
     builder.Services.AddHttpClient(KatalepsisFT.Venues.Rest.BitgetOrderGateway.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(8));
     builder.Services.AddSingleton<KatalepsisFT.Application.Execution.IOrderGateway>(provider =>
         new KatalepsisFT.Venues.Rest.BitgetOrderGateway(provider.GetRequiredService<IHttpClientFactory>().CreateClient(KatalepsisFT.Venues.Rest.BitgetOrderGateway.HttpClientName), provider.GetRequiredService<TimeProvider>()));
+    builder.Services.AddHttpClient(KatalepsisFT.Venues.Deribit.DeribitOrderGateway.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(8));
+    builder.Services.AddSingleton<KatalepsisFT.Application.Execution.IOrderGateway>(provider =>
+        new KatalepsisFT.Venues.Deribit.DeribitOrderGateway(provider.GetRequiredService<IHttpClientFactory>().CreateClient(KatalepsisFT.Venues.Deribit.DeribitOrderGateway.HttpClientName), provider.GetRequiredService<TimeProvider>()));
     builder.Services.AddScoped<KatalepsisFT.Application.Execution.LiveExecution>();
     builder.Services.AddHostedService<OrderEngineWorker>();
     builder.Services.AddHostedService<LiveOrdersWorker>();

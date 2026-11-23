@@ -120,10 +120,26 @@ public class LiveVenueChecks
     [InlineData("Bybit")]
     [InlineData("Okx")]
     [InlineData("Bitget")]
+    [InlineData("Deribit")]
     public async Task OrderGateway_ReadsTheVenuesRules_AndIsRefusedWithAKeyThatDoesNotExist(string venue)
     {
         if (!Enabled)
         {
+            return;
+        }
+
+        if (venue == "Deribit")
+        {
+            // Perpetuals only, in USDC.
+            DeribitOrderGateway deribit = new(new HttpClient { Timeout = TimeSpan.FromSeconds(20) }, TimeProvider.System);
+            KatalepsisFT.Application.Execution.VenueInstrument btc = (await deribit.InstrumentAsync("BTC", KatalepsisFT.Domain.Instruments.InstrumentType.Perp, CancellationToken.None))!;
+            Console.WriteLine($"Deribit perp {btc}");
+            btc.Should().Be(new KatalepsisFT.Application.Execution.VenueInstrument("BTC_USDC-PERPETUAL", 0.0001m, 0.1m, 0.0001m, 0m));
+            (await deribit.InstrumentAsync("NOSUCHCOIN", KatalepsisFT.Domain.Instruments.InstrumentType.Perp, CancellationToken.None)).Should().BeNull();
+            (await deribit.InstrumentAsync("BTC", KatalepsisFT.Domain.Instruments.InstrumentType.Spot, CancellationToken.None)).Should().BeNull();
+            Func<Task> ask = () => deribit.FindAsync(Nonsense, btc, KatalepsisFT.Domain.Instruments.InstrumentType.Perp, new KatalepsisFT.Application.Execution.OrderNames("kft1x000000000000", null), CancellationToken.None);
+            Console.WriteLine($"Deribit refusal: {(await ask.Should().ThrowAsync<KatalepsisFT.Application.Execution.VenueRefusedException>()).Which.Message}");
+            await FluentActions.Invoking(() => deribit.AccountAsync(Nonsense, CancellationToken.None)).Should().ThrowAsync<KatalepsisFT.Application.Execution.VenueRefusedException>();
             return;
         }
 
