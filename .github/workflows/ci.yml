@@ -26,6 +26,11 @@ jobs:
       - run: dotnet restore KatalepsisFT.sln
       - run: dotnet build KatalepsisFT.sln -c Release --no-restore
       - run: dotnet test KatalepsisFT.sln -c Release --no-build
+      # The job Render runs before every release. Its services are checked on start, so one that is missing fails here.
+      - name: Run the pre-release job's migration step
+        run: dotnet run --project src/KatalepsisFT.Jobs -c Release --no-build -- migrate
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
       - uses: actions/setup-node@v4
         with:
           node-version: 22

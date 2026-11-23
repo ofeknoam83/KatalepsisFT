@@ -55,10 +55,13 @@ services.AddMarketData();
 services.AddScoped<PriceBackfillService>();
 services.AddScoped<DemoFundSeeder>();
 services.AddScoped<RiskService>();
+services.AddScoped<KatalepsisFT.Application.Risk.VenueExposureService>();
 services.AddScoped<AlertEvaluator>();
 services.AddScoped<KatalepsisFT.Application.Live.IntradayService>();
 services.AddSingleton(TimeProvider.System);
-await using ServiceProvider provider = services.BuildServiceProvider();
+// Every service is checked when the job starts, whatever the job: a registration that is missing must stop the
+// build's own run of this program, not the release it would otherwise break half way through.
+await using ServiceProvider provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
 await using AsyncServiceScope scope = provider.CreateAsyncScope();
 
 if (command == "demo")
