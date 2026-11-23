@@ -1,5 +1,6 @@
 using System.Globalization;
 using KatalepsisFT.Application.Connections;
+using KatalepsisFT.Application.Prices;
 using KatalepsisFT.Domain.Instruments;
 using KatalepsisFT.Domain.Positions;
 using Microsoft.EntityFrameworkCore;
@@ -62,9 +63,14 @@ public sealed record ManualChange(bool Done, IReadOnlyList<string> Errors, bool 
 }
 
 /// <summary>Hand-entered positions and cash flows of a manager: entry, upload of a whole book, and what follows for the fund's figures.</summary>
-public sealed class ManualPositionService(IFtDbContext database, ManagerBookService books, TimeProvider clock)
+public sealed class ManualPositionService(IFtDbContext database, ManagerBookService books, PriceBackfillService prices, TimeProvider clock)
 {
     public const int MaxUploadLines = 2_000;
+    /// <summary>History loaded for an asset first seen through a manual position.</summary>
+    private const int HistoryDays = 400;
+
+    /// <summary>How many unseen assets one entry or upload may trigger a price lookup for.</summary>
+    private const int MaxHistoryLookups = 40;
     public const string CsvHeader = "type,asset,quantity,price,entry_price,expiry,strike,right,delta,underlying_price,note";
     private const string DemoIsFixed = "The example fund is rebuilt from its definition and cannot be edited.";
 
@@ -256,6 +262,7 @@ public sealed class ManualPositionService(IFtDbContext database, ManagerBookServ
     /// <summary>The rules a position must meet to be valued; each message names the line when lines are numbered.</summary>
     private async Task<List<string>> ValidateAsync(IReadOnlyList<ManualPositionRequest> rows, IReadOnlyList<int>? lineNumbers, CancellationToken cancellationToken)
     {
+        await LoadMissingHistoryAsync(rows, cancellationToken);
         Dictionary<string, decimal> closes = await ManagerBookWriter.LatestClosesAsync(database, rows.Select(r => (r.Asset ?? string.Empty).Trim().ToUpperInvariant()).Where(a => a.Length > 0).Distinct().ToArray(), cancellationToken);
         List<string> errors = [];
         for (int i = 0; i < rows.Count; i++)
@@ -326,6 +333,33 @@ public sealed class ManualPositionService(IFtDbContext database, ManagerBookServ
         }
 
         return errors;
+    }
+
+    /// <summary>
+    /// A position entered without a price relies on the asset's price feed. For an asset not seen before, its history
+    /// is fetched here and now, so that entering "100 AAPL" works without typing a price or waiting for a scheduled run.
+    /// </summary>
+    private async Task LoadMissingHistoryAsync(IReadOnlyList<ManualPositionRequest> rows, CancellationToken cancellationToken)
+    {
+        DateOnly start = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime).AddDays(-HistoryDays);
+        var wanted = rows
+            .Where(r => Enum.IsDefined(r.Type) && r.Type != InstrumentType.Cash && (r.Price is null || (r.Type == InstrumentType.Option && r.UnderlyingPrice is null)))
+            .Select(r => (Symbol: (r.Asset ?? string.Empty).Trim().ToUpperInvariant(), Class: r.Type == InstrumentType.Equity ? AssetClass.Equity : AssetClass.Crypto))
+            .Where(w => w.Symbol.Length is > 0 and <= 32 && w.Symbol.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-'))
+            .Distinct()
+            .Take(MaxHistoryLookups);
+        foreach ((string symbol, AssetClass assetClass) in wanted)
+        {
+            try
+            {
+                await prices.EnsureAsync(symbol, assetClass, start, cancellationToken);
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                // The lookup is a convenience. Whatever went wrong with the feed, the position is judged on what is
+                // already known, and the person is asked for a price if that is not enough.
+            }
+        }
     }
 
     private ManualPosition Apply(ManualPosition position, ManualPositionRequest request, string user)

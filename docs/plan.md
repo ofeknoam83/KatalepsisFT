@@ -301,7 +301,9 @@ Each phase ends deployed on Render and checked in the browser. Each is split int
   - [x] A position without a price takes the asset's latest daily close; an asset with no price feed (every equity today) needs a price entered by hand
   - [x] Cash flows entered by hand, shown next to those read from venues
   - [x] Books made only of manual positions are revalued every five minutes by the core worker, so prices move and each day gets its record
-  - [ ] XLSX upload (CSV only today); a price feed for equities, so their prices do not have to be typed
+  - [x] Price feed for listed shares from Yahoo Finance's public chart data (free, no key, unofficial): daily closes and traded volume, loaded the moment a share is first entered and kept current by the core worker. A share can now be entered without a price
+  - [ ] Share prices are treated as USD, which is right for US listings only; the feed is daily closes, not live prices
+  - [ ] XLSX upload (CSV only today)
 
 Phases 0–5 run on the demo fund, so the full drill-down, performance, risk and alert experience is usable before the first live venue is connected. Phases 6–10 each add venues without changing the screens.
 

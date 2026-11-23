@@ -18,7 +18,7 @@ public class DemoSeedingTests(TestDatabase database) : IClassFixture<TestDatabas
         FtDbContext db = scope.ServiceProvider.GetRequiredService<FtDbContext>();
         FakePrices prices = new();
         FixedClock clock = new(new DateTimeOffset(2026, 1, 11, 9, 0, 0, TimeSpan.Zero));
-        PriceBackfillService backfill = new(db, prices, clock);
+        PriceBackfillService backfill = new(db, [prices], clock);
         DemoFundSeeder seeder = new(db);
 
         // Before any price exists the seeder says what it is waiting for and writes nothing.

@@ -65,6 +65,14 @@ public sealed class TestDatabase : IAsyncLifetime
         {
             builder.UseSetting("DATABASE_URL", databaseUrl ?? Url);
             builder.UseSetting("MASTER_KEY", MasterKey);
+            // No test may call a real price service; a test that needs prices registers its own source.
+            builder.ConfigureServices(all =>
+            {
+                foreach (ServiceDescriptor descriptor in all.Where(s => s.ServiceType == typeof(KatalepsisFT.Application.Prices.IDailyPriceSource)).ToList())
+                {
+                    all.Remove(descriptor);
+                }
+            });
             if (services is not null)
             {
                 builder.ConfigureServices(services);

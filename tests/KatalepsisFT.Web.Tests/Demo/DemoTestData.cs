@@ -53,7 +53,7 @@ internal static class DemoTestData
         DemoFundSeeder seeder = new(db);
         await seeder.EnsureAssetsAsync(CancellationToken.None);
         FixedClock clock = new(new DateTimeOffset(LastDay.AddDays(1).ToDateTime(new TimeOnly(9, 0)), TimeSpan.Zero));
-        await new PriceBackfillService(db, new FakePrices(), clock).RunAsync(DemoFundDefinition.HistoryStart, CancellationToken.None);
+        await new PriceBackfillService(db, [new FakePrices()], clock).RunAsync(DemoFundDefinition.HistoryStart, CancellationToken.None);
         await seeder.EnsureFundAsync(CancellationToken.None);
     }
 }

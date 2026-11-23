@@ -15,6 +15,7 @@ public static class DependencyInjection
         services.AddScoped<Live.IntradayService>();
         services.AddScoped<Connections.ManagerBookService>();
         services.AddScoped<Connections.ConnectionSyncService>();
+        services.AddScoped<Prices.PriceBackfillService>();
         services.AddScoped<Manual.ManualPositionService>();
         services.AddScoped<Connections.ConnectionService>();
         services.AddScoped<Structure.StructureService>();

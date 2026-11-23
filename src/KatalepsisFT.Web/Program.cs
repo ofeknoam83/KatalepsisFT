@@ -82,6 +82,7 @@ builder.Services.AddScoped<IValidator<SaveSleeveRequest>, SaveSleeveRequestValid
 builder.Services.AddScoped<IValidator<SaveManagerRequest>, SaveManagerRequestValidator>();
 builder.Services.AddCredentialVault(builder.Configuration);
 builder.Services.AddVenueAdapters();
+builder.Services.AddMarketData();
 builder.Services.AddApplication();
 
 // Live updates: with Key Value, workers and both web instances announce changes over it; without, this instance tells its own browsers.

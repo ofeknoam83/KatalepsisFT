@@ -264,6 +264,47 @@ public class ManualApiTests(TestDatabase database) : IClassFixture<TestDatabase>
         }
     }
 
+    /// <summary>A share price service that knows one ticker.</summary>
+    private sealed class FakeShares : KatalepsisFT.Application.Prices.IDailyPriceSource
+    {
+        public List<string> Asked { get; } = [];
+
+        public string Name => "fake-shares";
+
+        public AssetClass AssetClass => AssetClass.Equity;
+
+        public Task<IReadOnlyList<KatalepsisFT.Application.Prices.DailyBar>?> GetDailyBarsAsync(string assetSymbol, DateOnly from, DateOnly to, CancellationToken cancellationToken)
+        {
+            Asked.Add(assetSymbol);
+            IReadOnlyList<KatalepsisFT.Application.Prices.DailyBar>? bars = assetSymbol == "NVDA" ? [new(to.AddDays(-1), 880m, 1_000_000m), new(to, 900m, 2_000_000m)] : null;
+            return Task.FromResult(bars);
+        }
+    }
+
+    [Fact]
+    public async Task ShareEnteredWithoutAPrice_GetsItsPriceFromTheFeed_OnTheSpot()
+    {
+        FakeShares shares = new();
+        WebApplicationFactory<Program> app = database.CreateApp(services: s => s.AddSingleton<KatalepsisFT.Application.Prices.IDailyPriceSource>(shares));
+        string email = await database.AddUserAsync(app, Roles.Admin);
+        HttpClient admin = TestDatabase.CreateClient(app);
+        await admin.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, TestDatabase.Password, false));
+        (int fundId, int managerId) = await NewFundAsync();
+
+        HttpResponseMessage known = await admin.PostAsJsonAsync($"/api/managers/{managerId}/manual", Position(InstrumentType.Equity, "nvda", 10m), Json);
+        HttpResponseMessage unknown = await admin.PostAsJsonAsync($"/api/managers/{managerId}/manual", Position(InstrumentType.Equity, "ZZZZ", 10m), Json);
+        HttpResponseMessage again = await admin.PostAsJsonAsync($"/api/managers/{managerId}/manual", Position(InstrumentType.Equity, "NVDA", 5m), Json);
+        ManualBookDto book = await Get<ManualBookDto>($"/api/managers/{managerId}/manual");
+
+        known.StatusCode.Should().Be(HttpStatusCode.NoContent, await known.Content.ReadAsStringAsync());
+        (await ErrorsAsync(unknown)).Single().Should().Be("ZZZZ has no price feed, so the position needs a price.");
+        again.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        book.Positions.Should().HaveCount(2).And.OnlyContain(p => p.Asset == "NVDA" && p.MarkPrice == 900m && p.PriceFromFeed);
+        (await Get<FundOverviewDto>($"/api/funds/{fundId}/overview")).Totals.NavUsd.Should().Be(13_500m);
+        // Once its history is stored, the service is not asked about NVDA again.
+        shares.Asked.Count(a => a == "NVDA").Should().Be(1);
+    }
+
     [Fact]
     public async Task ExampleFund_AndViewers_CannotEnterPositions()
     {
