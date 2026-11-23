@@ -129,6 +129,7 @@ public sealed class ConnectionSyncService(IFtDbContext database, VenueAdapterReg
             Kind = usd >= 0m ? CashFlowKind.Subscription : CashFlowKind.Redemption,
             AmountUsd = Math.Round(usd, 2),
             Note = note.Length <= 200 ? note : note[..200],
+            IsBookChange = true,
         };
 
     /// <summary>

@@ -407,6 +407,72 @@ public class ConnectionsApiTests(TestDatabase database) : IClassFixture<TestData
         (await Get<StructureDto>($"/api/funds/{fundId}/structure")).Sleeves[1].Managers.Select(m => m.Name).Should().BeEquivalentTo(["Index Desk", "Alpha Desk"]);
     }
 
+    private static string History(int daysBack, params (decimal Nav, decimal? Flow)[] days) =>
+        "date,nav,flow\n" + string.Join("\n", days.Select((d, i) => $"{DateOnly.FromDateTime(DateTime.UtcNow).AddDays(i - daysBack - days.Length + 1):yyyy-MM-dd},{d.Nav},{d.Flow}"));
+
+    private async Task<double[]> ReturnsAsync(int managerId)
+    {
+        using IServiceScope scope = _app!.Services.CreateScope();
+        KatalepsisFT.Application.Performance.NavHistory history = await KatalepsisFT.Application.Performance.NavHistory.LoadAsync(scope.ServiceProvider.GetRequiredService<FtDbContext>(), [managerId], CancellationToken.None);
+        return history.Series([managerId], history.AsOf([managerId])).Returns();
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ImportedTrackRecord_MeetsLiveReadings_WithoutAJump(bool importFirst)
+    {
+        (int fundId, int managerId) = await NewFundAsync();
+        // Four days ending yesterday: 80,000 → 88,000 (+10%) → 98,000 with 10,000 paid in (flat) → 100,000.
+        string csv = History(1, (80_000m, null), (88_000m, null), (98_000m, 10_000m), (100_000m, null));
+        if (!importFirst)
+        {
+            await AddAsync(managerId, "key-then-history");
+        }
+
+        HttpResponseMessage imported = await _admin.PostAsJsonAsync($"/api/managers/{managerId}/track-record", new { csv });
+        imported.StatusCode.Should().Be(HttpStatusCode.NoContent, await imported.Content.ReadAsStringAsync());
+        if (importFirst)
+        {
+            await AddAsync(managerId, "key-after-history");
+        }
+
+        // The account read live is the same book carrying on: 101,250 after 100,000 is +1.25%, not money arriving.
+        double[] returns = await ReturnsAsync(managerId);
+        returns.Should().HaveCount(4);
+        returns[0].Should().BeApproximately(0.10, 1e-9);
+        returns[1].Should().BeApproximately(0.0, 1e-9);
+        returns[2].Should().BeApproximately(100_000.0 / 98_000.0 - 1.0, 1e-9);
+        returns[3].Should().BeApproximately(0.0125, 1e-9);
+        KatalepsisFT.Application.History.TrackRecordDto record = await Get<KatalepsisFT.Application.History.TrackRecordDto>($"/api/managers/{managerId}/track-record");
+        record.Days.Should().Be(4);
+        record.LastNavUsd.Should().Be(100_000m);
+        record.FirstLiveNavUsd.Should().Be(101_250m);
+        record.JoinReturn.Should().BeApproximately(0.0125, 1e-9);
+        (await Get<ManagerDetailDto>($"/api/managers/{managerId}")).InceptionDate.Should().Be(DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-4));
+        // What the fund holds now is still only what is read live.
+        (await Get<FundOverviewDto>($"/api/funds/{fundId}/overview")).Totals.NavUsd.Should().Be(101_250m);
+
+        (await _admin.DeleteAsync($"/api/managers/{managerId}/track-record")).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await ReturnsAsync(managerId)).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task TrackRecordWithFaults_ChangesNothing_AndNamesTheLines()
+    {
+        (_, int managerId) = await NewFundAsync();
+        await AddAsync(managerId, "key-before-bad-history");
+        string today = DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd");
+
+        HttpResponseMessage answer = await _admin.PostAsJsonAsync($"/api/managers/{managerId}/track-record", new { csv = $"date,nav,flow\n2025-01-01,100,\n01/02/2025,100,\n2025-01-03,abc,\n2025-01-04,-5,\n2025-01-01,90,\n{today},100," });
+
+        answer.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        string body = await answer.Content.ReadAsStringAsync();
+        body.Should().Contain("Line 3").And.Contain("Line 4").And.Contain("Line 5").And.Contain("appears more than once").And.Contain("first day this manager was read live");
+        (await Get<KatalepsisFT.Application.History.TrackRecordDto>($"/api/managers/{managerId}/track-record")).Days.Should().Be(0);
+        (await (await SignInAsync(Roles.Viewer)).GetAsync($"/api/managers/{managerId}/track-record")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
     [Fact]
     public async Task SameKeyTwice_IsRefused()
     {

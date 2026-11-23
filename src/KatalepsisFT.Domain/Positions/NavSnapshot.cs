@@ -10,4 +10,7 @@ public class NavSnapshot
     public ManagerAccount ManagerAccount { get; set; } = null!;
     public DateOnly Date { get; set; }
     public decimal NavUsd { get; set; }
+
+    /// <summary>True for a day taken from an imported track record rather than read from the manager's accounts or positions.</summary>
+    public bool IsImported { get; set; }
 }

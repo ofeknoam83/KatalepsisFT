@@ -1,3 +1,4 @@
+import { TrackRecordPanel } from '../manual/track-record';
 import { ManagerConnections } from '../connections/manager-connections';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
@@ -20,7 +21,7 @@ import { FundsApi } from './funds.api';
 
 @Component({
   selector: 'app-manager-page',
-  imports: [DatePipe, DecimalPipe, RouterLink, NzAlertModule, NzTableModule, NzTabsModule, NzTagModule, ExposureBar, PageHead, PerformancePanel, RiskPanel, LiquidityPanel, ManualBookPanel, ManagerConnections, ...FORMAT_PIPES],
+  imports: [DatePipe, DecimalPipe, RouterLink, NzAlertModule, NzTableModule, NzTabsModule, NzTagModule, ExposureBar, PageHead, PerformancePanel, RiskPanel, LiquidityPanel, ManualBookPanel, ManagerConnections, TrackRecordPanel, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (page.failed()) {
@@ -138,6 +139,13 @@ import { FundsApi } from './funds.api';
             </ng-template>
           </nz-tab>
         }
+        @if (isAdmin() && !d.fund.isDemo) {
+          <nz-tab nzTitle="Track record">
+            <ng-template nz-tab>
+              <kft-track-record [managerId]="d.manager.id" />
+            </ng-template>
+          </nz-tab>
+        }
       </nz-tabs>
     }
   `,
@@ -146,7 +154,7 @@ export class ManagerPage {
   private readonly api = inject(FundsApi);
   protected readonly isAdmin = inject(Store).selectSignal(SessionState.isAdmin);
   /** A manager that was just added opens on the tab where it is given what it needs: its keys and wallets, or its hand-entered positions. */
-  protected readonly startTab = { keys: 4, manual: 5 }[inject(ActivatedRoute).snapshot.queryParamMap.get('tab') ?? ''] ?? 0;
+  protected readonly startTab = { keys: 4, manual: 5, history: 6 }[inject(ActivatedRoute).snapshot.queryParamMap.get('tab') ?? ''] ?? 0;
 
   protected readonly page = pageData((params, filter) => this.api.manager(Number(params.get('managerId')), filter));
   protected readonly unrealised = computed(() => (this.page.data()?.positions ?? []).reduce((sum, p) => sum + p.unrealizedPnlUsd, 0));

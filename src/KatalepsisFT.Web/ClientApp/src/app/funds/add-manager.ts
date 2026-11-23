@@ -120,7 +120,7 @@ interface ManagerForm {
                 <p class="note">The manager is added empty. A key, a wallet or positions can be given to it at any time; it counts in the fund from its first reading.</p>
               }
             }
-            <p class="note">More keys and wallets can be added to the same manager afterwards, on its page. It starts today. Whatever it holds at its first reading enters the fund as money arriving, not as a gain.</p>
+            <p class="note">More keys and wallets can be added to the same manager afterwards, on its page, and a track record from before today can be imported there. It starts today. Whatever it holds at its first reading enters the fund as money arriving, not as a gain.</p>
           </form>
         </ng-container>
       </nz-modal>

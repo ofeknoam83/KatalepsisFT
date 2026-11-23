@@ -17,6 +17,7 @@ public static class DependencyInjection
         services.AddScoped<Connections.ConnectionSyncService>();
         services.AddScoped<Prices.PriceBackfillService>();
         services.AddScoped<Manual.ManualPositionService>();
+        services.AddScoped<History.TrackRecordService>();
         services.AddScoped<Connections.ConnectionService>();
         services.AddScoped<Structure.StructureService>();
         services.AddScoped<Alerts.AlertEvaluator>();

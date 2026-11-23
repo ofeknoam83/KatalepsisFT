@@ -693,6 +693,10 @@ namespace KatalepsisFT.Persistence.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("external_id");
 
+                    b.Property<bool>("IsBookChange")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_book_change");
+
                     b.Property<int>("Kind")
                         .HasColumnType("integer")
                         .HasColumnName("kind");
@@ -859,6 +863,10 @@ namespace KatalepsisFT.Persistence.Migrations
                     b.Property<DateOnly>("Date")
                         .HasColumnType("date")
                         .HasColumnName("date");
+
+                    b.Property<bool>("IsImported")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_imported");
 
                     b.Property<int>("ManagerAccountId")
                         .HasColumnType("integer")

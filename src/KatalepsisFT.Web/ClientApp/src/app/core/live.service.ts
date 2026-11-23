@@ -40,6 +40,12 @@ export class LiveService {
     }, LiveService.fallbackMs);
   }
 
+  /** Makes every page read its figures again now, after something on this page changed them. */
+  refresh(): void {
+    this.tick.update((t) => t + 1);
+    this.slowTick.update((t) => t + 1);
+  }
+
   private changed(): void {
     this.tick.update((t) => t + 1);
     if (this.slowTimer !== null) {

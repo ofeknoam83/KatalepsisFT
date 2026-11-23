@@ -26,4 +26,10 @@ public class CashFlow
 
     /// <summary>Set on flows read from a venue: venue, connection and the venue's own identifier. Unique per manager.</summary>
     public string? ExternalId { get; set; }
+
+    /// <summary>
+    /// True when the system recorded the flow because an account entered or left the manager's book (a key added,
+    /// switched off, a manager retired), as opposed to money a venue or a person reported.
+    /// </summary>
+    public bool IsBookChange { get; set; }
 }

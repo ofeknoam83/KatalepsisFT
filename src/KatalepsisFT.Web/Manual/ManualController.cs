@@ -1,4 +1,5 @@
 using KatalepsisFT.Application.Auth;
+using KatalepsisFT.Application.History;
 using KatalepsisFT.Application.Manual;
 using KatalepsisFT.Domain.Access;
 using Microsoft.AspNetCore.Authorization;
@@ -15,7 +16,7 @@ public sealed record ManualErrorsResponse(string Message, IReadOnlyList<string> 
 [ApiController]
 [Route("api")]
 [Authorize(Roles = Roles.Admin)]
-public sealed class ManualController(ManualPositionService manual) : ControllerBase
+public sealed class ManualController(ManualPositionService manual, TrackRecordService trackRecords) : ControllerBase
 {
     /// <summary>A file larger than this is not a book of positions.</summary>
     private const int MaxUploadCharacters = 1_000_000;
@@ -53,6 +54,31 @@ public sealed class ManualController(ManualPositionService manual) : ControllerB
 
     [HttpDelete("cash-flows/{id:long}")]
     public async Task<IActionResult> DeleteCashFlowAsync(long id, CancellationToken cancellationToken) => Result(await manual.DeleteCashFlowAsync(id, cancellationToken));
+
+    [HttpGet("managers/{managerId:int}/track-record")]
+    public async Task<ActionResult<TrackRecordDto>> TrackRecordAsync(int managerId, CancellationToken cancellationToken)
+    {
+        TrackRecordDto? result = await trackRecords.GetAsync(managerId, cancellationToken);
+        return result is null ? NotFound() : result;
+    }
+
+    /// <summary>Replaces the manager's imported history with the file's days, or changes nothing and says which lines are wrong.</summary>
+    [HttpPost("managers/{managerId:int}/track-record")]
+    public async Task<IActionResult> ImportTrackRecordAsync(int managerId, UploadRequest request, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Csv) || request.Csv.Length > MaxUploadCharacters)
+        {
+            return BadRequest(new ErrorResponse("Choose a CSV file of daily NAV, up to 1 MB."));
+        }
+
+        return Result(await trackRecords.ImportAsync(managerId, request.Csv, cancellationToken));
+    }
+
+    [HttpDelete("managers/{managerId:int}/track-record")]
+    public async Task<IActionResult> RemoveTrackRecordAsync(int managerId, CancellationToken cancellationToken) => Result(await trackRecords.RemoveAsync(managerId, cancellationToken));
+
+    private IActionResult Result(TrackRecordChange change) =>
+        change.Done ? NoContent() : change.NotFound ? NotFound() : UnprocessableEntity(new ManualErrorsResponse(change.Errors[0], change.Errors));
 
     private string UserName => User.Identity?.Name ?? "Unknown";
 
