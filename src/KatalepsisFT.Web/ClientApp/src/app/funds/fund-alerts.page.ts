@@ -1,3 +1,4 @@
+import { BreachRegisterPanel } from '../alerts/breach-register';
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { NzAlertModule } from 'ng-zorro-antd/alert';
 import { NzTabsModule } from 'ng-zorro-antd/tabs';
@@ -10,7 +11,7 @@ import { FundsApi } from './funds.api';
 
 @Component({
   selector: 'app-fund-alerts-page',
-  imports: [NzAlertModule, NzTabsModule, PageHead, FundTabs, AlertsInbox, AlertRules],
+  imports: [NzAlertModule, NzTabsModule, PageHead, FundTabs, AlertsInbox, AlertRules, BreachRegisterPanel],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (page.failed()) {
@@ -29,6 +30,11 @@ import { FundsApi } from './funds.api';
         <nz-tab nzTitle="Rules">
           @if (tab() === 1) {
             <app-alert-rules [fundId]="d.fund.id" />
+          }
+        </nz-tab>
+        <nz-tab nzTitle="Breach register">
+          @if (tab() === 2) {
+            <kft-breach-register [fundId]="d.fund.id" />
           }
         </nz-tab>
       </nz-tabs>

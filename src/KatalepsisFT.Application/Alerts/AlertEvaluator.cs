@@ -79,6 +79,7 @@ public sealed class AlertEvaluator(IFtDbContext database, RiskService risk, Venu
                 if (latest is { IsActive: true })
                 {
                     latest.Value = figure.Value.Value;
+                    latest.PeakValue = rule.Operator == AlertOperator.Above ? Math.Max(latest.PeakValue, figure.Value.Value) : Math.Min(latest.PeakValue, figure.Value.Value);
                     latest.Subject = figure.Value.Subject;
                     latest.Threshold = rule.Threshold;
                     latest.LastSeenAt = now;
@@ -91,6 +92,7 @@ public sealed class AlertEvaluator(IFtDbContext database, RiskService risk, Venu
                         Status = AlertStatus.Open,
                         Subject = figure.Value.Subject,
                         Value = figure.Value.Value,
+                        PeakValue = figure.Value.Value,
                         Threshold = rule.Threshold,
                         DataDate = metrics!.AsOf,
                         RaisedAt = now,

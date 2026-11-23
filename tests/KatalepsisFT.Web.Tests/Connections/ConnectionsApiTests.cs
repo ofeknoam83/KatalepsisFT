@@ -494,6 +494,62 @@ public class ConnectionsApiTests(TestDatabase database) : IClassFixture<TestData
     }
 
     [Fact]
+    public async Task ChangesAreWrittenToTheAuditTrail_WithoutSecrets_AndOnlyWhenTheySucceed()
+    {
+        (int fundId, int managerId) = await NewFundAsync();
+        ConnectionDto connection = (await (await AddAsync(managerId, "key-in-the-trail")).Content.ReadFromJsonAsync<ConnectionDto>(Json))!;
+        (await AddAsync(managerId, "key-in-the-trail")).StatusCode.Should().Be(HttpStatusCode.Conflict);
+        await _admin.PostAsync($"/api/managers/{managerId}/retire", null);
+        await _admin.DeleteAsync($"/api/connections/{connection.Id}");
+
+        KatalepsisFT.Application.Audit.AuditListDto trail = await Get<KatalepsisFT.Application.Audit.AuditListDto>($"/api/audit?fundId={fundId}");
+        string csv = await _admin.GetStringAsync($"/api/audit?fundId={fundId}&format=csv");
+
+        // Newest first; the refused second key left no entry.
+        trail.Entries.Select(e => e.Action).Should().Equal("Key or wallet removed", "Manager retired", "Key or wallet added", "Fund created");
+        trail.Entries.Should().OnlyContain(e => e.UserName.Length > 0 && e.FundId == fundId);
+        trail.Entries[0].Subject.Should().Be("Directional / Alpha Desk / Deribit \"Main account\" …rail");
+        trail.Entries[1].Subject.Should().Be("Directional / Alpha Desk");
+        trail.Entries[2].Detail.Should().Contain("venue: Deribit").And.Contain("apiKey: …rail").And.NotContain(Secret).And.NotContain("key-in-the-trail");
+        csv.Should().StartWith("when_utc,user,action,fund,subject,detail").And.Contain("Manager retired").And.NotContain(Secret);
+        (await (await SignInAsync(Roles.Viewer)).GetAsync($"/api/audit?fundId={fundId}")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        // Signing in is on the trail of the whole system, not of a fund.
+        (await Get<KatalepsisFT.Application.Audit.AuditListDto>("/api/audit")).Entries.Should().Contain(e => e.Action == "Signed in" && e.FundId == null);
+    }
+
+    [Fact]
+    public async Task BreachRegister_KeepsEachBreach_WithItsPeak_HowLongItLasted_AndHowItEnded()
+    {
+        (int fundId, int managerId) = await NewFundAsync();
+        SaveAlertRuleRequest rule = new(AlertScopeKind.Fund, fundId, AlertMetric.NetExposureOverNav, AlertOperator.Above, 0.5m, AlertSeverity.Critical, true);
+        await _admin.PostAsJsonAsync($"/api/funds/{fundId}/alert-rules", rule, Json);
+        // Net exposure 69% of NAV, then 80%, then back to none.
+        ConnectionDto connection = (await (await AddAsync(managerId, "key-that-breaches")).Content.ReadFromJsonAsync<ConnectionDto>(Json))!;
+        Deribit.SnapshotsByKey["key-that-breaches"] = new VenueSnapshot(DateTimeOffset.UtcNow, [new VenuePosition(InstrumentType.Cash, "USDC", 20_000m, 1m), new VenuePosition(InstrumentType.Spot, "BTC", 1.6m, 50_000m)]);
+        await _admin.PostAsJsonAsync($"/api/connections/{connection.Id}/sync", new { });
+        int alertId = (await Get<AlertListDto>($"/api/funds/{fundId}/alerts")).Alerts.Single().Id;
+        await _admin.PostAsync($"/api/alerts/{alertId}/acknowledge", null);
+        BreachRegisterDto open = await Get<BreachRegisterDto>($"/api/funds/{fundId}/breaches");
+        Deribit.SnapshotsByKey["key-that-breaches"] = new VenueSnapshot(DateTimeOffset.UtcNow, [new VenuePosition(InstrumentType.Cash, "USDC", 1_000m, 1m)]);
+        await _admin.PostAsJsonAsync($"/api/connections/{connection.Id}/sync", new { });
+
+        BreachRegisterDto closed = await Get<BreachRegisterDto>($"/api/funds/{fundId}/breaches");
+        string csv = await _admin.GetStringAsync($"/api/funds/{fundId}/breaches?format=csv");
+
+        open.StillOpen.Should().Be(1);
+        open.Rows.Single().Outcome.Should().Be("Still breaching, acknowledged");
+        BreachDto breach = closed.Rows.Single();
+        breach.Rule.Should().Be("Net exposure ÷ NAV above 50.0%");
+        breach.PeakValue.Should().Be(0.8m);
+        breach.AcknowledgedBy.Should().NotBeNullOrEmpty();
+        breach.EndedAt.Should().NotBeNull();
+        breach.Outcome.Should().Be("Back within the limit");
+        closed.StillOpen.Should().Be(0);
+        csv.Should().StartWith("id,severity,mandate_limit").And.Contain("80.0%").And.Contain("Back within the limit");
+        (await Get<BreachRegisterDto>($"/api/funds/{fundId}/breaches?from=2020-01-01&to=2020-12-31")).Rows.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task SameKeyTwice_IsRefused()
     {
         (_, int managerId) = await NewFundAsync();

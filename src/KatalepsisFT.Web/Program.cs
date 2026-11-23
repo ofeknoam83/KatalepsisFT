@@ -99,7 +99,8 @@ else
     builder.Services.AddSingleton<IFundChangeNotifier, DirectFundChangeNotifier>();
 }
 
-builder.Services.AddControllers().AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+builder.Services.AddScoped<KatalepsisFT.Web.Audit.AuditFilter>();
+builder.Services.AddControllers(options => options.Filters.AddService<KatalepsisFT.Web.Audit.AuditFilter>()).AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
 // Render terminates HTTPS in front of the service; trust its forwarded scheme so the app knows the request was secure.
 builder.Services.Configure<ForwardedHeadersOptions>(options =>

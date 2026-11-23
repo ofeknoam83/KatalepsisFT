@@ -1,3 +1,4 @@
+using KatalepsisFT.Web.Audit;
 using System.Security.Claims;
 using FluentValidation;
 using FluentValidation.Results;
@@ -54,10 +55,12 @@ public sealed class AlertsController(
             .ToList();
 
     [Authorize(Roles = Roles.Admin)]
+    [Audit("Alert acknowledged", Alert = "id")]
     [HttpPost("alerts/{id:int}/acknowledge")]
     public async Task<IActionResult> AcknowledgeAsync(int id, CancellationToken cancellationToken) => Result(await alerts.AcknowledgeAsync(id, await ActorAsync(), cancellationToken));
 
     [Authorize(Roles = Roles.Admin)]
+    [Audit("Alert assigned", Alert = "id")]
     [HttpPost("alerts/{id:int}/assign")]
     public async Task<IActionResult> AssignAsync(int id, AssignRequest request, CancellationToken cancellationToken)
     {
@@ -77,6 +80,7 @@ public sealed class AlertsController(
     }
 
     [Authorize(Roles = Roles.Admin)]
+    [Audit("Alert commented on", Alert = "id")]
     [HttpPost("alerts/{id:int}/comment")]
     public async Task<IActionResult> CommentAsync(int id, NoteRequest request, CancellationToken cancellationToken)
     {
@@ -94,14 +98,69 @@ public sealed class AlertsController(
     }
 
     [Authorize(Roles = Roles.Admin)]
+    [Audit("Alert snoozed", Alert = "id")]
     [HttpPost("alerts/{id:int}/snooze")]
     public async Task<IActionResult> SnoozeAsync(int id, SnoozeRequest request, CancellationToken cancellationToken) =>
         await InvalidAsync(snoozeValidator, request, cancellationToken) ?? Result(await alerts.SnoozeAsync(id, await ActorAsync(), request.Days, request.Note, cancellationToken));
 
     [Authorize(Roles = Roles.Admin)]
+    [Audit("Alert resolved by hand", Alert = "id")]
     [HttpPost("alerts/{id:int}/resolve")]
     public async Task<IActionResult> ResolveAsync(int id, NoteRequest request, CancellationToken cancellationToken) =>
         await InvalidAsync(noteValidator, request, cancellationToken) ?? Result(await alerts.ResolveAsync(id, await ActorAsync(), request.Note, cancellationToken));
+
+    /// <summary>The breach register: every breach active at any time between the two days. "format=csv" gives a file.</summary>
+    [HttpGet("funds/{fundId:int}/breaches")]
+    public async Task<IActionResult> BreachesAsync(int fundId, DateOnly? from = null, DateOnly? to = null, string? format = null, CancellationToken cancellationToken = default)
+    {
+        DateOnly last = to ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        DateOnly first = from ?? last.AddDays(-90);
+        if (first > last || last.DayNumber - first.DayNumber > 3660)
+        {
+            return BadRequest(new KatalepsisFT.Application.Auth.ErrorResponse("Choose a first day on or before the last, at most ten years apart."));
+        }
+
+        BreachRegisterDto? register = await alerts.BreachRegisterAsync(fundId, first, last, cancellationToken);
+        if (register is null)
+        {
+            return NotFound();
+        }
+
+        if (!string.Equals(format, "csv", StringComparison.OrdinalIgnoreCase))
+        {
+            return Ok(register);
+        }
+
+        global::System.Globalization.CultureInfo plain = global::System.Globalization.CultureInfo.InvariantCulture;
+        global::System.Text.StringBuilder csv = new("id,severity,mandate_limit,scope,scope_name,rule,subject,raised_utc,ended_utc,hours,limit,peak,last,status,acknowledged_by,acknowledged_utc,outcome,note\n");
+        foreach (BreachDto b in register.Rows)
+        {
+            csv.AppendJoin(
+                    ',',
+                    b.Id.ToString(plain),
+                    b.Severity,
+                    b.FromMandate ? "yes" : "no",
+                    b.ScopeKind,
+                    Csv.Cell(b.ScopeName),
+                    Csv.Cell(b.Rule),
+                    Csv.Cell(b.Subject),
+                    b.RaisedAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss", plain),
+                    b.EndedAt?.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss", plain),
+                    b.DurationHours.ToString("0.##", plain),
+                    AlertText.Figure(b.Metric, b.Threshold),
+                    AlertText.Figure(b.Metric, b.PeakValue),
+                    AlertText.Figure(b.Metric, b.LastValue),
+                    b.Status,
+                    Csv.Cell(b.AcknowledgedBy),
+                    b.AcknowledgedAt?.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss", plain),
+                    Csv.Cell(b.Outcome),
+                    Csv.Cell(b.Note)
+                )
+                .Append('\n');
+        }
+
+        return File(global::System.Text.Encoding.UTF8.GetBytes(csv.ToString()), "text/csv", $"breach-register-{first:yyyy-MM-dd}-to-{last:yyyy-MM-dd}.csv");
+    }
 
     [HttpGet("funds/{fundId:int}/alert-rules")]
     public async Task<ActionResult<AlertRulesDto>> RulesAsync(int fundId, CancellationToken cancellationToken)
@@ -111,16 +170,19 @@ public sealed class AlertsController(
     }
 
     [Authorize(Roles = Roles.Admin)]
+    [Audit("Alert rule added", Fund = "fundId")]
     [HttpPost("funds/{fundId:int}/alert-rules")]
     public async Task<IActionResult> CreateRuleAsync(int fundId, SaveAlertRuleRequest request, CancellationToken cancellationToken) =>
         await InvalidAsync(ruleValidator, request, cancellationToken) ?? Result(await alerts.CreateRuleAsync(fundId, request, cancellationToken));
 
     [Authorize(Roles = Roles.Admin)]
+    [Audit("Alert rule changed", Rule = "id")]
     [HttpPut("alert-rules/{id:int}")]
     public async Task<IActionResult> UpdateRuleAsync(int id, SaveAlertRuleRequest request, CancellationToken cancellationToken) =>
         await InvalidAsync(ruleValidator, request, cancellationToken) ?? Result(await alerts.UpdateRuleAsync(id, request, cancellationToken));
 
     [Authorize(Roles = Roles.Admin)]
+    [Audit("Alert rule removed", Rule = "id")]
     [HttpDelete("alert-rules/{id:int}")]
     public async Task<IActionResult> DeleteRuleAsync(int id, CancellationToken cancellationToken)
     {

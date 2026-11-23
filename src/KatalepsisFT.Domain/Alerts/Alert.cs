@@ -34,6 +34,9 @@ public class Alert
     /// <summary>The figure at the latest evaluation that saw the condition.</summary>
     public decimal Value { get; set; }
 
+    /// <summary>The figure at its furthest past the limit while this alert was active: the size of the breach.</summary>
+    public decimal PeakValue { get; set; }
+
     /// <summary>The rule's threshold when the alert was last evaluated.</summary>
     public decimal Threshold { get; set; }
     public DateOnly DataDate { get; set; }

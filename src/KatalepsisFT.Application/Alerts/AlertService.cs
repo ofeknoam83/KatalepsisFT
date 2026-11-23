@@ -299,6 +299,65 @@ public sealed class AlertService(IFtDbContext database, AlertEvaluator evaluator
     private async Task<AlertRuleDto> RuleDtoAsync(AlertRule rule, Dictionary<(AlertScopeKind, int), ScopeName> scopes, CancellationToken cancellationToken) =>
         RuleDto(rule, scopes, await database.Alerts.AnyAsync(a => a.RuleId == rule.Id && a.Status != AlertStatus.Resolved, cancellationToken));
 
+    /// <summary>Every breach that was active at any time between the two days, newest first. Null when the fund does not exist.</summary>
+    public async Task<BreachRegisterDto?> BreachRegisterAsync(int fundId, DateOnly from, DateOnly to, CancellationToken cancellationToken)
+    {
+        Dictionary<(AlertScopeKind, int), ScopeName>? scopes = await ScopesAsync(fundId, cancellationToken);
+        if (scopes is null)
+        {
+            return null;
+        }
+
+        DateTimeOffset start = new(from.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+        DateTimeOffset end = new(to.AddDays(1).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+        DateTimeOffset now = clock.GetUtcNow();
+        List<Alert> alerts = await database
+            .Alerts.AsNoTracking()
+            .Include(a => a.Rule)
+            .Include(a => a.Actions)
+            .Where(a => a.Rule.FundId == fundId && a.RaisedAt < end && (a.ResolvedAt == null || a.ResolvedAt >= start))
+            .ToListAsync(cancellationToken);
+        List<BreachDto> rows = alerts
+            .OrderByDescending(a => a.RaisedAt)
+            .ThenByDescending(a => a.Id)
+            .Select(a =>
+            {
+                AlertRule rule = a.Rule;
+                scopes.TryGetValue((rule.ScopeKind, rule.ScopeId), out ScopeName? scope);
+                List<AlertAction> actions = a.Actions.OrderBy(x => x.At).ThenBy(x => x.Id).ToList();
+                AlertAction? acknowledged = actions.FirstOrDefault(x => x.Kind == AlertActionKind.Acknowledged);
+                AlertAction? ending = a.IsActive ? null : actions.LastOrDefault(x => x.Kind is AlertActionKind.Resolved or AlertActionKind.Recovered);
+                string outcome = a.IsActive
+                    ? (a.Status == AlertStatus.Acknowledged ? "Still breaching, acknowledged" : "Still breaching")
+                    : ending?.Kind == AlertActionKind.Resolved
+                        ? $"Resolved by {ending.UserName ?? "a user"}"
+                        : "Back within the limit";
+                return new BreachDto(
+                    a.Id,
+                    rule.Severity,
+                    rule.ScopeKind,
+                    scope?.Name ?? "Removed",
+                    $"{AlertText.Label(rule.Metric, null)} {AlertText.Condition(rule.Metric, rule.Operator, a.Threshold)}",
+                    a.Subject,
+                    rule.MandateLimitId is not null,
+                    rule.Metric,
+                    a.RaisedAt,
+                    a.ResolvedAt,
+                    Math.Round(((a.ResolvedAt ?? now) - a.RaisedAt).TotalHours, 2),
+                    a.Threshold,
+                    a.PeakValue,
+                    a.Value,
+                    a.Status,
+                    acknowledged?.UserName,
+                    acknowledged?.At,
+                    outcome,
+                    ending?.Note ?? actions.LastOrDefault(x => x.Kind == AlertActionKind.Commented)?.Note
+                );
+            })
+            .ToList();
+        return new BreachRegisterDto(from, to, rows.Count, rows.Count(r => r.FromMandate), rows.Count(r => r.EndedAt is null), rows);
+    }
+
     private static AlertRuleDto RuleDto(AlertRule rule, Dictionary<(AlertScopeKind, int), ScopeName> scopes, bool hasActive) =>
         new(
             rule.Id,

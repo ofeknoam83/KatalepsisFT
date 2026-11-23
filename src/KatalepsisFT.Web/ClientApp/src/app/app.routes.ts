@@ -25,6 +25,7 @@ export const routes: Routes = [
       { path: 'funds/:fundId/assets/:symbol', loadComponent: () => import('./funds/asset.page').then((m) => m.AssetPage) },
       { path: 'sleeves/:sleeveId', loadComponent: () => import('./funds/sleeve.page').then((m) => m.SleevePage) },
       { path: 'managers/:managerId', loadComponent: () => import('./funds/manager.page').then((m) => m.ManagerPage) },
+      { path: 'admin/audit', canActivate: [adminOnly], loadComponent: () => import('./pages/audit.page').then((m) => m.AuditPage) },
       { path: 'admin/funds/new', canActivate: [adminOnly], loadComponent: () => import('./pages/new-fund.page').then((m) => m.NewFundPage) },
       {
         path: 'admin/system',

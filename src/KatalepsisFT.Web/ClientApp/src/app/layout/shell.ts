@@ -130,6 +130,7 @@ import { LoadFunds, ViewState } from '../funds/view.state';
             <div class="group">Admin</div>
             <ul nz-menu nzMode="inline" style="border-inline-end:0">
               <li nz-menu-item routerLink="/admin/funds/new" routerLinkActive="ant-menu-item-selected">New fund</li>
+              <li nz-menu-item routerLink="/admin/audit" routerLinkActive="ant-menu-item-selected">Audit trail</li>
               <li nz-menu-item routerLink="/admin/system" routerLinkActive="ant-menu-item-selected">System status</li>
             </ul>
           }

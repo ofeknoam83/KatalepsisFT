@@ -23,6 +23,7 @@ public static class DependencyInjection
         services.AddScoped<Structure.StructureService>();
         services.AddScoped<Alerts.AlertEvaluator>();
         services.AddScoped<Alerts.AlertService>();
+        services.AddScoped<Audit.AuditLog>();
         services.TryAddSingleton(TimeProvider.System);
         return services;
     }

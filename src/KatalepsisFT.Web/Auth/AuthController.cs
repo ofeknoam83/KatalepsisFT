@@ -16,7 +16,8 @@ public sealed class AuthController(
     SignInManager<AppUser> signIn,
     UserManager<AppUser> users,
     IValidator<LoginRequest> loginValidator,
-    IValidator<ChangePasswordRequest> changePasswordValidator
+    IValidator<ChangePasswordRequest> changePasswordValidator,
+    KatalepsisFT.Application.Audit.AuditLog audit
 ) : ControllerBase
 {
     private const string WrongCredentials = "Email or password is incorrect.";
@@ -35,26 +36,32 @@ public sealed class AuthController(
         AppUser? user = await users.FindByEmailAsync(request.Email.Trim());
         if (user is null)
         {
+            await NoteAsync(request.Email.Trim(), "Sign-in refused", "unknown email", cancellationToken);
             return Unauthorized(new ErrorResponse(WrongCredentials));
         }
 
         SignInResult result = await signIn.PasswordSignInAsync(user, request.Password, request.RememberMe, lockoutOnFailure: true);
         if (result.IsLockedOut)
         {
+            await NoteAsync(user.Email ?? request.Email, "Sign-in refused", "account locked after repeated failures", cancellationToken);
             return StatusCode(StatusCodes.Status429TooManyRequests, new ErrorResponse("Too many failed attempts. Try again in 15 minutes."));
         }
 
         if (!result.Succeeded)
         {
+            await NoteAsync(user.Email ?? request.Email, "Sign-in refused", "wrong password", cancellationToken);
             return Unauthorized(new ErrorResponse(WrongCredentials));
         }
 
+        // The same name every other entry carries for this user.
+        await NoteAsync(user.UserName ?? user.Email ?? request.Email, "Signed in", null, cancellationToken);
         return Ok(await DescribeAsync(user));
     }
 
     [HttpPost("logout")]
     public async Task<IActionResult> LogoutAsync()
     {
+        await NoteAsync(User.Identity?.Name ?? "Unknown", "Signed out", null, HttpContext.RequestAborted);
         await signIn.SignOutAsync();
         return NoContent();
     }
@@ -93,9 +100,23 @@ public sealed class AuthController(
             await users.UpdateAsync(user);
         }
 
+        await NoteAsync(User.Identity?.Name ?? user.Email ?? "Unknown", "Password changed", null, cancellationToken);
         // Issues a new cookie: the old one carried the must-change flag and the previous security stamp.
         await signIn.RefreshSignInAsync(user);
         return Ok(await DescribeAsync(user));
+    }
+
+    /// <summary>Signing in and out belongs in the audit trail too. A trail that cannot be written must not lock anyone out.</summary>
+    private async Task NoteAsync(string who, string action, string? detail, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await audit.RecordAsync(who, action, KatalepsisFT.Application.Audit.AuditTarget.None, detail, cancellationToken);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            HttpContext.RequestServices.GetRequiredService<ILogger<AuthController>>().LogError(e, "An audit entry for \"{Action}\" could not be written.", action);
+        }
     }
 
     private async Task<SessionResponse> DescribeAsync(AppUser user)

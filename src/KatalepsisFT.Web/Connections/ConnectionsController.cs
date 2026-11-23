@@ -1,3 +1,4 @@
+using KatalepsisFT.Web.Audit;
 using FluentValidation;
 using FluentValidation.Results;
 using KatalepsisFT.Application.Auth;
@@ -27,6 +28,7 @@ public sealed class ConnectionsController(
     IValidator<SaveManagerRequest> managerValidator
 ) : ControllerBase
 {
+    [Audit("Fund created", FundFromResult = true)]
     [HttpPost("funds")]
     public async Task<IActionResult> CreateFundAsync(NewFundRequest request, CancellationToken cancellationToken)
     {
@@ -47,22 +49,27 @@ public sealed class ConnectionsController(
         return result is null ? NotFound() : result;
     }
 
+    [Audit("Fund changed", Fund = "fundId")]
     [HttpPut("funds/{fundId:int}")]
     public async Task<IActionResult> SaveFundAsync(int fundId, SaveFundRequest request, CancellationToken cancellationToken) =>
         await InvalidAsync(saveFundValidator, request, cancellationToken) ?? Result(await structure.SaveFundAsync(fundId, request, cancellationToken));
 
+    [Audit("Sleeve added", Fund = "fundId")]
     [HttpPost("funds/{fundId:int}/sleeves")]
     public async Task<IActionResult> AddSleeveAsync(int fundId, SaveSleeveRequest request, CancellationToken cancellationToken) =>
         await InvalidAsync(sleeveValidator, request, cancellationToken) ?? Result(await structure.AddSleeveAsync(fundId, request, cancellationToken));
 
+    [Audit("Sleeve and its limits changed", Sleeve = "sleeveId")]
     [HttpPut("sleeves/{sleeveId:int}")]
     public async Task<IActionResult> SaveSleeveAsync(int sleeveId, SaveSleeveRequest request, CancellationToken cancellationToken) =>
         await InvalidAsync(sleeveValidator, request, cancellationToken) ?? Result(await structure.SaveSleeveAsync(sleeveId, request, cancellationToken));
 
+    [Audit("Sleeve removed", Sleeve = "sleeveId")]
     [HttpDelete("sleeves/{sleeveId:int}")]
     public async Task<IActionResult> DeleteSleeveAsync(int sleeveId, CancellationToken cancellationToken) => Result(await structure.DeleteSleeveAsync(sleeveId, cancellationToken));
 
     /// <summary>Answers with the new manager's id, so whoever added it can go straight on to give it a key or positions.</summary>
+    [Audit("Manager added", Sleeve = "sleeveId")]
     [HttpPost("sleeves/{sleeveId:int}/managers")]
     public async Task<IActionResult> AddManagerAsync(int sleeveId, SaveManagerRequest request, CancellationToken cancellationToken)
     {
@@ -75,20 +82,25 @@ public sealed class ConnectionsController(
         return change is { Done: true, Id: int id } ? Ok(new ManagerCreatedDto(id)) : Result(change);
     }
 
+    [Audit("Manager changed", Manager = "managerId")]
     [HttpPut("managers/{managerId:int}")]
     public async Task<IActionResult> SaveManagerAsync(int managerId, SaveManagerRequest request, CancellationToken cancellationToken) =>
         await InvalidAsync(managerValidator, request, cancellationToken) ?? Result(await structure.SaveManagerAsync(managerId, request, cancellationToken));
 
+    [Audit("Manager moved to another sleeve", Manager = "managerId")]
     [HttpPost("managers/{managerId:int}/move")]
     public async Task<IActionResult> MoveManagerAsync(int managerId, MoveManagerRequest request, CancellationToken cancellationToken) =>
         Result(await structure.MoveManagerAsync(managerId, request.SleeveId, cancellationToken));
 
+    [Audit("Manager retired", Manager = "managerId")]
     [HttpPost("managers/{managerId:int}/retire")]
     public async Task<IActionResult> RetireManagerAsync(int managerId, CancellationToken cancellationToken) => Result(await structure.RetireManagerAsync(managerId, cancellationToken));
 
+    [Audit("Manager reinstated", Manager = "managerId")]
     [HttpPost("managers/{managerId:int}/reinstate")]
     public async Task<IActionResult> ReinstateManagerAsync(int managerId, CancellationToken cancellationToken) => Result(await structure.ReinstateManagerAsync(managerId, cancellationToken));
 
+    [Audit("Manager removed", Manager = "managerId")]
     [HttpDelete("managers/{managerId:int}")]
     public async Task<IActionResult> DeleteManagerAsync(int managerId, CancellationToken cancellationToken) => Result(await structure.DeleteManagerAsync(managerId, cancellationToken));
 
@@ -100,6 +112,7 @@ public sealed class ConnectionsController(
     }
 
     /// <summary>The key is checked with the venue first; one that can trade or withdraw is refused and nothing is stored.</summary>
+    [Audit("Key or wallet added", ManagerFromBody = true)]
     [HttpPost("connections")]
     public async Task<IActionResult> AddAsync(AddConnectionRequest request, CancellationToken cancellationToken)
     {
@@ -115,9 +128,11 @@ public sealed class ConnectionsController(
     [HttpPost("connections/{id:int}/sync")]
     public async Task<IActionResult> SyncAsync(int id, CancellationToken cancellationToken) => Result(await connections.SyncNowAsync(id, cancellationToken));
 
+    [Audit("Key or wallet switched on or off", Connection = "id")]
     [HttpPost("connections/{id:int}/enabled")]
     public async Task<IActionResult> SetEnabledAsync(int id, SetEnabledRequest request, CancellationToken cancellationToken) => Result(await connections.SetEnabledAsync(id, request.Enabled, cancellationToken));
 
+    [Audit("Key or wallet removed", Connection = "id")]
     [HttpDelete("connections/{id:int}")]
     public async Task<IActionResult> DeleteAsync(int id, CancellationToken cancellationToken) => await connections.DeleteAsync(id, cancellationToken) ? NoContent() : NotFound();
 

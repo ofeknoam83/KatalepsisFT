@@ -29,6 +29,7 @@ public interface IFtDbContext
     DbSet<AlertRule> AlertRules { get; }
     DbSet<Alert> Alerts { get; }
     DbSet<AlertAction> AlertActions { get; }
+    DbSet<KatalepsisFT.Domain.Audit.AuditEntry> AuditEntries { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken);
 

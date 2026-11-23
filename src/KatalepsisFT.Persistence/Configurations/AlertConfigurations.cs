@@ -25,6 +25,7 @@ internal sealed class AlertConfiguration : IEntityTypeConfiguration<Alert>
         alert.Property(x => x.AssigneeName).HasMaxLength(256);
         alert.Property(x => x.Value).Ratio();
         alert.Property(x => x.Threshold).Ratio();
+        alert.Property(x => x.PeakValue).Ratio();
         alert.Ignore(x => x.IsActive);
         alert.HasIndex(x => new { x.RuleId, x.Status });
         alert.HasOne(x => x.Rule).WithMany(x => x.Alerts).HasForeignKey(x => x.RuleId).OnDelete(DeleteBehavior.Cascade);
@@ -39,5 +40,21 @@ internal sealed class AlertActionConfiguration : IEntityTypeConfiguration<AlertA
         action.Property(x => x.UserName).HasMaxLength(256);
         action.Property(x => x.Note).HasMaxLength(2000);
         action.HasOne(x => x.Alert).WithMany(x => x.Actions).HasForeignKey(x => x.AlertId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+internal sealed class AuditEntryConfiguration : IEntityTypeConfiguration<KatalepsisFT.Domain.Audit.AuditEntry>
+{
+    public void Configure(EntityTypeBuilder<KatalepsisFT.Domain.Audit.AuditEntry> entry)
+    {
+        entry.ToTable("audit_entries");
+        entry.Property(x => x.UserName).HasMaxLength(256);
+        entry.Property(x => x.Action).HasMaxLength(100);
+        entry.Property(x => x.FundName).HasMaxLength(200);
+        entry.Property(x => x.Subject).HasMaxLength(400);
+        entry.Property(x => x.Detail).HasMaxLength(2000);
+        // No foreign key to the fund: an entry outlives what it is about.
+        entry.HasIndex(x => x.At);
+        entry.HasIndex(x => new { x.FundId, x.At });
     }
 }

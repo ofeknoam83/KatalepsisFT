@@ -48,6 +48,11 @@ namespace KatalepsisFT.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_seen_at");
 
+                    b.Property<decimal>("PeakValue")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("numeric(18,8)")
+                        .HasColumnName("peak_value");
+
                     b.Property<DateTimeOffset>("RaisedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("raised_at");
@@ -201,6 +206,62 @@ namespace KatalepsisFT.Persistence.Migrations
                         .HasDatabaseName("ix_alert_rules_mandate_limit_id");
 
                     b.ToTable("alert_rules", (string)null);
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Audit.AuditEntry", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("action");
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("at");
+
+                    b.Property<string>("Detail")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("detail");
+
+                    b.Property<int?>("FundId")
+                        .HasColumnType("integer")
+                        .HasColumnName("fund_id");
+
+                    b.Property<string>("FundName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("fund_name");
+
+                    b.Property<string>("Subject")
+                        .HasMaxLength(400)
+                        .HasColumnType("character varying(400)")
+                        .HasColumnName("subject");
+
+                    b.Property<string>("UserName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("user_name");
+
+                    b.HasKey("Id")
+                        .HasName("pk_audit_entries");
+
+                    b.HasIndex("At")
+                        .HasDatabaseName("ix_audit_entries_at");
+
+                    b.HasIndex("FundId", "At")
+                        .HasDatabaseName("ix_audit_entries_fund_id_at");
+
+                    b.ToTable("audit_entries", (string)null);
                 });
 
             modelBuilder.Entity("KatalepsisFT.Domain.Benchmarks.Benchmark", b =>
