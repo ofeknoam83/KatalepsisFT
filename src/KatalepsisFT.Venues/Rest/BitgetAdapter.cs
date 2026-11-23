@@ -31,8 +31,26 @@ public sealed class BitgetAdapter(HttpClient http, TimeProvider clock) : IVenueA
 
     public async Task<CredentialCheck> CheckCredentialsAsync(VenueCredentials credentials, CancellationToken cancellationToken)
     {
-        await GetAsync(credentials, "/api/v2/spot/account/assets", string.Empty, cancellationToken);
-        return new CredentialCheck(null, null);
+        JsonElement info = await GetAsync(credentials, "/api/v2/spot/account/info", string.Empty, cancellationToken);
+        return Permissions(info);
+    }
+
+    /// <summary>
+    /// What the key may do, from Bitget's own list of what it was given. Each entry is a code: the ones ending in
+    /// "w" allow changes, "stow", "coow" and "cpow" being trading and "wwow" and "wtow" taking money out or moving it.
+    /// </summary>
+    public static CredentialCheck Permissions(JsonElement info)
+    {
+        if (info.ValueKind != JsonValueKind.Object || !info.TryGetProperty("authorities", out JsonElement authorities) || authorities.ValueKind != JsonValueKind.Array)
+        {
+            return new CredentialCheck(null, null);
+        }
+
+        List<string> given = authorities.EnumerateArray().Where(a => a.ValueKind == JsonValueKind.String).Select(a => a.GetString()!.ToLowerInvariant()).ToList();
+        string[] known = ["stor", "coor", "cpor", "wtor", "stow", "coow", "cpow", "wtow", "wwow"];
+        // Anything not known to be harmless is treated as able to trade, so a new permission cannot slip through.
+        bool unknown = given.Any(g => !known.Contains(g));
+        return new CredentialCheck(unknown || given.Any(g => g is "stow" or "coow" or "cpow"), given.Any(g => g is "wwow" or "wtow"));
     }
 
     public async Task<VenueSnapshot> GetSnapshotAsync(VenueCredentials credentials, CancellationToken cancellationToken)

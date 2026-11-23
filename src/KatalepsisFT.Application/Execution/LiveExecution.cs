@@ -299,7 +299,7 @@ public sealed class LiveExecution(IFtDbContext database, IEnumerable<IOrderGatew
         {
             try
             {
-                await gateway.CancelAsync(credentials, instrument, order.InstrumentType, order.VenueClientId, cancellationToken);
+                await gateway.CancelAsync(credentials, instrument, order.InstrumentType, new OrderNames(order.VenueClientId, order.VenueOrderId), cancellationToken);
                 if (first)
                 {
                     order.Events.Add(new OrderEvent { At = now, Kind = OrderEventKind.CancelRequested, Venue = account.Venue, Detail = halted ? $"The kill switch is on: cancel sent to {venue}." : $"Cancel sent to {venue}." });
@@ -323,7 +323,7 @@ public sealed class LiveExecution(IFtDbContext database, IEnumerable<IOrderGatew
         VenueOrderReport report;
         try
         {
-            report = await gateway.FindAsync(credentials, instrument, order.InstrumentType, order.VenueClientId, cancellationToken);
+            report = await gateway.FindAsync(credentials, instrument, order.InstrumentType, new OrderNames(order.VenueClientId, order.VenueOrderId), cancellationToken);
         }
         catch (Exception e) when (e is VenueUnclearException or VenueRefusedException)
         {
@@ -497,7 +497,8 @@ public sealed class LiveExecution(IFtDbContext database, IEnumerable<IOrderGatew
     public static string ClientIdFor(Order order)
     {
         byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes($"{order.TradingAccountId}|{order.ClientOrderId}|{order.CreatedAt.UtcTicks}"));
-        return $"kft{order.Id}-{Convert.ToHexString(hash, 0, 6).ToLowerInvariant()}";
+        // Letters and digits only, and short: the strictest venue allows nothing else and no more than 28 of them.
+        return $"kft{order.Id}x{Convert.ToHexString(hash, 0, 6).ToLowerInvariant()}";
     }
 
     /// <summary>The account's trading key, opened. Whatever is wrong with it, it comes out as one thing: it cannot be used right now.</summary>

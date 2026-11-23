@@ -96,8 +96,8 @@ public class LiveVenueChecks
 
         KatalepsisFT.Application.Execution.VenueInstrument spot = (await gateway.InstrumentAsync("BTC", KatalepsisFT.Domain.Instruments.InstrumentType.Spot, CancellationToken.None))!;
         KatalepsisFT.Application.Execution.VenueInstrument perp = (await gateway.InstrumentAsync("BTC", KatalepsisFT.Domain.Instruments.InstrumentType.Perp, CancellationToken.None))!;
-        Func<Task> find = () => gateway.FindAsync(Nonsense, spot, KatalepsisFT.Domain.Instruments.InstrumentType.Spot, "kft1-000000000000", CancellationToken.None);
-        Func<Task> findPerp = () => gateway.FindAsync(Nonsense, perp, KatalepsisFT.Domain.Instruments.InstrumentType.Perp, "kft1-000000000000", CancellationToken.None);
+        Func<Task> find = () => gateway.FindAsync(Nonsense, spot, KatalepsisFT.Domain.Instruments.InstrumentType.Spot, new KatalepsisFT.Application.Execution.OrderNames("kft1x000000000000", null), CancellationToken.None);
+        Func<Task> findPerp = () => gateway.FindAsync(Nonsense, perp, KatalepsisFT.Domain.Instruments.InstrumentType.Perp, new KatalepsisFT.Application.Execution.OrderNames("kft1x000000000000", null), CancellationToken.None);
         Func<Task> account = () => gateway.AccountAsync(Nonsense, CancellationToken.None);
 
         spot.Symbol.Should().Be("BTC-USDT");
@@ -108,6 +108,50 @@ public class LiveVenueChecks
         // A key KuCoin does not know is a clear no, on both of its systems; never "not found" and never "unclear".
         (await find.Should().ThrowAsync<KatalepsisFT.Application.Execution.VenueRefusedException>()).Which.Message.Should().Contain("code 4000");
         (await findPerp.Should().ThrowAsync<KatalepsisFT.Application.Execution.VenueRefusedException>()).Which.Message.Should().Contain("code 4000");
+        await account.Should().ThrowAsync<KatalepsisFT.Application.Execution.VenueRefusedException>();
+    }
+
+    /// <summary>
+    /// Each order gateway against its real venue, as far as that goes without a key: its trading rules for bitcoin
+    /// spot and perpetual, and that a key the venue does not know is a clear refusal, never "no such order".
+    /// </summary>
+    [Theory]
+    [InlineData("Binance")]
+    [InlineData("Bybit")]
+    [InlineData("Okx")]
+    [InlineData("Bitget")]
+    public async Task OrderGateway_ReadsTheVenuesRules_AndIsRefusedWithAKeyThatDoesNotExist(string venue)
+    {
+        if (!Enabled)
+        {
+            return;
+        }
+
+        HttpClient http = new() { Timeout = TimeSpan.FromSeconds(20) };
+        KatalepsisFT.Application.Execution.IOrderGateway gateway = venue switch
+        {
+            "Binance" => new KatalepsisFT.Venues.Binance.BinanceOrderGateway(http, TimeProvider.System),
+            "Bybit" => new KatalepsisFT.Venues.Bybit.BybitOrderGateway(http, TimeProvider.System),
+            "Okx" => new OkxOrderGateway(http, TimeProvider.System),
+            _ => new BitgetOrderGateway(http, TimeProvider.System),
+        };
+        KatalepsisFT.Application.Execution.OrderNames unknown = new("kft1x000000000000", null);
+
+        KatalepsisFT.Application.Execution.VenueInstrument spot = (await gateway.InstrumentAsync("BTC", KatalepsisFT.Domain.Instruments.InstrumentType.Spot, CancellationToken.None))!;
+        KatalepsisFT.Application.Execution.VenueInstrument perp = (await gateway.InstrumentAsync("BTC", KatalepsisFT.Domain.Instruments.InstrumentType.Perp, CancellationToken.None))!;
+        Func<Task> find = () => gateway.FindAsync(Nonsense, spot, KatalepsisFT.Domain.Instruments.InstrumentType.Spot, unknown, CancellationToken.None);
+        Func<Task> findPerp = () => gateway.FindAsync(Nonsense, perp, KatalepsisFT.Domain.Instruments.InstrumentType.Perp, unknown, CancellationToken.None);
+        Func<Task> account = () => gateway.AccountAsync(Nonsense, CancellationToken.None);
+
+        Console.WriteLine($"{venue} spot {spot}; perp {perp}");
+        spot.QuantityStep.Should().BeInRange(0.00000001m, 0.001m);
+        spot.PriceStep.Should().BeInRange(0.01m, 1m);
+        perp.QuantityStep.Should().BeInRange(0.0001m, 0.01m);
+        perp.PriceStep.Should().BeInRange(0.01m, 1m);
+        (await gateway.InstrumentAsync("NOSUCHCOIN", KatalepsisFT.Domain.Instruments.InstrumentType.Spot, CancellationToken.None)).Should().BeNull();
+        (await gateway.InstrumentAsync("NOSUCHCOIN", KatalepsisFT.Domain.Instruments.InstrumentType.Perp, CancellationToken.None)).Should().BeNull();
+        Console.WriteLine($"{venue} refusal: {(await find.Should().ThrowAsync<KatalepsisFT.Application.Execution.VenueRefusedException>()).Which.Message}");
+        await findPerp.Should().ThrowAsync<KatalepsisFT.Application.Execution.VenueRefusedException>();
         await account.Should().ThrowAsync<KatalepsisFT.Application.Execution.VenueRefusedException>();
     }
 }

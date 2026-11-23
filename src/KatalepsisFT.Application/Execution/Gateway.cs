@@ -48,6 +48,12 @@ public sealed record VenueHolding(string Asset, InstrumentType Type, decimal Qua
 /// <param name="DerivativesEquityUsd">What the futures account is worth, open profit and loss included; null when it could not be read.</param>
 public sealed record VenueAccountReport(decimal CashUsd, decimal? DerivativesEquityUsd, IReadOnlyList<VenueHolding> Holdings);
 
+/// <summary>
+/// The two names of an order at a venue: ours, which is known before it is sent, and the venue's own, which is known
+/// only once the venue has answered. Some venues can only look up a finished order by their own.
+/// </summary>
+public sealed record OrderNames(string ClientId, string? VenueId);
+
 /// <summary>The venue answered, and the answer is no. Nothing was done; the message is the venue's reason.</summary>
 public sealed class VenueRefusedException(string message) : Exception(message);
 
@@ -70,10 +76,10 @@ public interface IOrderGateway
     Task<string?> PlaceAsync(VenueCredentials credentials, VenueInstrument instrument, VenueOrderRequest order, CancellationToken cancellationToken);
 
     /// <summary>Asks for the order to be cancelled. That the request was taken does not mean the order is gone: ask with <see cref="FindAsync"/>.</summary>
-    Task CancelAsync(VenueCredentials credentials, VenueInstrument instrument, InstrumentType type, string clientId, CancellationToken cancellationToken);
+    Task CancelAsync(VenueCredentials credentials, VenueInstrument instrument, InstrumentType type, OrderNames order, CancellationToken cancellationToken);
 
-    /// <summary>What the venue knows of the order by our name for it.</summary>
-    Task<VenueOrderReport> FindAsync(VenueCredentials credentials, VenueInstrument instrument, InstrumentType type, string clientId, CancellationToken cancellationToken);
+    /// <summary>What the venue knows of the order.</summary>
+    Task<VenueOrderReport> FindAsync(VenueCredentials credentials, VenueInstrument instrument, InstrumentType type, OrderNames order, CancellationToken cancellationToken);
 
     /// <summary>What the account holds right now.</summary>
     Task<VenueAccountReport> AccountAsync(VenueCredentials credentials, CancellationToken cancellationToken);

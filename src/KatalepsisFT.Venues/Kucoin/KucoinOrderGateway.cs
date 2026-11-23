@@ -193,14 +193,16 @@ public sealed class KucoinOrderGateway(HttpClient http, TimeProvider clock) : IO
         return Text(await SendAsync(credentials, FuturesHost, HttpMethod.Post, "/api/v1/orders", futures, cancellationToken), "orderId");
     }
 
-    public async Task CancelAsync(VenueCredentials credentials, VenueInstrument instrument, InstrumentType type, string clientId, CancellationToken cancellationToken)
+    public async Task CancelAsync(VenueCredentials credentials, VenueInstrument instrument, InstrumentType type, OrderNames order, CancellationToken cancellationToken)
     {
+        string clientId = order.ClientId;
         string path = type == InstrumentType.Spot ? "/api/v1/hf/orders/client-order/" : "/api/v1/orders/client-order/";
         await SendAsync(credentials, type == InstrumentType.Spot ? SpotHost : FuturesHost, HttpMethod.Delete, $"{path}{Uri.EscapeDataString(clientId)}?symbol={instrument.Symbol}", null, cancellationToken);
     }
 
-    public async Task<VenueOrderReport> FindAsync(VenueCredentials credentials, VenueInstrument instrument, InstrumentType type, string clientId, CancellationToken cancellationToken)
+    public async Task<VenueOrderReport> FindAsync(VenueCredentials credentials, VenueInstrument instrument, InstrumentType type, OrderNames order, CancellationToken cancellationToken)
     {
+        string clientId = order.ClientId;
         JsonElement data;
         try
         {

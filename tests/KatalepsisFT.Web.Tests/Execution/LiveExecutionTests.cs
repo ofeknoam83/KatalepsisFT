@@ -96,8 +96,9 @@ public class LiveExecutionTests(TestDatabase database) : IClassFixture<TestDatab
             return OnPlace is null ? Task.FromResult<string?>("v-" + Placed.Count) : throw OnPlace;
         }
 
-        public Task CancelAsync(VenueCredentials credentials, VenueInstrument instrument, InstrumentType type, string clientId, CancellationToken cancellationToken)
+        public Task CancelAsync(VenueCredentials credentials, VenueInstrument instrument, InstrumentType type, OrderNames order, CancellationToken cancellationToken)
         {
+            string clientId = order.ClientId;
             Cancels.Add(clientId);
             if (Known.TryGetValue(clientId, out VenueOrderReport? report) && report.State == VenueOrderState.Open)
             {
@@ -107,8 +108,8 @@ public class LiveExecutionTests(TestDatabase database) : IClassFixture<TestDatab
             return Task.CompletedTask;
         }
 
-        public Task<VenueOrderReport> FindAsync(VenueCredentials credentials, VenueInstrument instrument, InstrumentType type, string clientId, CancellationToken cancellationToken) =>
-            OnFind is not null ? throw OnFind : Task.FromResult(Known.GetValueOrDefault(clientId) ?? new VenueOrderReport(VenueOrderState.NotFound, 0m, 0m, null, null));
+        public Task<VenueOrderReport> FindAsync(VenueCredentials credentials, VenueInstrument instrument, InstrumentType type, OrderNames order, CancellationToken cancellationToken) =>
+            OnFind is not null ? throw OnFind : Task.FromResult(Known.GetValueOrDefault(order.ClientId) ?? new VenueOrderReport(VenueOrderState.NotFound, 0m, 0m, null, null));
 
         public Task<VenueAccountReport> AccountAsync(VenueCredentials credentials, CancellationToken cancellationToken) =>
             OnAccount is not null ? throw OnAccount : Task.FromResult(Account ?? new VenueAccountReport(0m, null, []));
@@ -295,7 +296,7 @@ public class LiveExecutionTests(TestDatabase database) : IClassFixture<TestDatab
         sent.OrderType.Should().Be(OrderType.Limit);
         sent.TimeInForce.Should().Be(TimeInForce.ImmediateOrCancel);
         sent.LimitPrice.Should().Be(60_600m);
-        sent.ClientId.Should().StartWith($"kft{id}-").And.HaveLength($"kft{id}-".Length + 12);
+        sent.ClientId.Should().StartWith($"kft{id}x").And.HaveLength($"kft{id}x".Length + 12).And.MatchRegex("^[a-z0-9]+$");
         working.Status.Should().Be(OrderStatus.Working);
         working.Quantity.Should().Be(0.25m);
         working.Events.Select(e => e.Kind).Should().Equal(OrderEventKind.Received, OrderEventKind.Note, OrderEventKind.Accepted, OrderEventKind.Working);

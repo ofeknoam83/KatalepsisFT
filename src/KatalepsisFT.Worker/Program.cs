@@ -110,6 +110,18 @@ if (hasPostgres && group.ToLowerInvariant() is WorkerGroups.Exec)
     builder.Services.AddHttpClient(KatalepsisFT.Venues.Kucoin.KucoinOrderGateway.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(8));
     builder.Services.AddSingleton<KatalepsisFT.Application.Execution.IOrderGateway>(provider =>
         new KatalepsisFT.Venues.Kucoin.KucoinOrderGateway(provider.GetRequiredService<IHttpClientFactory>().CreateClient(KatalepsisFT.Venues.Kucoin.KucoinOrderGateway.HttpClientName), provider.GetRequiredService<TimeProvider>()));
+    builder.Services.AddHttpClient(KatalepsisFT.Venues.Binance.BinanceOrderGateway.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(8));
+    builder.Services.AddSingleton<KatalepsisFT.Application.Execution.IOrderGateway>(provider =>
+        new KatalepsisFT.Venues.Binance.BinanceOrderGateway(provider.GetRequiredService<IHttpClientFactory>().CreateClient(KatalepsisFT.Venues.Binance.BinanceOrderGateway.HttpClientName), provider.GetRequiredService<TimeProvider>()));
+    builder.Services.AddHttpClient(KatalepsisFT.Venues.Bybit.BybitOrderGateway.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(8));
+    builder.Services.AddSingleton<KatalepsisFT.Application.Execution.IOrderGateway>(provider =>
+        new KatalepsisFT.Venues.Bybit.BybitOrderGateway(provider.GetRequiredService<IHttpClientFactory>().CreateClient(KatalepsisFT.Venues.Bybit.BybitOrderGateway.HttpClientName), provider.GetRequiredService<TimeProvider>()));
+    builder.Services.AddHttpClient(KatalepsisFT.Venues.Okx.OkxOrderGateway.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(8));
+    builder.Services.AddSingleton<KatalepsisFT.Application.Execution.IOrderGateway>(provider =>
+        new KatalepsisFT.Venues.Okx.OkxOrderGateway(provider.GetRequiredService<IHttpClientFactory>().CreateClient(KatalepsisFT.Venues.Okx.OkxOrderGateway.HttpClientName), provider.GetRequiredService<TimeProvider>()));
+    builder.Services.AddHttpClient(KatalepsisFT.Venues.Rest.BitgetOrderGateway.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(8));
+    builder.Services.AddSingleton<KatalepsisFT.Application.Execution.IOrderGateway>(provider =>
+        new KatalepsisFT.Venues.Rest.BitgetOrderGateway(provider.GetRequiredService<IHttpClientFactory>().CreateClient(KatalepsisFT.Venues.Rest.BitgetOrderGateway.HttpClientName), provider.GetRequiredService<TimeProvider>()));
     builder.Services.AddScoped<KatalepsisFT.Application.Execution.LiveExecution>();
     builder.Services.AddHostedService<OrderEngineWorker>();
     builder.Services.AddHostedService<LiveOrdersWorker>();

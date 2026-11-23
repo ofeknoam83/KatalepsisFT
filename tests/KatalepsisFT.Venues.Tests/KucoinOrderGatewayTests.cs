@@ -47,12 +47,12 @@ public class KucoinOrderGatewayTests
     private static string Ok(string data) => $$"""{"code":"200000","data":{{data}}}""";
 
     private static VenueOrderRequest Order(InstrumentType type, OrderSide side, decimal quantity, decimal price, TimeInForce tif = TimeInForce.GoodTillCancelled, bool reduceOnly = false, MarginMode margin = MarginMode.Cross) =>
-        new("kft42-a1b2c3d4e5f6", type, side, OrderType.Limit, tif, quantity, price, reduceOnly, 3m, margin);
+        new("kft42xa1b2c3d4e5f6", type, side, OrderType.Limit, tif, quantity, price, reduceOnly, 3m, margin);
 
     [Fact]
     public async Task SpotOrder_GoesOutWithOurNameForIt_ALatestArrival_AndASignatureOverExactlyWhatIsSent()
     {
-        (KucoinOrderGateway gateway, Stub handler) = Gateway((_, _) => (HttpStatusCode.OK, Ok("""{"orderId":"67abc","clientOid":"kft42-a1b2c3d4e5f6"}""")));
+        (KucoinOrderGateway gateway, Stub handler) = Gateway((_, _) => (HttpStatusCode.OK, Ok("""{"orderId":"67abc","clientOid":"kft42xa1b2c3d4e5f6"}""")));
 
         string? id = await gateway.PlaceAsync(Key, BtcSpot, Order(InstrumentType.Spot, OrderSide.Buy, 0.0125m, 61_000.50m, TimeInForce.ImmediateOrCancel), CancellationToken.None);
 
@@ -61,7 +61,7 @@ public class KucoinOrderGatewayTests
         id.Should().Be("67abc");
         request.Method.Should().Be(HttpMethod.Post);
         request.RequestUri!.AbsoluteUri.Should().Be("https://api.kucoin.com/api/v1/hf/orders");
-        sent.RootElement.GetProperty("clientOid").GetString().Should().Be("kft42-a1b2c3d4e5f6");
+        sent.RootElement.GetProperty("clientOid").GetString().Should().Be("kft42xa1b2c3d4e5f6");
         sent.RootElement.GetProperty("symbol").GetString().Should().Be("BTC-USDT");
         sent.RootElement.GetProperty("side").GetString().Should().Be("buy");
         sent.RootElement.GetProperty("type").GetString().Should().Be("limit");
@@ -145,10 +145,10 @@ public class KucoinOrderGatewayTests
         (KucoinOrderGateway gateway, Stub handler) = Gateway((_, _) => (HttpStatusCode.OK, answer));
         (KucoinOrderGateway inCoin, _) = Gateway((_, _) => (HttpStatusCode.OK, answer.Replace("\"feeCurrency\":\"USDT\"", "\"feeCurrency\":\"KCS\"", StringComparison.Ordinal).Replace("\"active\":true", "\"active\":false", StringComparison.Ordinal)));
 
-        VenueOrderReport open = await gateway.FindAsync(Key, BtcSpot, InstrumentType.Spot, "kft42-a1b2c3d4e5f6", CancellationToken.None);
-        VenueOrderReport done = await inCoin.FindAsync(Key, BtcSpot, InstrumentType.Spot, "kft42-a1b2c3d4e5f6", CancellationToken.None);
+        VenueOrderReport open = await gateway.FindAsync(Key, BtcSpot, InstrumentType.Spot, new OrderNames("kft42xa1b2c3d4e5f6", null), CancellationToken.None);
+        VenueOrderReport done = await inCoin.FindAsync(Key, BtcSpot, InstrumentType.Spot, new OrderNames("kft42xa1b2c3d4e5f6", null), CancellationToken.None);
 
-        handler.Sent.Single().Request.RequestUri!.PathAndQuery.Should().Be("/api/v1/hf/orders/client-order/kft42-a1b2c3d4e5f6?symbol=BTC-USDT");
+        handler.Sent.Single().Request.RequestUri!.PathAndQuery.Should().Be("/api/v1/hf/orders/client-order/kft42xa1b2c3d4e5f6?symbol=BTC-USDT");
         open.Should().Be(new VenueOrderReport(VenueOrderState.Open, 0.015m, 914.25m, 0.91425m, "67abc"));
         done.State.Should().Be(VenueOrderState.Done);
         // A fee taken in another coin is not passed off as dollars.
@@ -163,9 +163,9 @@ public class KucoinOrderGatewayTests
                 ? Ok("""{"currentPage":1,"pageSize":1000,"totalNum":2,"totalPage":1,"items":[{"orderId":"f1","price":"61000","size":100,"fee":"3.66","feeCurrency":"USDT"},{"orderId":"f1","price":"61010","size":150,"fee":"5.49075","feeCurrency":"USDT"}]}""")
                 : Ok("""{"id":"f1","symbol":"XBTUSDTM","type":"limit","side":"buy","price":"61010","size":300,"dealSize":250,"dealValue":"15251.5","filledSize":250,"filledValue":"15251.5","isActive":false,"cancelExist":true,"status":"done","reduceOnly":false}""")));
 
-        VenueOrderReport report = await gateway.FindAsync(Key, BtcPerp, InstrumentType.Perp, "kft42-a1b2c3d4e5f6", CancellationToken.None);
+        VenueOrderReport report = await gateway.FindAsync(Key, BtcPerp, InstrumentType.Perp, new OrderNames("kft42xa1b2c3d4e5f6", null), CancellationToken.None);
 
-        handler.Sent[0].Request.RequestUri!.PathAndQuery.Should().Be("/api/v1/orders/byClientOid?clientOid=kft42-a1b2c3d4e5f6");
+        handler.Sent[0].Request.RequestUri!.PathAndQuery.Should().Be("/api/v1/orders/byClientOid?clientOid=kft42xa1b2c3d4e5f6");
         report.Should().Be(new VenueOrderReport(VenueOrderState.Done, 0.25m, 15_251.5m, 9.15075m, "f1"));
     }
 
@@ -177,8 +177,8 @@ public class KucoinOrderGatewayTests
     {
         (KucoinOrderGateway gateway, _) = Gateway((_, _) => (status, body));
 
-        (await gateway.FindAsync(Key, BtcSpot, InstrumentType.Spot, "kft1-000000000000", CancellationToken.None)).State.Should().Be(VenueOrderState.NotFound);
-        (await gateway.FindAsync(Key, BtcPerp, InstrumentType.Perp, "kft1-000000000000", CancellationToken.None)).State.Should().Be(VenueOrderState.NotFound);
+        (await gateway.FindAsync(Key, BtcSpot, InstrumentType.Spot, new OrderNames("kft1x000000000000", null), CancellationToken.None)).State.Should().Be(VenueOrderState.NotFound);
+        (await gateway.FindAsync(Key, BtcPerp, InstrumentType.Perp, new OrderNames("kft1x000000000000", null), CancellationToken.None)).State.Should().Be(VenueOrderState.NotFound);
     }
 
     [Theory]
@@ -190,7 +190,7 @@ public class KucoinOrderGatewayTests
     {
         (KucoinOrderGateway gateway, _) = Gateway((_, _) => (HttpStatusCode.Forbidden, body));
 
-        await FluentActions.Invoking(() => gateway.FindAsync(Key, BtcSpot, InstrumentType.Spot, "kft1-000000000000", CancellationToken.None)).Should().ThrowAsync<VenueRefusedException>();
+        await FluentActions.Invoking(() => gateway.FindAsync(Key, BtcSpot, InstrumentType.Spot, new OrderNames("kft1x000000000000", null), CancellationToken.None)).Should().ThrowAsync<VenueRefusedException>();
     }
 
     [Fact]
@@ -255,11 +255,11 @@ public class KucoinOrderGatewayTests
         (KucoinOrderGateway gateway, Stub handler) = Gateway((request, _) =>
             request.Headers.GetValues("KC-API-KEY-VERSION").Single() == "3" ? (HttpStatusCode.BadRequest, """{"code":"400005","msg":"Invalid KC-API-SIGN"}""") : (HttpStatusCode.OK, Ok("""{"clientOid":"x"}""")));
 
-        await gateway.CancelAsync(Key, BtcSpot, InstrumentType.Spot, "kft42-a1b2c3d4e5f6", CancellationToken.None);
-        await gateway.CancelAsync(Key, BtcSpot, InstrumentType.Spot, "kft42-a1b2c3d4e5f6", CancellationToken.None);
+        await gateway.CancelAsync(Key, BtcSpot, InstrumentType.Spot, new OrderNames("kft42xa1b2c3d4e5f6", null), CancellationToken.None);
+        await gateway.CancelAsync(Key, BtcSpot, InstrumentType.Spot, new OrderNames("kft42xa1b2c3d4e5f6", null), CancellationToken.None);
 
         handler.Sent.Select(s => s.Request.Headers.GetValues("KC-API-KEY-VERSION").Single()).Should().Equal("3", "2", "2");
         handler.Sent[0].Request.Method.Should().Be(HttpMethod.Delete);
-        handler.Sent[0].Request.RequestUri!.PathAndQuery.Should().Be("/api/v1/hf/orders/client-order/kft42-a1b2c3d4e5f6?symbol=BTC-USDT");
+        handler.Sent[0].Request.RequestUri!.PathAndQuery.Should().Be("/api/v1/hf/orders/client-order/kft42xa1b2c3d4e5f6?symbol=BTC-USDT");
     }
 }
