@@ -9,6 +9,8 @@ using KatalepsisFT.Domain.Execution;
 using KatalepsisFT.Domain.Instruments;
 using KatalepsisFT.Venues.Binance;
 using KatalepsisFT.Venues.Bybit;
+using KatalepsisFT.Venues.Coinbase;
+using KatalepsisFT.Venues.Mexc;
 using KatalepsisFT.Venues.Deribit;
 using KatalepsisFT.Venues.Okx;
 using KatalepsisFT.Venues.Rest;
@@ -425,5 +427,205 @@ public class MoreOrderGatewayTests
         {
             await place.Should().ThrowAsync<VenueUnclearException>();
         }
+    }
+
+    // ------------------------------------------------------------ Coinbase
+
+    [Fact]
+    public async Task Coinbase_SignsWithItsDecodedSecret_AndKnowsAnOrderByAUuidMadeFromOurName()
+    {
+        string secret = Convert.ToBase64String(Encoding.UTF8.GetBytes("coinbase-secret"));
+        VenueCredentials key = new("cb-key", secret, "cb-phrase");
+        (HttpClient http, Stub handler) = Client((request, _) => request.Method == HttpMethod.Post
+            ? (HttpStatusCode.OK, """{"id":"d0c5340b-6d6c-49d9-b567-48c4bfca13d2","price":"61000.50","size":"0.0125","product_id":"BTC-USD","side":"buy","type":"limit","status":"pending","filled_size":"0","executed_value":"0","fill_fees":"0"}""")
+            : request.RequestUri!.AbsolutePath.Contains("client:", StringComparison.Ordinal) ? (HttpStatusCode.NotFound, """{"message":"NotFound"}""")
+            : (HttpStatusCode.OK, """{"id":"d0c5340b-6d6c-49d9-b567-48c4bfca13d2","product_id":"BTC-USD","side":"buy","status":"done","done_reason":"canceled","filled_size":"0.01","executed_value":"609.5","fill_fees":"2.438","settled":true}"""));
+        CoinbaseOrderGateway gateway = new(http, new SetClock());
+        VenueInstrument btc = new("BTC-USD", 0.00000001m, 0.01m, 0.00000001m, 1m);
+        string uuid = CoinbaseOrderGateway.ClientOid(Names.ClientId);
+
+        string? id = await gateway.PlaceAsync(key, btc, Order(InstrumentType.Spot, OrderSide.Buy, 0.0125m, 61_000.5m, TimeInForce.PostOnly), CancellationToken.None);
+        VenueOrderReport lost = await gateway.FindAsync(key, btc, InstrumentType.Spot, Names, CancellationToken.None);
+        VenueOrderReport known = await gateway.FindAsync(key, btc, InstrumentType.Spot, Names with { VenueId = id }, CancellationToken.None);
+
+        id.Should().Be("d0c5340b-6d6c-49d9-b567-48c4bfca13d2");
+        Guid.TryParseExact(uuid, "D", out _).Should().BeTrue();
+        CoinbaseOrderGateway.ClientOid(Names.ClientId).Should().Be(uuid);
+        (HttpRequestMessage placed, string body) = handler.Sent[0];
+        body.Should().Be($$"""{"type":"limit","side":"buy","product_id":"BTC-USD","price":"61000.5","size":"0.0125","time_in_force":"GTC","client_oid":"{{uuid}}","post_only":true}""");
+        placed.RequestUri!.AbsoluteUri.Should().Be("https://api.exchange.coinbase.com/orders");
+        placed.Headers.GetValues("CB-ACCESS-TIMESTAMP").Single().Should().Be("1795000000");
+        placed.Headers.GetValues("CB-ACCESS-SIGN").Single().Should().Be(Convert.ToBase64String(HMACSHA256.HashData(Encoding.UTF8.GetBytes("coinbase-secret"), Encoding.UTF8.GetBytes("1795000000POST/orders" + body))));
+        placed.Headers.GetValues("CB-ACCESS-PASSPHRASE").Single().Should().Be("cb-phrase");
+        handler.Sent[1].Request.RequestUri!.AbsolutePath.Should().Be("/orders/client:" + uuid);
+        // Coinbase forgets an order cancelled with nothing filled: that is "not found", not an error.
+        lost.State.Should().Be(VenueOrderState.NotFound);
+        known.Should().Be(new VenueOrderReport(VenueOrderState.Done, 0.01m, 609.5m, 2.438m, "d0c5340b-6d6c-49d9-b567-48c4bfca13d2"));
+        await FluentActions.Invoking(() => gateway.CancelAsync(new VenueCredentials("k", "not base64!", "p"), btc, InstrumentType.Spot, Names, CancellationToken.None)).Should().ThrowAsync<VenueRefusedException>();
+    }
+
+    // ------------------------------------------------------------ MEXC
+
+    [Fact]
+    public async Task Mexc_PutsHowLongIntoTheOrderType_AndReadsFeesFromItsTrades()
+    {
+        (HttpClient http, Stub handler) = Client((request, _) => request.RequestUri!.AbsolutePath switch
+        {
+            "/api/v3/order" when request.Method == HttpMethod.Post => (HttpStatusCode.OK, """{"symbol":"BTCUSDT","orderId":"C02__4433","orderListId":-1,"price":"61000.5","origQty":"0.0125","type":"LIMIT_MAKER","side":"BUY","transactTime":1}"""),
+            "/api/v3/order" when request.RequestUri.Query.Contains("kft1x", StringComparison.Ordinal) => (HttpStatusCode.BadRequest, """{"code":-2013,"msg":"Order does not exist."}"""),
+            "/api/v3/order" => (HttpStatusCode.OK, """{"symbol":"BTCUSDT","orderId":"C02__4433","clientOrderId":"kft42xa1b2c3d4e5f6","price":"61000","origQty":"0.02","executedQty":"0.015","cummulativeQuoteQty":"914.25","status":"PARTIALLY_CANCELED","type":"LIMIT","side":"BUY"}"""),
+            _ => (HttpStatusCode.OK, """[{"symbol":"BTCUSDT","id":"1","orderId":"C02__4433","price":"60950","qty":"0.015","quoteQty":"914.25","commission":"0.457125","commissionAsset":"USDT"}]"""),
+        });
+        MexcOrderGateway gateway = new(http, new SetClock());
+        VenueInstrument btc = new("BTCUSDT", 0.000001m, 0.01m, 0.000001m, 1m);
+
+        string? id = await gateway.PlaceAsync(Key, btc, Order(InstrumentType.Spot, OrderSide.Buy, 0.0125m, 61_000.5m, TimeInForce.PostOnly), CancellationToken.None);
+        await gateway.PlaceAsync(Key, btc, Order(InstrumentType.Spot, OrderSide.Sell, 0.0125m, 61_000.5m, TimeInForce.ImmediateOrCancel), CancellationToken.None);
+        VenueOrderReport found = await gateway.FindAsync(Key, btc, InstrumentType.Spot, Names with { VenueId = id }, CancellationToken.None);
+        VenueOrderReport none = await gateway.FindAsync(Key, btc, InstrumentType.Spot, new OrderNames("kft1x000000000000", null), CancellationToken.None);
+
+        id.Should().Be("C02__4433");
+        string placed = handler.Sent[0].Request.RequestUri!.Query.TrimStart('?');
+        placed.Should().StartWith("symbol=BTCUSDT&side=BUY&type=LIMIT_MAKER&quantity=0.0125&price=61000.5&newClientOrderId=kft42xa1b2c3d4e5f6&timestamp=1795000000123&signature=");
+        placed.Should().EndWith("&signature=" + Hex("secret-1", placed[..placed.IndexOf("&signature=", StringComparison.Ordinal)]));
+        handler.Sent[0].Request.Headers.GetValues("X-MEXC-APIKEY").Single().Should().Be("key-1");
+        handler.Sent[1].Request.RequestUri!.Query.Should().Contain("side=SELL&type=IMMEDIATE_OR_CANCEL");
+        handler.Sent[2].Request.RequestUri!.Query.Should().Contain("symbol=BTCUSDT&orderId=C02__4433");
+        found.Should().Be(new VenueOrderReport(VenueOrderState.Done, 0.015m, 914.25m, 0.457125m, "C02__4433"));
+        none.State.Should().Be(VenueOrderState.NotFound);
+        (await gateway.InstrumentAsync("BTC", InstrumentType.Perp, CancellationToken.None)).Should().BeNull();
+    }
+
+    // ------------------------------------------------------------ Gate
+
+    [Fact]
+    public async Task Gate_SignsItsFiveLines_AndTradesPerpetualsInSignedWholeContracts()
+    {
+        (HttpClient http, Stub handler) = Client((request, _) => request.RequestUri!.AbsolutePath switch
+        {
+            "/api/v4/futures/usdt/contracts/BTC_USDT" => (HttpStatusCode.OK, """{"name":"BTC_USDT","quanto_multiplier":"0.0001","order_size_min":1,"order_price_round":"0.1","in_delisting":false}"""),
+            "/api/v4/futures/usdt/positions/BTC_USDT/leverage" => (HttpStatusCode.OK, """{"contract":"BTC_USDT","leverage":"0","cross_leverage_limit":"3"}"""),
+            "/api/v4/futures/usdt/orders" when request.Method == HttpMethod.Post => (HttpStatusCode.Created, """{"id":15675394,"contract":"BTC_USDT","size":-2500,"left":-2500,"status":"open","text":"t-kft42xa1b2c3d4e5f6"}"""),
+            "/api/v4/futures/usdt/orders/15675394" => (HttpStatusCode.OK, """{"id":15675394,"contract":"BTC_USDT","size":-2500,"left":-1500,"fill_price":"61006","status":"finished","finish_as":"ioc","text":"t-kft42xa1b2c3d4e5f6"}"""),
+            "/api/v4/futures/usdt/my_trades" => (HttpStatusCode.OK, """[{"id":1,"contract":"BTC_USDT","order_id":"15675394","size":-1000,"price":"61006","fee":"3.0503","role":"taker"}]"""),
+            _ => (HttpStatusCode.NotFound, """{"label":"ORDER_NOT_FOUND","message":"Order not found"}"""),
+        });
+        GateOrderGateway gateway = new(http, new SetClock());
+        VenueInstrument perp = (await gateway.InstrumentAsync("BTC", InstrumentType.Perp, CancellationToken.None))!;
+
+        string? id = await gateway.PlaceAsync(Key, perp, Order(InstrumentType.Perp, OrderSide.Sell, 0.25m, 61_000m, TimeInForce.ImmediateOrCancel), CancellationToken.None);
+        VenueOrderReport report = await gateway.FindAsync(Key, perp, InstrumentType.Perp, Names with { VenueId = id }, CancellationToken.None);
+        Func<Task> half = () => gateway.PlaceAsync(Key, perp, Order(InstrumentType.Perp, OrderSide.Buy, 0.00015m, 61_000m), CancellationToken.None);
+
+        perp.Should().Be(new VenueInstrument("BTC_USDT", 0.0001m, 0.1m, 0.0001m, 0m));
+        id.Should().Be("15675394");
+        (HttpRequestMessage leverage, string noBody) = handler.Sent[1];
+        leverage.RequestUri!.PathAndQuery.Should().Be("/api/v4/futures/usdt/positions/BTC_USDT/leverage?leverage=0&cross_leverage_limit=3");
+        noBody.Should().BeEmpty();
+        string emptyHash = Convert.ToHexString(SHA512.HashData([])).ToLowerInvariant();
+        leverage.Headers.GetValues("SIGN").Single().Should().Be(Sign512("secret-1", $"POST\n/api/v4/futures/usdt/positions/BTC_USDT/leverage\nleverage=0&cross_leverage_limit=3\n{emptyHash}\n1795000000"));
+        (HttpRequestMessage placed, string body) = handler.Sent[2];
+        // A sell is a negative number of contracts: a quarter of a bitcoin is 2,500 of them.
+        body.Should().Be("""{"contract":"BTC_USDT","size":-2500,"price":"61000","tif":"ioc","text":"t-kft42xa1b2c3d4e5f6"}""");
+        placed.Headers.GetValues("Timestamp").Single().Should().Be("1795000000");
+        placed.Headers.GetValues("SIGN").Single().Should().Be(Sign512("secret-1", $"POST\n/api/v4/futures/usdt/orders\n\n{Convert.ToHexString(SHA512.HashData(Encoding.UTF8.GetBytes(body))).ToLowerInvariant()}\n1795000000"));
+        report.Should().Be(new VenueOrderReport(VenueOrderState.Done, 0.1m, 6_100.6m, 3.0503m, "15675394", "ioc"));
+        await half.Should().ThrowAsync<VenueRefusedException>();
+    }
+
+    [Fact]
+    public async Task Gate_FindsAnOrderWhoseAnswerWasLost_AmongTheFinishedOnes_WhenItNoLongerAnswersToOurName()
+    {
+        (HttpClient http, Stub handler) = Client((request, _) => request.RequestUri!.AbsolutePath switch
+        {
+            "/api/v4/spot/orders" when request.RequestUri.Query.Contains("status=finished", StringComparison.Ordinal) => (HttpStatusCode.OK, """[{"id":"111","text":"t-someone-else","status":"closed","amount":"1","left":"0","filled_total":"9"},{"id":"222","text":"t-kft42xa1b2c3d4e5f6","currency_pair":"BTC_USDT","status":"cancelled","finish_as":"ioc","amount":"0.02","left":"0.005","filled_amount":"0.015","filled_total":"914.25","fee":"0.000015","fee_currency":"BTC","gt_fee":"0","point_fee":"0"}]"""),
+            _ => (HttpStatusCode.NotFound, """{"label":"ORDER_NOT_FOUND","message":"Order not found"}"""),
+        });
+        GateOrderGateway gateway = new(http, new SetClock());
+        VenueInstrument spot = new("BTC_USDT", 0.000001m, 0.1m, 0.000001m, 3m);
+
+        VenueOrderReport found = await gateway.FindAsync(Key, spot, InstrumentType.Spot, Names, CancellationToken.None);
+        VenueOrderReport none = await gateway.FindAsync(Key, spot, InstrumentType.Spot, new OrderNames("kft1x000000000000", null), CancellationToken.None);
+        VenueOrderReport gone = await gateway.FindAsync(Key, spot, InstrumentType.Spot, Names with { VenueId = "999" }, CancellationToken.None);
+
+        handler.Sent[0].Request.RequestUri!.PathAndQuery.Should().Be("/api/v4/spot/orders/t-kft42xa1b2c3d4e5f6?currency_pair=BTC_USDT");
+        found.Should().Be(new VenueOrderReport(VenueOrderState.Done, 0.015m, 914.25m, 0.91425m, "222", "ioc"));
+        none.State.Should().Be(VenueOrderState.NotFound);
+        // With Gate's own id there is nothing to search for: its answer stands.
+        gone.State.Should().Be(VenueOrderState.NotFound);
+        handler.Sent.Count(s => s.Request.RequestUri!.Query.Contains("status=finished", StringComparison.Ordinal)).Should().Be(2);
+    }
+
+    private static string Sign512(string secret, string text) => Convert.ToHexString(HMACSHA512.HashData(Encoding.UTF8.GetBytes(secret), Encoding.UTF8.GetBytes(text))).ToLowerInvariant();
+
+    // ------------------------------------------------------------ Kraken
+
+    [Fact]
+    public void Kraken_SignatureMatchesTheExampleInItsOwnDocumentation()
+    {
+        byte[] secret = Convert.FromBase64String("kQH5HW/8p1uGOVjbgWA7FunAmGO8lsSUXNsu3eow76sz84Q18fWxnyRzBHCd3pd5nE9qa99HAZtuZuj6F1huXg==");
+
+        string signature = KrakenOrderGateway.Sign(secret, "/0/private/AddOrder", "1616492376594", "nonce=1616492376594&ordertype=limit&pair=XBTUSD&price=37500&type=buy&volume=1.25");
+
+        signature.Should().Be("4/dpxb3iT4tp/ZCVEwSnEsLxx0bqyhLpdfOpc6fn7OR8+UClSV5n9E6aSS8MPtnRfp32bAb0nmbRn6H8ndwLUQ==");
+    }
+
+    [Fact]
+    public async Task Kraken_ReadsItsVerdictFromTheAnswer_AndFindsALostOrderByOurNameAmongOpenAndClosedOrders()
+    {
+        string secret = Convert.ToBase64String(Encoding.UTF8.GetBytes("kraken-secret"));
+        VenueCredentials key = new("kr-key", secret);
+        string ours = KrakenOrderGateway.ClientOrderId(Names.ClientId);
+        (HttpClient http, Stub handler) = Client((request, body) => request.RequestUri!.AbsolutePath switch
+        {
+            "/0/private/AddOrder" when body.Contains("volume=9", StringComparison.Ordinal) => (HttpStatusCode.OK, """{"error":["EOrder:Insufficient funds"]}"""),
+            "/0/private/AddOrder" when body.Contains("volume=8", StringComparison.Ordinal) => (HttpStatusCode.OK, """{"error":["EService:Deadline elapsed"]}"""),
+            "/0/private/AddOrder" => (HttpStatusCode.OK, """{"error":[],"result":{"descr":{"order":"buy 0.0125 XBTUSD @ limit 61000.5"},"txid":["OUF4EM-FRGI2-MQMWZD"]}}"""),
+            "/0/private/OpenOrders" => (HttpStatusCode.OK, """{"error":[],"result":{"open":{}}}"""),
+            "/0/private/ClosedOrders" => (HttpStatusCode.OK, $$$"""{"error":[],"result":{"closed":{"OAAAAA-BBBBB-CCCCCC":{"status":"canceled","cl_ord_id":"{{{ours}}}","vol":"0.02","vol_exec":"0.015","cost":"914.25","fee":"2.37705","price":"60950.0","reason":"User requested"}},"count":1}}"""),
+            _ => (HttpStatusCode.OK, """{"error":[],"result":{"OUF4EM-FRGI2-MQMWZD":{"status":"open","vol":"0.0125","vol_exec":"0","cost":"0","fee":"0"}}}"""),
+        });
+        KrakenOrderGateway gateway = new(http, new SetClock());
+        VenueInstrument btc = new("XBTUSD", 0.00000001m, 0.1m, 0.00006m, 0.5m);
+
+        string? id = await gateway.PlaceAsync(key, btc, Order(InstrumentType.Spot, OrderSide.Buy, 0.0125m, 61_000.5m, TimeInForce.PostOnly), CancellationToken.None);
+        Func<Task> poor = () => gateway.PlaceAsync(key, btc, Order(InstrumentType.Spot, OrderSide.Buy, 9m, 61_000m), CancellationToken.None);
+        Func<Task> late = () => gateway.PlaceAsync(key, btc, Order(InstrumentType.Spot, OrderSide.Buy, 8m, 61_000m), CancellationToken.None);
+        VenueOrderReport byId = await gateway.FindAsync(key, btc, InstrumentType.Spot, Names with { VenueId = id }, CancellationToken.None);
+        VenueOrderReport lost = await gateway.FindAsync(key, btc, InstrumentType.Spot, Names, CancellationToken.None);
+
+        id.Should().Be("OUF4EM-FRGI2-MQMWZD");
+        (HttpRequestMessage placed, string body) = handler.Sent[0];
+        body.Should().MatchRegex($"^nonce=\\d+&ordertype=limit&type=buy&volume=0\\.0125&pair=XBTUSD&price=61000\\.5&cl_ord_id={ours}&timeinforce=GTC&oflags=fciq%2Cpost$");
+        string nonce = body[6..body.IndexOf('&', StringComparison.Ordinal)];
+        placed.Headers.GetValues("API-Sign").Single().Should().Be(KrakenOrderGateway.Sign(Encoding.UTF8.GetBytes("kraken-secret"), "/0/private/AddOrder", nonce, body));
+        placed.Headers.GetValues("API-Key").Single().Should().Be("kr-key");
+        // Refused is refused; "the deadline elapsed" is, in Kraken's own words, an order that may have been placed.
+        await poor.Should().ThrowAsync<VenueRefusedException>();
+        await late.Should().ThrowAsync<VenueUnclearException>();
+        byId.Should().Be(new VenueOrderReport(VenueOrderState.Open, 0m, 0m, null, "OUF4EM-FRGI2-MQMWZD"));
+        lost.Should().Be(new VenueOrderReport(VenueOrderState.Done, 0.015m, 914.25m, 2.37705m, "OAAAAA-BBBBB-CCCCCC"));
+        // Every request for the key carries a larger number than the one before, even within the same instant.
+        List<long> nonces = handler.Sent.Select(sent => long.Parse((sent.Body.Contains('&', StringComparison.Ordinal) ? sent.Body[..sent.Body.IndexOf('&', StringComparison.Ordinal)] : sent.Body)[6..], System.Globalization.CultureInfo.InvariantCulture)).ToList();
+        nonces.Should().BeInAscendingOrder().And.OnlyHaveUniqueItems();
+    }
+
+    [Fact]
+    public void Kraken_NamesAndKeyPermissions_AreReadAsKrakenGivesThem()
+    {
+        static CredentialCheck Check(string permissions) => KrakenAdapter.Permissions(JsonDocument.Parse($$"""{"api_key_name":"bot","permissions":[{{permissions}}],"ip_allowlist":[]}""").RootElement);
+
+        KrakenOrderGateway.Ours("XXBT").Should().Be("BTC");
+        KrakenOrderGateway.Ours("XXDG").Should().Be("DOGE");
+        KrakenOrderGateway.Ours("ZUSD").Should().Be("USD");
+        KrakenOrderGateway.Ours("USDT.F").Should().Be("USDT");
+        // Newer assets carry no letter in front, also when they happen to begin with one.
+        KrakenOrderGateway.Ours("ZETA").Should().Be("ZETA");
+        KrakenOrderGateway.Ours("XRP").Should().Be("XRP");
+        Check("\"query-funds\",\"query-open-trades\"").Should().Be(new CredentialCheck(false, false));
+        Check("\"query-funds\",\"modify-trades\",\"close-trades\"").Should().Be(new CredentialCheck(true, false));
+        Check("\"modify-trades\",\"withdraw-funds\"").Should().Be(new CredentialCheck(true, true));
+        Check("\"query-funds\",\"add-withdraw-address\"").Should().Be(new CredentialCheck(false, true));
+        KrakenAdapter.Permissions(JsonDocument.Parse("""{"apiKeyName":"bot"}""").RootElement).Should().Be(new CredentialCheck(null, null));
     }
 }

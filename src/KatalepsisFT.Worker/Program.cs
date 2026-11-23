@@ -102,6 +102,7 @@ if (hasPostgres && group.ToLowerInvariant() is WorkerGroups.Exec)
     builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.CoinbaseSpotBookStream>();
     builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.KrakenSpotBookStream>();
     builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.DeribitPerpBookStream>();
+    builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookPoller, KatalepsisFT.Infrastructure.Execution.MexcSpotBookPoller>();
     builder.Services.AddHostedService<MarketDataWorker>();
     // Real orders. The gateway and the opened trading keys exist only in this service.
     builder.Services.AddSingleton<OpenedTradingKeys>();
@@ -125,6 +126,18 @@ if (hasPostgres && group.ToLowerInvariant() is WorkerGroups.Exec)
     builder.Services.AddHttpClient(KatalepsisFT.Venues.Deribit.DeribitOrderGateway.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(8));
     builder.Services.AddSingleton<KatalepsisFT.Application.Execution.IOrderGateway>(provider =>
         new KatalepsisFT.Venues.Deribit.DeribitOrderGateway(provider.GetRequiredService<IHttpClientFactory>().CreateClient(KatalepsisFT.Venues.Deribit.DeribitOrderGateway.HttpClientName), provider.GetRequiredService<TimeProvider>()));
+    builder.Services.AddHttpClient(KatalepsisFT.Venues.Coinbase.CoinbaseOrderGateway.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(8));
+    builder.Services.AddSingleton<KatalepsisFT.Application.Execution.IOrderGateway>(provider =>
+        new KatalepsisFT.Venues.Coinbase.CoinbaseOrderGateway(provider.GetRequiredService<IHttpClientFactory>().CreateClient(KatalepsisFT.Venues.Coinbase.CoinbaseOrderGateway.HttpClientName), provider.GetRequiredService<TimeProvider>()));
+    builder.Services.AddHttpClient(KatalepsisFT.Venues.Mexc.MexcOrderGateway.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(8));
+    builder.Services.AddSingleton<KatalepsisFT.Application.Execution.IOrderGateway>(provider =>
+        new KatalepsisFT.Venues.Mexc.MexcOrderGateway(provider.GetRequiredService<IHttpClientFactory>().CreateClient(KatalepsisFT.Venues.Mexc.MexcOrderGateway.HttpClientName), provider.GetRequiredService<TimeProvider>()));
+    builder.Services.AddHttpClient(KatalepsisFT.Venues.Rest.GateOrderGateway.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(8));
+    builder.Services.AddSingleton<KatalepsisFT.Application.Execution.IOrderGateway>(provider =>
+        new KatalepsisFT.Venues.Rest.GateOrderGateway(provider.GetRequiredService<IHttpClientFactory>().CreateClient(KatalepsisFT.Venues.Rest.GateOrderGateway.HttpClientName), provider.GetRequiredService<TimeProvider>()));
+    builder.Services.AddHttpClient(KatalepsisFT.Venues.Rest.KrakenOrderGateway.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(8));
+    builder.Services.AddSingleton<KatalepsisFT.Application.Execution.IOrderGateway>(provider =>
+        new KatalepsisFT.Venues.Rest.KrakenOrderGateway(provider.GetRequiredService<IHttpClientFactory>().CreateClient(KatalepsisFT.Venues.Rest.KrakenOrderGateway.HttpClientName), provider.GetRequiredService<TimeProvider>()));
     builder.Services.AddScoped<KatalepsisFT.Application.Execution.LiveExecution>();
     builder.Services.AddHostedService<OrderEngineWorker>();
     builder.Services.AddHostedService<LiveOrdersWorker>();

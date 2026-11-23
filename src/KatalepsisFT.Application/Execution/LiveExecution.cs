@@ -16,6 +16,12 @@ public sealed class LivePacing
 {
     private readonly ConcurrentDictionary<long, DateTimeOffset> _asked = new();
     private readonly ConcurrentDictionary<long, DateTimeOffset> _cancelSent = new();
+    private readonly ConcurrentDictionary<long, DateTimeOffset> _missingSince = new();
+
+    /// <summary>Since when the venue has been saying it has no such order; cleared as soon as it has it again.</summary>
+    public DateTimeOffset MissingSince(long orderId, DateTimeOffset now) => _missingSince.GetOrAdd(orderId, now);
+
+    public void Seen(long orderId) => _missingSince.TryRemove(orderId, out _);
 
     public bool MayAsk(long orderId, DateTimeOffset now, TimeSpan every) => Due(_asked, orderId, now, every);
 
@@ -27,6 +33,7 @@ public sealed class LivePacing
     {
         _asked.TryRemove(orderId, out _);
         _cancelSent.TryRemove(orderId, out _);
+        _missingSince.TryRemove(orderId, out _);
     }
 
     private static bool Due(ConcurrentDictionary<long, DateTimeOffset> last, long orderId, DateTimeOffset now, TimeSpan every)
@@ -68,6 +75,8 @@ public sealed class LiveExecution(IFtDbContext database, IEnumerable<IOrderGatew
 
     /// <summary>How long a new order waits for the venue's rules for its instrument before it is refused.</summary>
     public static readonly TimeSpan RulesWait = TimeSpan.FromSeconds(10);
+    /// <summary>How long a venue has to keep saying it no longer has an order it once took before the order is closed here.</summary>
+    public static readonly TimeSpan GoneAfter = TimeSpan.FromSeconds(10);
     public static readonly TimeSpan AskEvery = TimeSpan.FromMilliseconds(500);
     public static readonly TimeSpan CancelEvery = TimeSpan.FromSeconds(3);
     public static readonly TimeSpan ReadAccountEvery = TimeSpan.FromSeconds(5);
@@ -334,13 +343,25 @@ public sealed class LiveExecution(IFtDbContext database, IEnumerable<IOrderGatew
 
         if (report.State == VenueOrderState.NotFound)
         {
-            if (unanswered && now - order.SentAt > GiveUpAfter)
+            if (unanswered)
             {
-                Close(order, OrderStatus.Rejected, OrderEventKind.Rejected, now, $"{venue} has no such order {(now - order.SentAt!.Value).TotalSeconds:0} seconds after it was sent: it never arrived. Nothing was traded.");
+                if (now - order.SentAt > GiveUpAfter)
+                {
+                    Close(order, OrderStatus.Rejected, OrderEventKind.Rejected, now, $"{venue} has no such order {(now - order.SentAt!.Value).TotalSeconds:0} seconds after it was sent: it never arrived. Nothing was traded.");
+                }
+            }
+            else if (now - pacing.MissingSince(order.Id, now) >= GoneAfter)
+            {
+                // The venue took this order and now, asked several times over, no longer has it. Venues drop orders
+                // that were cancelled with nothing (more) filled, some within minutes. What had filled is on record.
+                string how = pacing.CancelWasSent(order.Id) ? halted ? "Cancelled by the kill switch." : "Cancelled on request." : $"Cancelled at {venue}: it no longer has the order.";
+                Close(order, OrderStatus.Cancelled, OrderEventKind.Cancelled, now, order.FilledQuantity > 0m ? how : how + " Nothing was filled.");
             }
 
             return;
         }
+
+        pacing.Seen(order.Id);
 
         if (unanswered)
         {

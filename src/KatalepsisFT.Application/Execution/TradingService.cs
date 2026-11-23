@@ -194,8 +194,15 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
     public const string DemoIsFixed = "The example fund cannot trade.";
     public const int MaxOrdersListed = 300;
 
+    /// <summary>
+    /// Venues that offer no way to ask what a key is allowed to do. A trading key for one of them is accepted once it
+    /// works, as Katalepsis accepts it, and the request for approval says in so many words that its permissions were
+    /// not checked. Everywhere else a key that cannot be shown to be unable to withdraw is refused.
+    /// </summary>
+    public static readonly IReadOnlyList<Venue> UncheckableVenues = [Venue.CoinbaseExchange, Venue.Kraken, Venue.Gate, Venue.Mexc];
+
     /// <summary>The venues real orders can be sent to. The others trade on paper only.</summary>
-    public static readonly IReadOnlyList<Venue> LiveVenues = [Venue.Kucoin, Venue.Binance, Venue.Bybit, Venue.Okx, Venue.Bitget, Venue.Deribit];
+    public static readonly IReadOnlyList<Venue> LiveVenues = [Venue.Kucoin, Venue.Binance, Venue.Bybit, Venue.Okx, Venue.Bitget, Venue.Deribit, Venue.CoinbaseExchange, Venue.Mexc, Venue.Gate, Venue.Kraken];
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -473,6 +480,7 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
         string venueName = VenueExposureService.NameOf(account.Venue);
         VenueCredentials credentials = new(request.ApiKey.Trim(), request.ApiSecret.Trim(), string.IsNullOrWhiteSpace(request.Passphrase) ? null : request.Passphrase.Trim());
         string checkedHow;
+        string? uncheckedNotice = null;
         if (account.Venue == Venue.Hyperliquid)
         {
             // Hyperliquid trades through an "API wallet": a second key that can place orders for the account and, by the venue's design, cannot move funds out.
@@ -513,22 +521,31 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
 
             if (check.CanWithdraw is null || check.CanTrade is null)
             {
-                return TradingChange<int>.Refused($"{venueName} does not say what this key may do, so it cannot be confirmed that it cannot withdraw. It is not accepted.");
-            }
+                if (!UncheckableVenues.Contains(account.Venue))
+                {
+                    return TradingChange<int>.Refused($"{venueName} did not say what this key may do, so it cannot be confirmed that it cannot withdraw. It is not accepted.");
+                }
 
-            if (check.CanTrade != true)
+                // These venues have no way to ask what a key may do. The key works, and that is all that is known:
+                // whether it can withdraw has to be looked at on the venue itself, by the person who approves.
+                checkedHow = $"NOT CHECKED: {venueName} cannot say what a key may do. Before approving, look at the key on {venueName} and make sure withdrawal is switched off";
+                uncheckedNotice = $"The key works, but {venueName} cannot say what it may do. Whoever approves must first look at the key on {venueName} and make sure it cannot withdraw.";
+            }
+            else if (check.CanTrade != true)
             {
                 return TradingChange<int>.Refused($"This key cannot trade. Create a key on {venueName} with trading switched on and withdrawals off.");
             }
-
-            checkedHow = $"{venueName} confirms it can trade and cannot withdraw";
+            else
+            {
+                checkedHow = $"{venueName} confirms it can trade and cannot withdraw";
+            }
         }
 
         string hint = credentials.ApiKey.Length <= 4 ? credentials.ApiKey : credentials.ApiKey[^4..];
         string sealedKey = await vault.SealAsync(credentials, cancellationToken);
         ApprovalRequest asked = Ask(ApprovalKind.AddTradingKey, account.ManagerAccount.Sleeve.FundId, account.Id, null, $"Store trading key …{hint} for {account.ManagerAccount.Name} on {venueName} ({checkedHow})", new { SealedKey = sealedKey, KeyHint = hint }, actor);
         await database.SaveChangesAsync(cancellationToken);
-        return TradingChange<int>.Ok(asked.Id, "The key passed its check and is sealed. It is stored on the account once a second person approves.");
+        return TradingChange<int>.Ok(asked.Id, uncheckedNotice ?? "The key passed its check and is sealed. It is stored on the account once a second person approves.");
     }
 
     // ---------------------------------------------------------------- kill switches

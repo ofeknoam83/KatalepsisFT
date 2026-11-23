@@ -132,6 +132,9 @@ public class LiveExecutionTests(TestDatabase database) : IClassFixture<TestDatab
             services.AddSingleton<IBookFeed, LocalBookFeed>();
             services.AddSingleton<IExecutionSignal, NoExecutionSignal>();
             services.AddSingleton<IVenueAdapter>(KucoinReader);
+            // Two readers that answer "the key works" and nothing about what it may do.
+            services.AddSingleton<IVenueAdapter>(new FakeVenue(Venue.Mexc) { Check = new CredentialCheck(null, null) });
+            services.AddSingleton<IVenueAdapter>(new FakeVenue(Venue.Okx, needsPassphrase: true) { Check = new CredentialCheck(null, null) });
             services.AddScoped<ExecutionEngine>();
         });
         using (IServiceScope scope = _app.Services.CreateScope())
@@ -404,6 +407,55 @@ public class LiveExecutionTests(TestDatabase database) : IClassFixture<TestDatab
         cancelled.FilledQuantity.Should().Be(0.05m);
         cancelled.Events.Select(e => e.Kind).Should().ContainInOrder(OrderEventKind.Fill, OrderEventKind.CancelRequested, OrderEventKind.Cancelled);
         cancelled.Events[^1].Detail.Should().Be("Cancelled on request.");
+    }
+
+    [Fact]
+    public async Task OrderTheVenueOnceTookAndNoLongerHas_IsClosedAsCancelled_OnlyAfterItHasBeenMissingForAWhile()
+    {
+        (_, int accountId) = await NewLiveAccountAsync();
+        long id = await SendAsync(accountId, OrderSide.Buy, 0.2m, 59_500m);
+        await StepAsync(id);
+        string name = _venue.Placed.Single().ClientId;
+        _venue.Trade(name, 0.05m, 2_975m, 2.975m, done: false);
+        Clock.Now += TimeSpan.FromSeconds(1);
+        await StepAsync(id);
+
+        // Some venues forget an order once it is cancelled with nothing more filled.
+        _venue.Known.Remove(name);
+        Clock.Now += TimeSpan.FromSeconds(1);
+        await StepAsync(id);
+        Clock.Now += TimeSpan.FromSeconds(5);
+        await StepAsync(id);
+        OrderDto missingBriefly = await OrderAsync(id);
+        Clock.Now += TimeSpan.FromSeconds(6);
+        await StepAsync(id);
+        OrderDto gone = await OrderAsync(id);
+
+        missingBriefly.Status.Should().Be(OrderStatus.PartlyFilled);
+        gone.Status.Should().Be(OrderStatus.Cancelled);
+        gone.FilledQuantity.Should().Be(0.05m);
+        gone.Events[^1].Detail.Should().Be("Cancelled at KuCoin: it no longer has the order.");
+    }
+
+    [Fact]
+    public async Task KeyOnAVenueThatCannotSayWhatAKeyMayDo_IsAccepted_WithTheApproverToldItWasNotChecked()
+    {
+        NewFundRequest request = new($"Unchecked {Guid.NewGuid():N}", null, [new NewSleeveRequest("Core", MandateType.Directional, [new NewManagerRequest("Desk", 0m)])], FundKind.Fund, null);
+        int fundId = (await (await _admin.PostAsJsonAsync("/api/funds", request, Json)).Content.ReadFromJsonAsync<FundCreatedDto>(Json))!.Id;
+        int managerId = (await _admin.GetFromJsonAsync<StructureDto>($"/api/funds/{fundId}/structure", Json))!.Sleeves[0].Managers[0].Id;
+        int mexc = (await (await _admin.PostAsJsonAsync("/api/trading-accounts", new SaveTradingAccountRequest(managerId, Venue.Mexc, "Main", 1m, MarginMode.Cross, 1_000m, 5_000m, 100, 0m), Json)).Content.ReadFromJsonAsync<Answer<int>>(Json))!.Value;
+        int okx = (await (await _admin.PostAsJsonAsync("/api/trading-accounts", new SaveTradingAccountRequest(managerId, Venue.Okx, "Main", 1m, MarginMode.Cross, 1_000m, 5_000m, 100, 0m), Json)).Content.ReadFromJsonAsync<Answer<int>>(Json))!.Value;
+
+        HttpResponseMessage accepted = await _admin.PostAsJsonAsync($"/api/trading-accounts/{mexc}/key", new TradingKeyRequest("mexc-key-4321", "secret", null), Json);
+        HttpResponseMessage refused = await _admin.PostAsJsonAsync($"/api/trading-accounts/{okx}/key", new TradingKeyRequest("okx-key-4321", "secret", "phrase"), Json);
+        ApprovalDto asked = (await _admin.GetFromJsonAsync<TradingDto>($"/api/funds/{fundId}/trading", Json))!.Approvals.Single();
+
+        accepted.StatusCode.Should().Be(HttpStatusCode.OK, await accepted.Content.ReadAsStringAsync());
+        (await accepted.Content.ReadFromJsonAsync<Answer<int>>(Json))!.Notice.Should().Contain("cannot say what it may do").And.Contain("make sure it cannot withdraw");
+        asked.Summary.Should().Contain("NOT CHECKED").And.Contain("withdrawal is switched off");
+        // A venue that can say, and for once did not, is still refused.
+        refused.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await refused.Content.ReadFromJsonAsync<ErrorResponse>(Json))!.Message.Should().Contain("did not say what this key may do");
     }
 
     [Fact]

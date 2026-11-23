@@ -33,7 +33,33 @@ public sealed class KrakenAdapter(HttpClient http, TimeProvider clock) : IVenueA
     public async Task<CredentialCheck> CheckCredentialsAsync(VenueCredentials credentials, CancellationToken cancellationToken)
     {
         await PrivateAsync(credentials, "/0/private/Balance", [], cancellationToken);
-        return new CredentialCheck(null, null);
+        try
+        {
+            return Permissions(await PrivateAsync(credentials, "/0/private/GetApiKeyInfo", [], cancellationToken));
+        }
+        catch (VenueException)
+        {
+            // The key works (the balance was read); what it may do could not be asked.
+            return new CredentialCheck(null, null);
+        }
+    }
+
+    /// <summary>
+    /// What the key may do, from Kraken's own description of it: "modify-trades" and "close-trades" are trading,
+    /// "withdraw-funds" and the two about withdrawal addresses are taking money out.
+    /// </summary>
+    public static CredentialCheck Permissions(JsonElement info)
+    {
+        if (info.ValueKind != JsonValueKind.Object || !info.TryGetProperty("permissions", out JsonElement permissions) || permissions.ValueKind != JsonValueKind.Array)
+        {
+            return new CredentialCheck(null, null);
+        }
+
+        List<string> given = permissions.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()!.ToLowerInvariant()).ToList();
+        string[] harmless = ["query-funds", "query-open-trades", "query-closed-trades", "query-ledger", "export-data", "create-ws-token"];
+        string[] moving = ["withdraw-funds", "add-withdraw-address", "update-withdraw-address"];
+        // Anything not known to be harmless is treated as able to trade, so a new permission cannot slip through.
+        return new CredentialCheck(given.Any(g => !harmless.Contains(g) && !moving.Contains(g)), given.Any(g => moving.Contains(g)));
     }
 
     public async Task<VenueSnapshot> GetSnapshotAsync(VenueCredentials credentials, CancellationToken cancellationToken)

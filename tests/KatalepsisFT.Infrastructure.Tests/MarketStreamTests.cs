@@ -263,6 +263,20 @@ public class MarketStreamTests
     }
 
     [Fact]
+    public void MexcSpot_IsAskedForByAddress_AndReadFromItsAnswer()
+    {
+        MexcSpotBookPoller poller = new();
+
+        (IReadOnlyList<BookLevel> bids, IReadOnlyList<BookLevel> asks) = poller.Read("""{"lastUpdateId":87439538732,"bids":[["61243.92","0.01113306"],["61243.84","0.42714000"]],"asks":[["61243.93","0.00868192"],["61244.00","0.00000000"]]}""")!.Value;
+
+        poller.Address("btc").AbsoluteUri.Should().Be("https://api.mexc.com/api/v3/depth?symbol=BTCUSDT&limit=20");
+        bids.Should().Equal(new BookLevel(61243.92m, 0.01113306m), new BookLevel(61243.84m, 0.42714m));
+        asks.Should().Equal(new BookLevel(61243.93m, 0.00868192m));
+        poller.Read("""{"code":-1121,"msg":"Invalid symbol."}""").Should().BeNull();
+        poller.Every.Should().BeLessThan(ConsolidatedBook.MaxAge);
+    }
+
+    [Fact]
     public void ConsolidatedBook_DropsAVenueWhoseStreamFell_AndOneThatHasGoneQuiet()
     {
         SetClock clock = new() { Now = new DateTimeOffset(2026, 11, 23, 12, 0, 0, TimeSpan.Zero) };

@@ -31,6 +31,7 @@ public sealed record ExecutionOptions(IReadOnlyList<string> Assets, string? Mast
 /// </summary>
 public sealed class MarketDataWorker(
     IEnumerable<BookStream> streams,
+    IEnumerable<BookPoller> pollers,
     ConsolidatedBook books,
     VenueStatusBoard board,
     IConnectionMultiplexer keyValue,
@@ -49,6 +50,7 @@ public sealed class MarketDataWorker(
         logger.LogInformation("Following {Assets} on {Venues}.", string.Join(", ", options.Assets), string.Join(", ", all.Select(s => $"{s.Venue} {s.Type}")));
         List<Task> running = all.Select(s => new BookStreamRunner(s, books, board, clients.CreateClient("exec"), clock, logger).RunAsync(options.Assets, stoppingToken)).ToList();
         running.AddRange(all.Select(s => TimeAsync(s, stoppingToken)));
+        running.AddRange(pollers.Select(p => p.RunAsync(options.Assets, books, board, clients.CreateClient("exec"), clock, logger, stoppingToken)));
         running.Add(PublishAsync(all.Select(s => s.Venue).Distinct().ToList(), stoppingToken));
         await Task.WhenAll(running);
     }

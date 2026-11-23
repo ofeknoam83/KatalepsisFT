@@ -170,4 +170,66 @@ public class LiveVenueChecks
         await findPerp.Should().ThrowAsync<KatalepsisFT.Application.Execution.VenueRefusedException>();
         await account.Should().ThrowAsync<KatalepsisFT.Application.Execution.VenueRefusedException>();
     }
+
+    /// <summary>The gateways for the venues Katalepsis trades or that came after, against the real venues without a key.</summary>
+    [Theory]
+    [InlineData("Coinbase", true, false)]
+    [InlineData("Mexc", true, false)]
+    [InlineData("Kraken", true, false)]
+    [InlineData("Gate", true, true)]
+    public async Task LaterOrderGateway_ReadsTheVenuesRules_AndIsRefusedWithAKeyThatDoesNotExist(string venue, bool hasSpot, bool hasPerp)
+    {
+        if (!Enabled)
+        {
+            return;
+        }
+
+        HttpClient http = new() { Timeout = TimeSpan.FromSeconds(20) };
+        // Coinbase and Kraken hand their secrets out encoded, so the made-up one is encoded too.
+        VenueCredentials nonsense = new("0123456789abcdef0123456789abcdef", Convert.ToBase64String(new byte[48]), "notarealphrase1");
+        KatalepsisFT.Application.Execution.IOrderGateway gateway = venue switch
+        {
+            "Coinbase" => new KatalepsisFT.Venues.Coinbase.CoinbaseOrderGateway(http, TimeProvider.System),
+            "Mexc" => new KatalepsisFT.Venues.Mexc.MexcOrderGateway(http, TimeProvider.System),
+            "Kraken" => new KrakenOrderGateway(http, TimeProvider.System),
+            _ => new GateOrderGateway(http, TimeProvider.System),
+        };
+        KatalepsisFT.Application.Execution.OrderNames unknown = new("kft1x000000000000", null);
+
+        if (hasSpot)
+        {
+            KatalepsisFT.Application.Execution.VenueInstrument spot = (await gateway.InstrumentAsync("BTC", KatalepsisFT.Domain.Instruments.InstrumentType.Spot, CancellationToken.None))!;
+            KatalepsisFT.Application.Execution.VenueInstrument doge = (await gateway.InstrumentAsync("DOGE", KatalepsisFT.Domain.Instruments.InstrumentType.Spot, CancellationToken.None))!;
+            Console.WriteLine($"{venue} spot {spot}; {doge}");
+            spot.QuantityStep.Should().BeInRange(0.00000001m, 0.001m);
+            spot.PriceStep.Should().BeInRange(0.01m, 1m);
+            doge.QuantityStep.Should().BeLessThanOrEqualTo(1m);
+            (await gateway.InstrumentAsync("NOSUCHCOIN", KatalepsisFT.Domain.Instruments.InstrumentType.Spot, CancellationToken.None)).Should().BeNull();
+            Func<Task> find = () => gateway.FindAsync(nonsense, spot, KatalepsisFT.Domain.Instruments.InstrumentType.Spot, unknown, CancellationToken.None);
+            if (venue == "Coinbase")
+            {
+                // Coinbase answers a made-up key with "internal server error", which says nothing either way. What
+                // matters is that it is never read as "there is no such order".
+                await find.Should().ThrowAsync<KatalepsisFT.Application.Execution.VenueUnclearException>();
+                return;
+            }
+
+            Console.WriteLine($"{venue} refusal: {(await find.Should().ThrowAsync<KatalepsisFT.Application.Execution.VenueRefusedException>()).Which.Message}");
+        }
+
+        if (hasPerp)
+        {
+            KatalepsisFT.Application.Execution.VenueInstrument perp = (await gateway.InstrumentAsync("BTC", KatalepsisFT.Domain.Instruments.InstrumentType.Perp, CancellationToken.None))!;
+            Console.WriteLine($"{venue} perp {perp}");
+            perp.QuantityStep.Should().Be(0.0001m);
+            Func<Task> findPerp = () => gateway.FindAsync(nonsense, perp, KatalepsisFT.Domain.Instruments.InstrumentType.Perp, unknown, CancellationToken.None);
+            await findPerp.Should().ThrowAsync<KatalepsisFT.Application.Execution.VenueRefusedException>();
+        }
+        else
+        {
+            (await gateway.InstrumentAsync("BTC", KatalepsisFT.Domain.Instruments.InstrumentType.Perp, CancellationToken.None)).Should().BeNull();
+        }
+
+        await FluentActions.Invoking(() => gateway.AccountAsync(nonsense, CancellationToken.None)).Should().ThrowAsync<KatalepsisFT.Application.Execution.VenueRefusedException>();
+    }
 }
