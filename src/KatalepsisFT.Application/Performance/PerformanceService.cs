@@ -73,7 +73,8 @@ public sealed class PerformanceService(IFtDbContext database)
             double[] childSlice = childReturns[childStart..];
             int offset = series.Dates.IndexOf(child.Dates[childStart]);
             double[] childBenchmark = benchmarkReturns[offset..];
-            children.Add(new ChildPerformanceDto(kind, childId, name, child.Navs[^1], Stats(childSlice), Compare(childSlice, childBenchmark)));
+            (double contribution, decimal pnl, double weight) = Contribution(series, start, child);
+            children.Add(new ChildPerformanceDto(kind, childId, name, child.Navs[^1], Stats(childSlice), Compare(childSlice, childBenchmark), contribution, pnl, weight));
         }
 
         AttributionDto attribution = await AttributeAsync(resolved, scopeManagerIds, from, asOf, series, start, cancellationToken);
@@ -160,6 +161,49 @@ public sealed class PerformanceService(IFtDbContext database)
             Stats(benchmarkReturns),
             Compare(returns, benchmarkReturns)
         );
+    }
+
+    /// <summary>
+    /// What one child added to the scope's return from <paramref name="start"/> on. Each day the child's profit is
+    /// set against the money the whole scope had at work that day, and that day's share is scaled by how far the scope
+    /// had already grown, so the children's figures add up to the scope's compounded return exactly.
+    /// </summary>
+    public static (double Contribution, decimal PnlUsd, double AverageWeight) Contribution(NavSeries scope, int start, NavSeries child)
+    {
+        Dictionary<DateOnly, (decimal Pnl, decimal Previous)> byDay = [];
+        for (int k = 1; k < child.Dates.Count; k++)
+        {
+            byDay[child.Dates[k]] = (child.Navs[k] - child.Navs[k - 1] - child.Flows[k], child.Navs[k - 1]);
+        }
+
+        double contribution = 0,
+            growth = 1,
+            weights = 0;
+        decimal pnl = 0m;
+        int days = 0;
+        for (int t = start + 1; t < scope.Dates.Count; t++)
+        {
+            decimal invested = scope.Navs[t - 1] + scope.Flows[t];
+            double scopeReturn = invested > 0m ? (double)(scope.Navs[t] / invested) - 1.0 : 0.0;
+            if (byDay.TryGetValue(scope.Dates[t], out (decimal Pnl, decimal Previous) day))
+            {
+                pnl += day.Pnl;
+                if (invested > 0m)
+                {
+                    contribution += (double)(day.Pnl / invested) * growth;
+                }
+
+                if (scope.Navs[t - 1] > 0m)
+                {
+                    weights += (double)(day.Previous / scope.Navs[t - 1]);
+                }
+            }
+
+            days++;
+            growth *= 1.0 + scopeReturn;
+        }
+
+        return (contribution, Math.Round(pnl, 2), days == 0 ? 0.0 : weights / days);
     }
 
     // ---------------------------------------------------------------- scope

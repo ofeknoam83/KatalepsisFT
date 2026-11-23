@@ -73,11 +73,12 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 
       @if (d.children.length > 0) {
         <div class="panel">
-          <h3>{{ d.scope.kind === 'Fund' ? 'Sleeves' : 'Managers' }} against {{ d.benchmark.name }}</h3>
+          <h3>{{ d.scope.kind === 'Fund' ? 'Sleeves' : 'Managers' }}: where the return came from, and against {{ d.benchmark.name }} <span class="hint">Contributions add up to the total return</span></h3>
           <nz-table [nzData]="d.children" nzTemplateMode [nzShowPagination]="false" nzSize="small">
             <thead>
               <tr>
-                <th>Name</th><th class="num">NAV</th><th class="num">Return</th><th class="num">Excess</th><th class="num">Beta</th><th class="num">Correlation</th>
+                <th>Name</th><th class="num">NAV</th><th class="num">Avg weight</th><th class="num">Return</th>
+                <th class="num" title="The part of the total return this one produced. The rows add up to the total.">Contribution</th><th class="num">Profit and loss</th><th class="num">Excess</th><th class="num">Beta</th><th class="num">Correlation</th>
                 <th class="num">Tracking error</th><th class="num">Volatility</th><th class="num">Sharpe</th><th class="num">Max drawdown</th>
               </tr>
             </thead>
@@ -86,7 +87,10 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
                 <tr>
                   <td><a [routerLink]="[row.kind === 'Sleeve' ? '/sleeves' : '/managers', row.id]"><b>{{ row.name }}</b></a></td>
                   <td class="num">{{ row.navUsd | usd }}</td>
+                  <td class="num">{{ row.averageWeight | pct: 0 : false }}</td>
                   <td class="num" [class]="row.stats.totalReturn | tone">{{ row.stats.totalReturn | pct }}</td>
+                  <td class="num" [class]="row.contribution | tone"><b>{{ row.contribution | pct: 2 }}</b></td>
+                  <td class="num" [class]="row.pnlUsd | tone">{{ row.pnlUsd | usd }}</td>
                   <td class="num" [class]="row.comparison.excessReturn | tone">{{ row.comparison.excessReturn | pct }}</td>
                   <td class="num">{{ row.comparison.beta === null ? '–' : (row.comparison.beta | number: '1.2-2') }}</td>
                   <td class="num">{{ row.comparison.correlation === null ? '–' : (row.comparison.correlation | number: '1.2-2') }}</td>
@@ -97,8 +101,8 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
                 </tr>
               }
               <tr class="total-row">
-                <td>{{ d.scope.name }}</td><td class="num">{{ navTotal() | usd }}</td>
-                <td class="num">{{ d.stats.totalReturn | pct }}</td><td class="num">{{ d.comparison.excessReturn | pct }}</td>
+                <td>{{ d.scope.name }}</td><td class="num">{{ navTotal() | usd }}</td><td class="num">100%</td>
+                <td class="num">{{ d.stats.totalReturn | pct }}</td><td class="num">{{ contributionTotal() | pct: 2 }}</td><td class="num">{{ pnlTotal() | usd }}</td><td class="num">{{ d.comparison.excessReturn | pct }}</td>
                 <td class="num">{{ d.comparison.beta === null ? '–' : (d.comparison.beta | number: '1.2-2') }}</td>
                 <td class="num">{{ d.comparison.correlation === null ? '–' : (d.comparison.correlation | number: '1.2-2') }}</td>
                 <td class="num">{{ d.comparison.trackingError | pct: 1 : false }}</td><td class="num">{{ d.stats.volatility | pct: 1 : false }}</td>
@@ -213,6 +217,8 @@ export class PerformancePanel {
     const d = this.data();
     return d ? [{ label: 'Drawdown', data: d.drawdown, color: '#d03b3b', fill: true }] : [];
   });
+  protected readonly contributionTotal = computed(() => (this.data()?.children ?? []).reduce((sum, c) => sum + c.contribution, 0));
+  protected readonly pnlTotal = computed(() => (this.data()?.children ?? []).reduce((sum, c) => sum + c.pnlUsd, 0));
   protected readonly navTotal = computed(() => (this.data()?.children ?? []).reduce((sum, c) => sum + c.navUsd, 0));
   private readonly monthMax = computed(() => Math.max(0.05, ...(this.data()?.monthly ?? []).flatMap((m) => [Math.abs(m.portfolio), Math.abs(m.benchmark)])));
 

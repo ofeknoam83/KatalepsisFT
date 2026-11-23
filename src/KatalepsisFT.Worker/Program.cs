@@ -39,6 +39,7 @@ if (hasPostgres && group.ToLowerInvariant() is WorkerGroups.Cefi or WorkerGroups
     builder.Services.AddScoped<VenueAdapterRegistry>();
     builder.Services.AddScoped<ManagerBookWriter>();
     builder.Services.AddScoped<KatalepsisFT.Application.Risk.RiskService>();
+    builder.Services.AddScoped<KatalepsisFT.Application.Risk.VenueExposureService>();
     builder.Services.AddScoped<KatalepsisFT.Application.Alerts.AlertEvaluator>();
     builder.Services.AddScoped<KatalepsisFT.Application.Live.IntradayService>();
     builder.Services.AddSingleton<KatalepsisFT.Application.Live.IFundChangeNotifier, KatalepsisFT.Infrastructure.KeyValue.KeyValueFundChangeNotifier>();
@@ -56,6 +57,7 @@ if (hasPostgres && group.ToLowerInvariant() is WorkerGroups.Core)
     builder.Services.AddScoped<KatalepsisFT.Application.Prices.PriceBackfillService>();
     builder.Services.AddScoped<ManagerBookWriter>();
     builder.Services.AddScoped<KatalepsisFT.Application.Risk.RiskService>();
+    builder.Services.AddScoped<KatalepsisFT.Application.Risk.VenueExposureService>();
     builder.Services.AddScoped<KatalepsisFT.Application.Alerts.AlertEvaluator>();
     builder.Services.AddScoped<KatalepsisFT.Application.Live.IntradayService>();
     builder.Services.AddSingleton<KatalepsisFT.Application.Live.IFundChangeNotifier, KatalepsisFT.Infrastructure.KeyValue.KeyValueFundChangeNotifier>();

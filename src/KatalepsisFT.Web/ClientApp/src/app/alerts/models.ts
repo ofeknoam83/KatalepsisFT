@@ -10,7 +10,8 @@ export type AlertMetric =
   | 'DeepestManagerDrawdown'
   | 'SlowestDaysToLiquidate'
   | 'ValueAtRiskOverNav'
-  | 'DayReturn';
+  | 'DayReturn'
+  | 'LargestVenueOverNav';
 
 export const METRICS: { value: AlertMetric; label: string }[] = [
   { value: 'GrossExposureOverNav', label: 'Gross exposure ÷ NAV' },
@@ -20,6 +21,7 @@ export const METRICS: { value: AlertMetric; label: string }[] = [
   { value: 'SlowestDaysToLiquidate', label: 'Slowest asset, days to liquidate' },
   { value: 'ValueAtRiskOverNav', label: '1-day value at risk ÷ NAV' },
   { value: 'DayReturn', label: 'Day return' },
+  { value: 'LargestVenueOverNav', label: 'Largest share on one exchange or wallet type' },
 ];
 
 export interface AlertAction {

@@ -32,7 +32,10 @@ public sealed record PeriodReturnDto(string Label, double? Portfolio, double? Be
 
 public sealed record MonthlyReturnDto(string Month, double Portfolio, double Benchmark);
 
-public sealed record ChildPerformanceDto(PerformanceScope Kind, int Id, string Name, decimal NavUsd, StatsDto Stats, ComparisonDto Comparison);
+/// <param name="Contribution">The part of the scope's return over the period that this child produced. The children's contributions add up to the scope's return.</param>
+/// <param name="PnlUsd">What the child made or lost over the period, net of money in and out.</param>
+/// <param name="AverageWeight">The child's average share of the scope's NAV over the period.</param>
+public sealed record ChildPerformanceDto(PerformanceScope Kind, int Id, string Name, decimal NavUsd, StatsDto Stats, ComparisonDto Comparison, double Contribution, decimal PnlUsd, double AverageWeight);
 
 public sealed record PnlLineDto(string Key, decimal PnlUsd);
 

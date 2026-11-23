@@ -7,12 +7,20 @@ namespace KatalepsisFT.Web.Risk;
 /// <summary>Risk and liquidity of a fund, a sleeve or a manager on its latest valued day.</summary>
 [ApiController]
 [Route("api")]
-public sealed class RiskController(RiskService risk) : ControllerBase
+public sealed class RiskController(RiskService risk, VenueExposureService venues) : ControllerBase
 {
     [HttpGet("risk/{scope}/{id:int}")]
     public async Task<ActionResult<RiskDto>> RiskAsync(PerformanceScope scope, int id, CancellationToken cancellationToken)
     {
         RiskDto? result = await risk.GetAsync(scope, id, cancellationToken);
+        return result is null ? NotFound() : result;
+    }
+
+    /// <summary>Where the fund's money sits: its NAV split by the exchange or wallet type that holds it.</summary>
+    [HttpGet("funds/{fundId:int}/venues")]
+    public async Task<ActionResult<VenueExposureDto>> VenuesAsync(int fundId, CancellationToken cancellationToken)
+    {
+        VenueExposureDto? result = await venues.GetAsync(fundId, cancellationToken);
         return result is null ? NotFound() : result;
     }
 

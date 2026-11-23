@@ -29,6 +29,9 @@ public enum AlertMetric
 
     /// <summary>Return of the latest day.</summary>
     DayReturn = 7,
+
+    /// <summary>Share of NAV held on the single largest exchange or wallet type: how much one counterparty failing would touch.</summary>
+    LargestVenueOverNav = 8,
 }
 
 public enum AlertOperator

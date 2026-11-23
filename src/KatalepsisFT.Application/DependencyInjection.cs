@@ -10,6 +10,7 @@ public static class DependencyInjection
         services.AddMediatR(configuration => configuration.RegisterServicesFromAssembly(typeof(DependencyInjection).Assembly));
         services.AddScoped<Performance.PerformanceService>();
         services.AddScoped<Risk.RiskService>();
+        services.AddScoped<Risk.VenueExposureService>();
         services.AddScoped<Connections.VenueAdapterRegistry>();
         services.AddScoped<Connections.ManagerBookWriter>();
         services.AddScoped<Live.IntradayService>();

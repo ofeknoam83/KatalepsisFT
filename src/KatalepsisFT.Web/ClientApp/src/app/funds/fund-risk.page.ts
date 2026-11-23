@@ -1,3 +1,4 @@
+import { VenueExposurePanel } from '../risk/venue-exposure';
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { NzAlertModule } from 'ng-zorro-antd/alert';
 import { RiskPanel } from '../risk/risk-panel';
@@ -8,7 +9,7 @@ import { FundsApi } from './funds.api';
 
 @Component({
   selector: 'app-fund-risk-page',
-  imports: [NzAlertModule, PageHead, FundTabs, RiskPanel],
+  imports: [NzAlertModule, PageHead, FundTabs, RiskPanel, VenueExposurePanel],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (page.failed()) {
@@ -17,6 +18,7 @@ import { FundsApi } from './funds.api';
     @if (page.data(); as d) {
       <app-page-head [crumbs]="[{ label: d.fund.name, link: ['/funds', d.fund.id] }, { label: 'Risk' }]" [title]="d.fund.name" [demo]="d.fund.isDemo" sub="Scenarios, limits and volatility" [asOf]="d.asOf" [showFilter]="false" />
       <app-fund-tabs [fundId]="d.fund.id" />
+      <kft-venue-exposure [fundId]="d.fund.id" />
       <app-risk-panel scope="Fund" [scopeId]="d.fund.id" />
     }
   `,

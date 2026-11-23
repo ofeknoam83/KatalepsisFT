@@ -74,6 +74,10 @@ public class PerformanceApiTests(TestDatabase database) : IClassFixture<TestData
 
         p.Children.Select(c => c.Name).Should().Equal("Beta", "Market Neutral", "Directional");
         p.Children.Sum(c => c.NavUsd).Should().Be(_overview.Totals.NavUsd);
+        // What each sleeve contributed adds up to the fund's return, and what each made adds up to what the fund made.
+        p.Children.Sum(c => c.Contribution).Should().BeApproximately(p.Stats.TotalReturn, 1e-9);
+        p.Children.Sum(c => c.AverageWeight).Should().BeApproximately(1.0, 1e-6);
+        p.Children.Sum(c => c.PnlUsd).Should().BeApproximately(p.Attribution.NavChangeUsd, 1m);
         p.Attribution.StartNavUsd.Should().Be(250_000_000m);
         p.Attribution.NavChangeUsd.Should().Be(_overview.Totals.NavUsd - 250_000_000m);
         // Books are held unchanged, so price moves explain the whole change, up to the cents rounded on each valued row.

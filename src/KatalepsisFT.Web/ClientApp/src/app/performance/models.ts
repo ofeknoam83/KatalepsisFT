@@ -44,6 +44,10 @@ export interface ChildPerformance {
   navUsd: number;
   stats: Stats;
   comparison: Comparison;
+  /** The part of the scope's return this child produced; the children's figures add up to the scope's return. */
+  contribution: number;
+  pnlUsd: number;
+  averageWeight: number;
 }
 
 export interface PnlLine {

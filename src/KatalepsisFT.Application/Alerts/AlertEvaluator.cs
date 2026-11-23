@@ -10,7 +10,7 @@ namespace KatalepsisFT.Application.Alerts;
 /// Compares every rule of a fund with the latest figures. A condition that starts to hold raises one alert; while it
 /// keeps holding that alert is only refreshed; when it stops the alert is closed as recovered.
 /// </summary>
-public sealed class AlertEvaluator(IFtDbContext database, RiskService risk, TimeProvider clock)
+public sealed class AlertEvaluator(IFtDbContext database, RiskService risk, VenueExposureService venues, TimeProvider clock)
 {
     public const string RuleSwitchedOff = "The rule was switched off.";
 
@@ -21,6 +21,8 @@ public sealed class AlertEvaluator(IFtDbContext database, RiskService risk, Time
         await SyncMandateRulesAsync(fundId, cancellationToken);
         List<AlertRule> rules = await database.AlertRules.Include(r => r.Alerts).Where(r => r.FundId == fundId).ToListAsync(cancellationToken);
         FundMetrics? metrics = await risk.GetFundMetricsAsync(fundId, cancellationToken);
+        // Where the money sits is read only when a rule asks about it.
+        VenueBook? venueBook = rules.Any(r => r.IsEnabled && r.Metric == AlertMetric.LargestVenueOverNav) ? await venues.LoadAsync(fundId, cancellationToken) : null;
         DateTimeOffset now = clock.GetUtcNow();
         int raised = 0,
             recovered = 0;
@@ -48,6 +50,18 @@ public sealed class AlertEvaluator(IFtDbContext database, RiskService risk, Time
 
             ScopeMetrics? scope = metrics?.Scopes.FirstOrDefault(s => s.Kind.ToString() == rule.ScopeKind.ToString() && s.Id == rule.ScopeId);
             (decimal Value, string? Subject)? figure = scope is null ? null : Figure(rule.Metric, scope);
+            if (rule.Metric == AlertMetric.LargestVenueOverNav && scope is not null)
+            {
+                figure = venueBook?.Largest(h => rule.ScopeKind switch
+                {
+                    AlertScopeKind.Sleeve => h.SleeveId == rule.ScopeId,
+                    AlertScopeKind.Manager => h.ManagerId == rule.ScopeId,
+                    _ => true,
+                }) is { } largest
+                    ? (largest.Share, largest.Venue)
+                    : null;
+            }
+
             if (figure is { } read)
             {
                 // The column holds ten digits before the point; a figure beyond that (days to sell with next to no volume) is capped, not allowed to stop every alert from saving.

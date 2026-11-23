@@ -474,6 +474,26 @@ public class ConnectionsApiTests(TestDatabase database) : IClassFixture<TestData
     }
 
     [Fact]
+    public async Task MoneyIsShownByTheVenueHoldingIt_AndARuleCanLimitTheLargestShare()
+    {
+        (int fundId, int managerId) = await NewFundAsync();
+        await AddAsync(managerId, "key-on-deribit");
+        await AddAsync(managerId, "key-on-okx", Venue.Okx, "passphrase", new VenueSnapshot(DateTimeOffset.UtcNow, [new VenuePosition(InstrumentType.Spot, "BTC", 1m, 50_000m)]));
+
+        KatalepsisFT.Application.Risk.VenueExposureDto venues = await Get<KatalepsisFT.Application.Risk.VenueExposureDto>($"/api/funds/{fundId}/venues");
+        SaveAlertRuleRequest rule = new(AlertScopeKind.Fund, fundId, AlertMetric.LargestVenueOverNav, AlertOperator.Above, 0.6m, AlertSeverity.Warning, true);
+        await _admin.PostAsJsonAsync($"/api/funds/{fundId}/alert-rules", rule, Json);
+        await _admin.PostAsJsonAsync($"/api/funds/{fundId}/alerts/evaluate", new { });
+
+        venues.NavUsd.Should().Be(151_250m);
+        venues.Venues.Select(v => (v.Name, v.NavUsd, v.Accounts)).Should().Equal(("Deribit", 101_250m, 1), ("OKX", 50_000m, 1));
+        venues.Venues[0].Share.Should().BeApproximately(101_250m / 151_250m, 0.000001m);
+        AlertDto raised = (await Get<AlertListDto>($"/api/funds/{fundId}/alerts")).Alerts.Single();
+        raised.Subject.Should().Be("Deribit");
+        raised.Value.Should().BeApproximately(101_250m / 151_250m, 0.000001m);
+    }
+
+    [Fact]
     public async Task SameKeyTwice_IsRefused()
     {
         (_, int managerId) = await NewFundAsync();
