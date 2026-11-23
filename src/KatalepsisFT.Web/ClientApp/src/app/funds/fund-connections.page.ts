@@ -128,8 +128,8 @@ const STATE_COLOR = { Live: 'green', Failed: 'red', Pending: 'blue', Disabled: '
               </div>
               <nz-form-item><nz-form-label>Label</nz-form-label><input nz-input formControlName="label" placeholder="Main account" maxlength="100" /></nz-form-item>
               @if (usesAddress()) {
-                <nz-form-item><nz-form-label>Wallet address</nz-form-label><input nz-input formControlName="apiKey" autocomplete="off" placeholder="0x…" data-testid="key-api-key" /></nz-form-item>
-                <p style="color:#8c8c8c;font-size:12px;margin:0">This venue's accounts are public. Only the address is needed, and nothing can be traded or withdrawn through it.</p>
+                <nz-form-item><nz-form-label>Wallet address</nz-form-label><input nz-input formControlName="apiKey" autocomplete="off" placeholder="Paste the address" data-testid="key-api-key" /></nz-form-item>
+                <p style="color:#8c8c8c;font-size:12px;margin:0">These accounts are public on their chain. Only the address is needed, and nothing can be traded or withdrawn through it.</p>
               } @else {
                 <nz-form-item><nz-form-label>API key</nz-form-label><input nz-input formControlName="apiKey" autocomplete="off" data-testid="key-api-key" /></nz-form-item>
                 <nz-form-item><nz-form-label>API secret</nz-form-label><input nz-input type="password" formControlName="apiSecret" autocomplete="new-password" data-testid="key-api-secret" /></nz-form-item>

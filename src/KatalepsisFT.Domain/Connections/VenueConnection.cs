@@ -13,6 +13,10 @@ public enum Venue
     Kucoin = 7,
     Mexc = 8,
     Hyperliquid = 9,
+    EvmWallet = 10,
+    BitcoinWallet = 11,
+    SolanaWallet = 12,
+    TronWallet = 13,
 }
 
 public enum ConnectionState

@@ -280,7 +280,12 @@ Each phase ends deployed on Render and checked in the browser. Each is split int
   - [x] Hyperliquid: perp account, spot balances, deposits, withdrawals and transfers. Checked against two real public accounts with 177 open positions each: the value computed from the positions equals the value Hyperliquid states
   - [ ] Hyperliquid: money placed in vaults and staked HYPE are not read; contracts quoted per thousand coins (kPEPE) keep their own name
   - [ ] An asset first seen through a connection has no price history until the daily job loads it (and none at all if Binance does not list it), so its beta is assumed and its volume unknown until then
-  - [ ] dYdX (its API refuses address lookups from the build environment), GMX, Uniswap and Aerodrome pool positions, plain token balances of an EVM address
+  - [x] Wallets by address on the top chains: one address read on Ethereum, BNB Chain, Arbitrum, Base, Optimism, Polygon and Avalanche at once; Solana; Bitcoin; Tron. Each was read against a real public address
+  - [x] Every token contract in the list was checked on its chain for its symbol and decimals; balances are valued at Binance's public prices
+  - [ ] Only each chain's native coin and its main tokens are read (36 contracts on the EVM chains, 5 on Solana, USDT on Tron). Finding every token of an address, staked coins and positions inside protocols need an indexing provider
+  - [ ] Transfers in and out of an on-chain wallet are not read (the same provider would supply them), so they show as profit or loss; the connection says so
+  - [ ] Solana is read from its free public endpoint, which limits how often it answers; a paid endpoint would be steadier
+  - [ ] dYdX (its API refuses address lookups from the build environment), GMX, Uniswap and Aerodrome pool positions
 - [ ] **Phase 10 — Traditional positions**: manual entry screen and CSV/XLSX upload per manager, with cash flows; validation.
 
 Phases 0–5 run on the demo fund, so the full drill-down, performance, risk and alert experience is usable before the first live venue is connected. Phases 6–10 each add venues without changing the screens.

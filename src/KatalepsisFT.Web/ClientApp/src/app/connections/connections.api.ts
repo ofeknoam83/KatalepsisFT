@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
-export type Venue = 'Binance' | 'Bybit' | 'Okx' | 'Deribit' | 'CoinbaseExchange' | 'CoinbasePrime' | 'Kucoin' | 'Mexc' | 'Hyperliquid';
+export type Venue = 'Binance' | 'Bybit' | 'Okx' | 'Deribit' | 'CoinbaseExchange' | 'CoinbasePrime' | 'Kucoin' | 'Mexc' | 'Hyperliquid' | 'EvmWallet' | 'BitcoinWallet' | 'SolanaWallet' | 'TronWallet';
 export type ConnectionState = 'Pending' | 'Live' | 'Failed' | 'Disabled';
 export type MandateType = 'Beta' | 'MarketNeutral' | 'Directional' | 'Other';
 

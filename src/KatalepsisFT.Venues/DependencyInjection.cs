@@ -1,6 +1,7 @@
 using KatalepsisFT.Application.Connections;
 using KatalepsisFT.Venues.Binance;
 using KatalepsisFT.Venues.Bybit;
+using KatalepsisFT.Venues.Chains;
 using KatalepsisFT.Venues.Coinbase;
 using KatalepsisFT.Venues.Deribit;
 using KatalepsisFT.Venues.Hyperliquid;
@@ -29,6 +30,13 @@ public static class DependencyInjection
         services.AddScoped<IVenueAdapter>(provider => new CoinbasePrimeAdapter(provider.GetRequiredService<IHttpClientFactory>().CreateClient(CoinbasePrimeAdapter.HttpClientName), provider.GetRequiredService<TimeProvider>()));
         services.AddHttpClient(HyperliquidAdapter.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(20));
         services.AddScoped<IVenueAdapter>(provider => new HyperliquidAdapter(provider.GetRequiredService<IHttpClientFactory>().CreateClient(HyperliquidAdapter.HttpClientName), provider.GetRequiredService<TimeProvider>()));
+        services.AddHttpClient(WalletAdapter.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(20));
+        services.AddScoped<IVenueAdapter>(provider => new EvmWalletAdapter(ChainClient(provider), provider.GetRequiredService<TimeProvider>()));
+        services.AddScoped<IVenueAdapter>(provider => new SolanaWalletAdapter(ChainClient(provider), provider.GetRequiredService<TimeProvider>()));
+        services.AddScoped<IVenueAdapter>(provider => new BitcoinWalletAdapter(ChainClient(provider), provider.GetRequiredService<TimeProvider>()));
+        services.AddScoped<IVenueAdapter>(provider => new TronWalletAdapter(ChainClient(provider), provider.GetRequiredService<TimeProvider>()));
         return services;
     }
+
+    private static HttpClient ChainClient(IServiceProvider provider) => provider.GetRequiredService<IHttpClientFactory>().CreateClient(WalletAdapter.HttpClientName);
 }
