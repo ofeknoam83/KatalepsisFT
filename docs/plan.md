@@ -279,7 +279,8 @@ Each phase ends deployed on Render and checked in the browser. Each is split int
   - [x] Connections by wallet address: no secret, nothing can be traded through them; read by the DeFi worker
   - [x] Hyperliquid: perp account, spot balances, deposits, withdrawals and transfers. Checked against two real public accounts with 177 open positions each: the value computed from the positions equals the value Hyperliquid states
   - [ ] Hyperliquid: money placed in vaults and staked HYPE are not read; contracts quoted per thousand coins (kPEPE) keep their own name
-  - [ ] An asset first seen through a connection has no price history until the daily job loads it (and none at all if Binance does not list it), so its beta is assumed and its volume unknown until then
+  - [x] The core worker loads price history for an asset within five minutes of a connection first bringing it in, and keeps every asset's history current
+  - [ ] An asset Binance does not list has no price history at all, so its beta is assumed and its volume unknown
   - [x] Wallets by address on the top chains: one address read on Ethereum, BNB Chain, Arbitrum, Base, Optimism, Polygon and Avalanche at once; Solana; Bitcoin; Tron. Each was read against a real public address
   - [x] Every token contract in the list was checked on its chain for its symbol and decimals; balances are valued at Binance's public prices
   - [ ] Only each chain's native coin and its main tokens are read (36 contracts on the EVM chains, 5 on Solana, USDT on Tron). Finding every token of an address, staked coins and positions inside protocols need an indexing provider

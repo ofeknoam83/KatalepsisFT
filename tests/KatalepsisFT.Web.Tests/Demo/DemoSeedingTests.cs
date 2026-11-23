@@ -31,6 +31,12 @@ public class DemoSeedingTests(TestDatabase database) : IClassFixture<TestDatabas
         prices.Unknown.Add("AVAX");
         PriceBackfillResult first = await backfill.RunAsync(DemoFundDefinition.HistoryStart, CancellationToken.None);
         first.AssetsWithoutData.Should().Equal("AVAX");
+
+        // An asset the caller says to leave alone is not asked about again.
+        prices.Requests.Clear();
+        PriceBackfillResult skipping = await backfill.RunAsync(DemoFundDefinition.HistoryStart, CancellationToken.None, new HashSet<string> { "AVAX" });
+        prices.Requests.Should().BeEmpty();
+        skipping.AssetsWithoutData.Should().BeEmpty();
         (await seeder.EnsureFundAsync(CancellationToken.None)).WaitingFor.Should().Contain("AVAX");
         prices.Unknown.Clear();
 

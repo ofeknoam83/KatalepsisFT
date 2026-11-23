@@ -44,5 +44,16 @@ if (hasPostgres && group.ToLowerInvariant() is WorkerGroups.Cefi or WorkerGroups
     builder.Services.AddHostedService<ConnectionSyncWorker>();
 }
 
+// The core worker keeps price history complete, so a newly seen asset gets real risk figures within minutes.
+if (hasPostgres && group.ToLowerInvariant() is WorkerGroups.Core)
+{
+    builder.Logging.AddFilter("Microsoft.EntityFrameworkCore", LogLevel.Warning);
+    builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
+    builder.Services.AddPersistence();
+    builder.Services.AddMarketData();
+    builder.Services.AddScoped<KatalepsisFT.Application.Prices.PriceBackfillService>();
+    builder.Services.AddHostedService<PriceHistoryWorker>();
+}
+
 await builder.Build().RunAsync();
 return 0;

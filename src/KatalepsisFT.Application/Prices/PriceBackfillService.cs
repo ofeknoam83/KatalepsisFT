@@ -8,7 +8,8 @@ public sealed record PriceBackfillResult(int BarsAdded, IReadOnlyList<string> As
 /// <summary>Brings the daily price history of every crypto asset up to yesterday. Safe to run repeatedly.</summary>
 public sealed class PriceBackfillService(IFtDbContext database, IDailyPriceSource source, TimeProvider time)
 {
-    public async Task<PriceBackfillResult> RunAsync(DateOnly historyStart, CancellationToken cancellationToken)
+    /// <param name="skip">Assets not to ask about this time, such as ones the source was recently found not to list.</param>
+    public async Task<PriceBackfillResult> RunAsync(DateOnly historyStart, CancellationToken cancellationToken, IReadOnlySet<string>? skip = null)
     {
         // Today's bar is not complete yet.
         DateOnly yesterday = DateOnly.FromDateTime(time.GetUtcNow().UtcDateTime).AddDays(-1);
@@ -23,7 +24,7 @@ public sealed class PriceBackfillService(IFtDbContext database, IDailyPriceSourc
         foreach (Asset asset in assets)
         {
             DateOnly from = lastDates.TryGetValue(asset.Id, out DateOnly last) ? last.AddDays(1) : historyStart;
-            if (from > yesterday)
+            if (from > yesterday || skip?.Contains(asset.Symbol) == true)
             {
                 continue;
             }
