@@ -1,3 +1,4 @@
+import { AddManager } from './add-manager';
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { NzAlertModule } from 'ng-zorro-antd/alert';
@@ -14,7 +15,7 @@ import { SLEEVE_COLORS } from './models';
 
 @Component({
   selector: 'app-fund-overview-page',
-  imports: [RouterLink, NzAlertModule, NzTableModule, ExposureBar, PageHead, FundTabs, ...FORMAT_PIPES, AlertStrip, IntradayPanel],
+  imports: [RouterLink, NzAlertModule, NzTableModule, ExposureBar, PageHead, FundTabs, ...FORMAT_PIPES, AlertStrip, IntradayPanel, AddManager],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (page.failed()) {
@@ -42,7 +43,13 @@ import { SLEEVE_COLORS } from './models';
       <app-intraday-panel [fundId]="d.fund.id" />
 
       <div class="panel">
-        <h3>Sleeves <span class="hint">Click a sleeve to drill down</span></h3>
+        <h3>
+          Sleeves
+          <span class="hint">Click a sleeve to drill down</span>
+          @if (!d.fund.isDemo) {
+            <kft-add-manager [fundId]="d.fund.id" style="margin-left:12px" />
+          }
+        </h3>
         <nz-table #sleeves [nzData]="d.sleeves" [nzShowPagination]="false" [nzFrontPagination]="false" nzSize="small">
           <thead>
             <tr>

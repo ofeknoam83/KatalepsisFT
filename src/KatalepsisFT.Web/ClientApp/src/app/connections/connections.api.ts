@@ -121,8 +121,8 @@ export class ConnectionsApi {
     return this.http.delete<void>(`/api/sleeves/${sleeveId}`);
   }
 
-  addManager(sleeveId: number, name: string, allocatedCapitalUsd: number): Observable<void> {
-    return this.http.post<void>(`/api/sleeves/${sleeveId}/managers`, { name, allocatedCapitalUsd });
+  addManager(sleeveId: number, name: string, allocatedCapitalUsd: number): Observable<{ id: number }> {
+    return this.http.post<{ id: number }>(`/api/sleeves/${sleeveId}/managers`, { name, allocatedCapitalUsd });
   }
 
   saveManager(managerId: number, name: string, allocatedCapitalUsd: number): Observable<void> {

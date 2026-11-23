@@ -143,8 +143,14 @@ public class StructureApiTests(TestDatabase database) : IClassFixture<TestDataba
         StructureDto fund = await NewFundAsync();
         int sleeveId = fund.Sleeves[0].Id;
 
-        (await _admin.PostAsJsonAsync($"/api/sleeves/{sleeveId}/managers", new SaveManagerRequest("Beta Desk", 2_000_000m), Json)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        HttpResponseMessage created = await _admin.PostAsJsonAsync($"/api/sleeves/{sleeveId}/managers", new SaveManagerRequest("Beta Desk", 2_000_000m), Json);
+        created.StatusCode.Should().Be(HttpStatusCode.OK);
         StructureManagerDto added = (await Get<StructureDto>($"/api/funds/{fund.Id}/structure")).Sleeves[0].Managers.Single(m => m.Name == "Beta Desk");
+        // The answer names the new manager, so a key or positions can be given to it straight away.
+        (await created.Content.ReadFromJsonAsync<KatalepsisFT.Web.Connections.ManagerCreatedDto>(Json))!.Id.Should().Be(added.Id);
+        added.AllocatedCapitalUsd.Should().Be(2_000_000m);
+        HttpResponseMessage twice = await _admin.PostAsJsonAsync($"/api/sleeves/{sleeveId}/managers", new SaveManagerRequest(" beta desk ", 1m), Json);
+        twice.StatusCode.Should().Be(HttpStatusCode.Conflict);
         (await _admin.PutAsJsonAsync($"/api/managers/{added.Id}", new SaveManagerRequest("Gamma Desk", 3_000_000m), Json)).StatusCode.Should().Be(HttpStatusCode.NoContent);
         StructureManagerDto changed = (await Get<StructureDto>($"/api/funds/{fund.Id}/structure")).Sleeves[0].Managers.Single(m => m.Id == added.Id);
 

@@ -7,6 +7,7 @@ import { NzTabsModule } from 'ng-zorro-antd/tabs';
 import { NzTagModule } from 'ng-zorro-antd/tag';
 import { ExposureBar } from '../shared/exposure-bar';
 import { FORMAT_PIPES, pct, wholeUsd } from '../shared/format';
+import { AddManager } from './add-manager';
 import { pageData } from '../shared/page-data';
 import { AlertStrip } from '../alerts/alert-strip';
 import { PerformancePanel } from '../performance/performance-panel';
@@ -33,7 +34,7 @@ function heat(value: number, max: number): Record<string, string> {
 
 @Component({
   selector: 'app-sleeve-page',
-  imports: [DecimalPipe, RouterLink, NzAlertModule, NzTableModule, NzTabsModule, NzTagModule, ExposureBar, PageHead, AlertStrip, PerformancePanel, RiskPanel, LiquidityPanel, ...FORMAT_PIPES],
+  imports: [DecimalPipe, RouterLink, NzAlertModule, NzTableModule, NzTabsModule, NzTagModule, ExposureBar, PageHead, AlertStrip, AddManager, PerformancePanel, RiskPanel, LiquidityPanel, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (page.failed()) {
@@ -61,7 +62,13 @@ function heat(value: number, max: number): Record<string, string> {
       <nz-tabs [nzAnimated]="false">
         <nz-tab nzTitle="Managers">
           <div class="panel">
-            <h3>Managers in this sleeve <span class="hint">Click a manager to see positions</span></h3>
+            <h3>
+              Managers in this sleeve
+              <span class="hint">Click a manager to see positions</span>
+              @if (!d.fund.isDemo) {
+                <kft-add-manager [fundId]="d.fund.id" [sleeveId]="d.sleeve.id" style="margin-left:12px" />
+              }
+            </h3>
             <nz-table #managers [nzData]="d.managers" [nzShowPagination]="false" [nzFrontPagination]="false" nzSize="small">
               <thead>
                 <tr>

@@ -78,7 +78,8 @@ public sealed class SaveSleeveRequestValidator : AbstractValidator<SaveSleeveReq
 }
 
 /// <summary>Outcome of a structure change: done, refused with a reason, or not found (both false and null).</summary>
-public sealed record StructureChange(bool Done, string? Error)
+/// <param name="Id">What was created, when something was.</param>
+public sealed record StructureChange(bool Done, string? Error, int? Id = null)
 {
     public static StructureChange Ok { get; } = new(true, null);
 
@@ -295,18 +296,23 @@ public sealed class StructureService(IFtDbContext database, AlertEvaluator alert
             return StructureChange.Refused(DemoIsFixed);
         }
 
-        database.ManagerAccounts.Add(
-            new ManagerAccount
-            {
-                SleeveId = sleeveId,
-                Name = request.Name.Trim(),
-                AllocatedCapitalUsd = request.AllocatedCapitalUsd,
-                InceptionDate = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime),
-                DataSource = ManagerDataSource.Venue,
-            }
-        );
+        string name = request.Name.Trim();
+        if (await database.ManagerAccounts.AnyAsync(m => m.SleeveId == sleeveId && m.Name.ToLower() == name.ToLower(), cancellationToken))
+        {
+            return StructureChange.Refused("This sleeve already has a manager with that name.");
+        }
+
+        ManagerAccount manager = new()
+        {
+            SleeveId = sleeveId,
+            Name = name,
+            AllocatedCapitalUsd = request.AllocatedCapitalUsd,
+            InceptionDate = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime),
+            DataSource = ManagerDataSource.Venue,
+        };
+        database.ManagerAccounts.Add(manager);
         await database.SaveChangesAsync(cancellationToken);
-        return StructureChange.Ok;
+        return new StructureChange(true, null, manager.Id);
     }
 
     public async Task<StructureChange> SaveManagerAsync(int managerId, SaveManagerRequest request, CancellationToken cancellationToken)

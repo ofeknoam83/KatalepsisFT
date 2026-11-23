@@ -11,6 +11,8 @@ namespace KatalepsisFT.Web.Connections;
 
 public sealed record SetEnabledRequest(bool Enabled);
 
+public sealed record ManagerCreatedDto(int Id);
+
 /// <summary>Setting up real funds and the venue keys their managers are read through. Admin only, all of it.</summary>
 [ApiController]
 [Route("api")]
@@ -60,9 +62,18 @@ public sealed class ConnectionsController(
     [HttpDelete("sleeves/{sleeveId:int}")]
     public async Task<IActionResult> DeleteSleeveAsync(int sleeveId, CancellationToken cancellationToken) => Result(await structure.DeleteSleeveAsync(sleeveId, cancellationToken));
 
+    /// <summary>Answers with the new manager's id, so whoever added it can go straight on to give it a key or positions.</summary>
     [HttpPost("sleeves/{sleeveId:int}/managers")]
-    public async Task<IActionResult> AddManagerAsync(int sleeveId, SaveManagerRequest request, CancellationToken cancellationToken) =>
-        await InvalidAsync(managerValidator, request, cancellationToken) ?? Result(await structure.AddManagerAsync(sleeveId, request, cancellationToken));
+    public async Task<IActionResult> AddManagerAsync(int sleeveId, SaveManagerRequest request, CancellationToken cancellationToken)
+    {
+        if (await InvalidAsync(managerValidator, request, cancellationToken) is { } invalid)
+        {
+            return invalid;
+        }
+
+        StructureChange change = await structure.AddManagerAsync(sleeveId, request, cancellationToken);
+        return change is { Done: true, Id: int id } ? Ok(new ManagerCreatedDto(id)) : Result(change);
+    }
 
     [HttpPut("managers/{managerId:int}")]
     public async Task<IActionResult> SaveManagerAsync(int managerId, SaveManagerRequest request, CancellationToken cancellationToken) =>

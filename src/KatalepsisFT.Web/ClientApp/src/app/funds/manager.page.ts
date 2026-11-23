@@ -1,6 +1,6 @@
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { NzAlertModule } from 'ng-zorro-antd/alert';
 import { NzTableModule } from 'ng-zorro-antd/table';
 import { NzTabsModule } from 'ng-zorro-antd/tabs';
@@ -42,7 +42,7 @@ import { FundsApi } from './funds.api';
         <div class="tile"><div class="k">Unrealised PnL</div><div class="v" [class]="unrealised() | tone">{{ unrealised() | usd: 2 }}</div><div class="d">Open positions</div></div>
       </div>
 
-      <nz-tabs [nzAnimated]="false">
+      <nz-tabs [nzAnimated]="false" [nzSelectedIndex]="startTab">
         <nz-tab nzTitle="Positions">
       <div class="panel">
         <h3>Positions <span class="hint">Click an instrument to see the asset across the fund</span></h3>
@@ -137,6 +137,8 @@ import { FundsApi } from './funds.api';
 export class ManagerPage {
   private readonly api = inject(FundsApi);
   protected readonly isAdmin = inject(Store).selectSignal(SessionState.isAdmin);
+  /** A manager that was just added to be filled in by hand opens on that tab. */
+  protected readonly startTab = inject(ActivatedRoute).snapshot.queryParamMap.get('tab') === 'manual' ? 4 : 0;
 
   protected readonly page = pageData((params, filter) => this.api.manager(Number(params.get('managerId')), filter));
   protected readonly unrealised = computed(() => (this.page.data()?.positions ?? []).reduce((sum, p) => sum + p.unrealizedPnlUsd, 0));
