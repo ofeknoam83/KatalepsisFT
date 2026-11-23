@@ -26,6 +26,7 @@ public static class DependencyInjection
         services.AddScoped<Audit.AuditLog>();
         services.AddScoped<Reports.ReportService>();
         services.AddScoped<Reports.ReportScheduleService>();
+        services.AddScoped<Execution.TradingService>();
         services.TryAddSingleton(TimeProvider.System);
         return services;
     }

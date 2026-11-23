@@ -60,6 +60,8 @@ public sealed class GetFundsHandler(IFtDbContext database) : IRequestHandler<Get
                 f.Id,
                 f.Name,
                 f.IsDemo,
+                f.Kind,
+                f.OwnerName,
                 Sleeves = f.Sleeves.Count,
                 Managers = f.Sleeves.SelectMany(s => s.Managers).Count(),
             })
@@ -71,7 +73,7 @@ public sealed class GetFundsHandler(IFtDbContext database) : IRequestHandler<Get
         {
             FundBook? book = await reader.LoadAsync(fund.Id, cancellationToken);
             bool valued = book is not null && book.Rows.Count > 0;
-            result.Add(new FundListItemDto(fund.Id, fund.Name, fund.IsDemo, valued ? book!.Rows.Sum(r => r.MarketValueUsd) : 0m, valued ? book!.AsOf : null, fund.Sleeves, fund.Managers));
+            result.Add(new FundListItemDto(fund.Id, fund.Name, fund.IsDemo, valued ? book!.Rows.Sum(r => r.MarketValueUsd) : 0m, valued ? book!.AsOf : null, fund.Sleeves, fund.Managers, fund.Kind, fund.OwnerName));
         }
 
         return result;

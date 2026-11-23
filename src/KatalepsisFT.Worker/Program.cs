@@ -74,5 +74,24 @@ if (hasPostgres && group.ToLowerInvariant() is WorkerGroups.Core)
     builder.Services.AddHostedService<ReportWorker>();
 }
 
+// The execution service: market data, the order engine and the trading-key vault. Nothing else holds EXEC_MASTER_KEY.
+if (hasPostgres && group.ToLowerInvariant() is WorkerGroups.Exec)
+{
+    builder.Logging.AddFilter("Microsoft.EntityFrameworkCore", LogLevel.Warning);
+    builder.Services.AddPersistence();
+    builder.Services.AddSingleton(TimeProvider.System);
+    builder.Services.AddSingleton(ExecutionOptions.From(builder.Configuration));
+    builder.Services.AddSingleton<KatalepsisFT.Application.Execution.ConsolidatedBook>();
+    builder.Services.AddSingleton<KatalepsisFT.Application.Execution.VenueStatusBoard>();
+    builder.Services.AddScoped<KatalepsisFT.Application.Execution.ExecutionEngine>();
+    builder.Services.AddHttpClient("exec", client => client.Timeout = TimeSpan.FromSeconds(10));
+    builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.BinanceBookStream>();
+    builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.BybitBookStream>();
+    builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.OkxBookStream>();
+    builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.HyperliquidBookStream>();
+    builder.Services.AddHostedService<MarketDataWorker>();
+    builder.Services.AddHostedService<OrderEngineWorker>();
+}
+
 await builder.Build().RunAsync();
 return 0;

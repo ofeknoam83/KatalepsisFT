@@ -112,10 +112,10 @@ import { LoadFunds, ViewState } from '../funds/view.state';
       </nz-header>
       <nz-layout>
         <nz-sider nzWidth="220px" nzTheme="light">
-          <div class="group">Funds</div>
+          <div class="group">Funds and accounts</div>
           <ul nz-menu nzMode="inline" style="border-inline-end:0">
             @for (fund of funds() ?? []; track fund.id) {
-              <li nz-menu-item [routerLink]="['/funds', fund.id]" [class.ant-menu-item-selected]="fund.id === fundId()" [title]="fund.name">{{ fund.name }}@if (fund.isDemo) {<span style="color:#8c8c8c;font-size:11px;margin-left:6px">DEMO</span>}</li>
+              <li nz-menu-item [routerLink]="['/funds', fund.id]" [class.ant-menu-item-selected]="fund.id === fundId()" [title]="fund.name">{{ fund.name }}@if (fund.isDemo) {<span style="color:#8c8c8c;font-size:11px;margin-left:6px">DEMO</span>}@if (fund.kind === 'Sma') {<span style="color:#8c8c8c;font-size:11px;margin-left:6px" [title]="'Separately managed account of ' + fund.ownerName">SMA</span>}</li>
             }
           </ul>
           @if (sleeves().length > 0) {
@@ -129,7 +129,9 @@ import { LoadFunds, ViewState } from '../funds/view.state';
           @if (isAdmin()) {
             <div class="group">Admin</div>
             <ul nz-menu nzMode="inline" style="border-inline-end:0">
-              <li nz-menu-item routerLink="/admin/funds/new" routerLinkActive="ant-menu-item-selected">New fund</li>
+              <li nz-menu-item routerLink="/admin/funds/new" routerLinkActive="ant-menu-item-selected">New fund or SMA</li>
+              <li nz-menu-item routerLink="/admin/users" routerLinkActive="ant-menu-item-selected">Users</li>
+              <li nz-menu-item routerLink="/admin/strategy-keys" routerLinkActive="ant-menu-item-selected">Strategy keys</li>
               <li nz-menu-item routerLink="/admin/audit" routerLinkActive="ant-menu-item-selected">Audit trail</li>
               <li nz-menu-item routerLink="/admin/system" routerLinkActive="ant-menu-item-selected">System status</li>
             </ul>

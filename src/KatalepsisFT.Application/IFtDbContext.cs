@@ -31,11 +31,22 @@ public interface IFtDbContext
     DbSet<AlertAction> AlertActions { get; }
     DbSet<KatalepsisFT.Domain.Audit.AuditEntry> AuditEntries { get; }
     DbSet<KatalepsisFT.Domain.Reports.ReportSchedule> ReportSchedules { get; }
+    DbSet<KatalepsisFT.Domain.Execution.TradingAccount> TradingAccounts { get; }
+    DbSet<KatalepsisFT.Domain.Execution.TradingHalt> TradingHalts { get; }
+    DbSet<KatalepsisFT.Domain.Execution.ApprovalRequest> ApprovalRequests { get; }
+    DbSet<KatalepsisFT.Domain.Execution.StrategyKey> StrategyKeys { get; }
+    DbSet<KatalepsisFT.Domain.Execution.Order> Orders { get; }
+    DbSet<KatalepsisFT.Domain.Execution.OrderEvent> OrderEvents { get; }
+    DbSet<KatalepsisFT.Domain.Execution.TradingPosition> TradingPositions { get; }
+    DbSet<KatalepsisFT.Domain.Execution.SystemSetting> SystemSettings { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken);
 
     /// <summary>Forgets every change not yet saved, so a unit of work that failed half way can still record that it failed.</summary>
     void DiscardChanges();
+
+    /// <summary>Whether anything loaded through this context has been changed, added or removed and not yet saved.</summary>
+    bool HasChanges();
 
     /// <summary>
     /// Runs the work as one transaction that no other writer of the same manager's book can overlap, in this process

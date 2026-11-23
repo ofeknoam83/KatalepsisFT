@@ -19,6 +19,7 @@ export const routes: Routes = [
       { path: 'funds/:fundId/performance', loadComponent: () => import('./funds/fund-performance.page').then((m) => m.FundPerformancePage) },
       { path: 'funds/:fundId/risk', loadComponent: () => import('./funds/fund-risk.page').then((m) => m.FundRiskPage) },
       { path: 'funds/:fundId/liquidity', loadComponent: () => import('./funds/fund-liquidity.page').then((m) => m.FundLiquidityPage) },
+      { path: 'funds/:fundId/trading', loadComponent: () => import('./trading/fund-trading.page').then((m) => m.FundTradingPage) },
       { path: 'funds/:fundId/reports', loadComponent: () => import('./funds/fund-reports.page').then((m) => m.FundReportsPage) },
       { path: 'funds/:fundId/alerts', loadComponent: () => import('./funds/fund-alerts.page').then((m) => m.FundAlertsPage) },
       { path: 'funds/:fundId/structure', canActivate: [adminOnly], loadComponent: () => import('./funds/fund-structure.page').then((m) => m.FundStructurePage) },
@@ -26,6 +27,8 @@ export const routes: Routes = [
       { path: 'funds/:fundId/assets/:symbol', loadComponent: () => import('./funds/asset.page').then((m) => m.AssetPage) },
       { path: 'sleeves/:sleeveId', loadComponent: () => import('./funds/sleeve.page').then((m) => m.SleevePage) },
       { path: 'managers/:managerId', loadComponent: () => import('./funds/manager.page').then((m) => m.ManagerPage) },
+      { path: 'admin/users', canActivate: [adminOnly], loadComponent: () => import('./pages/users.page').then((m) => m.UsersPage) },
+      { path: 'admin/strategy-keys', canActivate: [adminOnly], loadComponent: () => import('./pages/strategy-keys.page').then((m) => m.StrategyKeysPage) },
       { path: 'admin/audit', canActivate: [adminOnly], loadComponent: () => import('./pages/audit.page').then((m) => m.AuditPage) },
       { path: 'admin/funds/new', canActivate: [adminOnly], loadComponent: () => import('./pages/new-fund.page').then((m) => m.NewFundPage) },
       {

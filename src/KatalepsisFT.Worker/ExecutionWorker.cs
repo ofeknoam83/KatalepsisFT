@@ -1,0 +1,290 @@
+using System.Diagnostics;
+using KatalepsisFT.Application;
+using KatalepsisFT.Application.Execution;
+using KatalepsisFT.Domain.Connections;
+using KatalepsisFT.Infrastructure.Execution;
+using Npgsql;
+using StackExchange.Redis;
+
+namespace KatalepsisFT.Worker;
+
+/// <summary>Which assets the execution service follows, and the key that opens the trading-key vault.</summary>
+public sealed record ExecutionOptions(IReadOnlyList<string> Assets, string? MasterKey)
+{
+    public static readonly IReadOnlyList<string> DefaultAssets = ["BTC", "ETH", "SOL", "XRP", "DOGE", "BNB", "LINK", "AVAX", "ADA", "SUI"];
+
+    public static ExecutionOptions From(IConfiguration configuration)
+    {
+        List<string> assets = (configuration["EXEC_ASSETS"] ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(a => a.Length <= 12 && a.All(char.IsLetterOrDigit))
+            .Select(a => a.ToUpperInvariant())
+            .Distinct()
+            .ToList();
+        return new ExecutionOptions(assets.Count > 0 ? assets : DefaultAssets, configuration["EXEC_MASTER_KEY"]);
+    }
+}
+
+/// <summary>
+/// Keeps the four venues' market data streams open, times a request to each venue every few seconds, and publishes
+/// the consolidated book and the service's own state for the web service to show.
+/// </summary>
+public sealed class MarketDataWorker(
+    IEnumerable<BookStream> streams,
+    ConsolidatedBook books,
+    VenueStatusBoard board,
+    IConnectionMultiplexer keyValue,
+    IHttpClientFactory clients,
+    ExecutionOptions options,
+    TimeProvider clock,
+    ILogger<MarketDataWorker> logger
+) : BackgroundService
+{
+    private static readonly TimeSpan PublishEvery = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan TimeEvery = TimeSpan.FromSeconds(10);
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        List<BookStream> all = streams.ToList();
+        logger.LogInformation("Following {Assets} on {Venues}.", string.Join(", ", options.Assets), string.Join(", ", all.Select(s => s.Venue)));
+        List<Task> running = all.Select(s => new BookStreamRunner(s, books, board, clients.CreateClient("exec"), clock, logger).RunAsync(options.Assets, stoppingToken)).ToList();
+        running.AddRange(all.Select(s => TimeAsync(s, stoppingToken)));
+        running.Add(PublishAsync(all.Select(s => s.Venue).ToList(), stoppingToken));
+        await Task.WhenAll(running);
+    }
+
+    /// <summary>
+    /// Times a small request to the venue on a connection that is kept open, which is what sending an order costs
+    /// in travel: there and back, without the venue's own matching time.
+    /// </summary>
+    private async Task TimeAsync(BookStream stream, CancellationToken stopping)
+    {
+        HttpClient http = clients.CreateClient("exec");
+        bool warm = false;
+        while (!stopping.IsCancellationRequested)
+        {
+            try
+            {
+                using HttpRequestMessage request = stream.TimingRequest();
+                long started = Stopwatch.GetTimestamp();
+                using HttpResponseMessage response = await http.SendAsync(request, HttpCompletionOption.ResponseContentRead, stopping);
+                double milliseconds = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+                // The first request also pays for opening the connection, which an order would not.
+                if (warm)
+                {
+                    board.RoundTrip(stream.Venue, milliseconds);
+                }
+
+                warm = true;
+            }
+            catch (Exception e) when (e is HttpRequestException or TaskCanceledException && !stopping.IsCancellationRequested)
+            {
+                warm = false;
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+
+            try
+            {
+                await Task.Delay(TimeEvery, stopping);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+        }
+    }
+
+    private async Task PublishAsync(IReadOnlyList<Venue> venues, CancellationToken stopping)
+    {
+        KeyValueBookFeed feed = new(keyValue);
+        DateTimeOffset warned = DateTimeOffset.MinValue;
+        while (!stopping.IsCancellationRequested)
+        {
+            try
+            {
+                await feed.PublishAsync(books, board.Snapshot(books, venues));
+            }
+            catch (Exception e) when (e is RedisException or TimeoutException)
+            {
+                if (clock.GetUtcNow() - warned > TimeSpan.FromMinutes(1))
+                {
+                    warned = clock.GetUtcNow();
+                    logger.LogWarning("The consolidated book could not be published: {Reason}", e.Message);
+                }
+            }
+
+            try
+            {
+                await Task.Delay(PublishEvery, stopping);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+        }
+    }
+}
+
+/// <summary>
+/// Runs the order engine. Only one copy of the execution service may act on orders at a time: the one holding a lock
+/// in Postgres that lives exactly as long as its database connection. A second copy waits as a standby and takes
+/// over within seconds if the first one stops. Everything the engine needs to carry on is in the order log, so a
+/// restart picks up every open order where it was.
+/// </summary>
+public sealed class OrderEngineWorker(
+    IServiceScopeFactory scopes,
+    NpgsqlDataSource dataSource,
+    IConnectionMultiplexer keyValue,
+    VenueStatusBoard board,
+    ExecutionOptions options,
+    ILogger<OrderEngineWorker> logger
+) : BackgroundService
+{
+    /// <summary>The number of the Postgres advisory lock that makes one execution service the acting one.</summary>
+    private const long LeaderLock = 7302;
+    private static readonly TimeSpan Round = TimeSpan.FromMilliseconds(100);
+    private static readonly TimeSpan StandbyWait = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan CheckLockEvery = TimeSpan.FromSeconds(1);
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        await PrepareVaultAsync(stoppingToken);
+
+        // A new order wakes the engine at once instead of waiting for its next round.
+        using SemaphoreSlim wake = new(0, 1);
+        try
+        {
+            await keyValue.GetSubscriber().SubscribeAsync(RedisChannel.Literal(KeyValueExecutionSignal.Channel), (_, _) =>
+            {
+                try
+                {
+                    wake.Release();
+                }
+                catch (Exception e) when (e is SemaphoreFullException or ObjectDisposedException)
+                {
+                    // Already woken, or stopping.
+                }
+            });
+        }
+        catch (RedisException e)
+        {
+            logger.LogWarning("The engine cannot be woken by new orders and will find them on its rounds: {Reason}", e.Message);
+        }
+
+        bool waitingLogged = false;
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                await using NpgsqlConnection held = await dataSource.OpenConnectionAsync(stoppingToken);
+                if (!await AskAsync(held, $"SELECT pg_try_advisory_lock({LeaderLock})", stoppingToken))
+                {
+                    if (!waitingLogged)
+                    {
+                        waitingLogged = true;
+                        logger.LogInformation("Another execution service is acting on orders; this one is standing by.");
+                    }
+
+                    await held.CloseAsync();
+                    await Task.Delay(StandbyWait, stoppingToken);
+                    continue;
+                }
+
+                waitingLogged = false;
+                board.IsLeader = true;
+                try
+                {
+                    await LeadAsync(held, wake, stoppingToken);
+                }
+                finally
+                {
+                    board.IsLeader = false;
+                }
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception e)
+            {
+                logger.LogError(e, "The order engine stopped and will start again.");
+                try
+                {
+                    await Task.Delay(StandbyWait, stoppingToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+            }
+        }
+    }
+
+    private async Task LeadAsync(NpgsqlConnection held, SemaphoreSlim wake, CancellationToken stopping)
+    {
+        using (IServiceScope first = scopes.CreateScope())
+        {
+            IFtDbContext database = first.ServiceProvider.GetRequiredService<IFtDbContext>();
+            int open = database.Orders.Count(o => (int)o.Status < (int)KatalepsisFT.Domain.Execution.OrderStatus.Filled);
+            logger.LogInformation("This execution service is now acting on orders. {Open} open orders were found in the order log.", open);
+        }
+
+        long lockChecked = Stopwatch.GetTimestamp();
+        while (!stopping.IsCancellationRequested)
+        {
+            // The lock lives with the connection. If the connection is gone, another copy may already be acting.
+            if (Stopwatch.GetElapsedTime(lockChecked) >= CheckLockEvery)
+            {
+                if (!await AskAsync(held, "SELECT true", stopping))
+                {
+                    return;
+                }
+
+                lockChecked = Stopwatch.GetTimestamp();
+            }
+
+            long started = Stopwatch.GetTimestamp();
+            using (IServiceScope scope = scopes.CreateScope())
+            {
+                await scope.ServiceProvider.GetRequiredService<ExecutionEngine>().RunOnceAsync(stopping);
+            }
+
+            board.RoundMs = Math.Round(Stopwatch.GetElapsedTime(started).TotalMilliseconds, 1);
+            await wake.WaitAsync(Round, stopping);
+        }
+    }
+
+    /// <summary>
+    /// Makes sure the trading-key vault has its pair of keys. Without EXEC_MASTER_KEY the vault stays shut: paper
+    /// trading works, and adding a trading key is refused with a clear message.
+    /// </summary>
+    private async Task PrepareVaultAsync(CancellationToken stopping)
+    {
+        try
+        {
+            using IServiceScope scope = scopes.CreateScope();
+            SealedTradingVault.TradingKeyOpener? opener = await SealedTradingVault.EnsureKeysAsync(scope.ServiceProvider.GetRequiredService<IFtDbContext>(), options.MasterKey, stopping);
+            if (opener is null)
+            {
+                logger.LogWarning("EXEC_MASTER_KEY is not set (or is shorter than 32 characters). Trading keys cannot be stored until it is.");
+            }
+            else
+            {
+                logger.LogInformation("The trading-key vault is ready.");
+            }
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            logger.LogError(e, "The trading-key vault could not be prepared. Trading keys cannot be stored until this is fixed.");
+        }
+    }
+
+    private static async Task<bool> AskAsync(NpgsqlConnection connection, string sql, CancellationToken cancellationToken)
+    {
+        await using NpgsqlCommand command = new(sql, connection) { CommandTimeout = 5 };
+        return await command.ExecuteScalarAsync(cancellationToken) is true;
+    }
+}

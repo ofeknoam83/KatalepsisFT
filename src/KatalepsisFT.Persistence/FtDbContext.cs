@@ -20,6 +20,8 @@ public class FtDbContext(DbContextOptions<FtDbContext> options)
 {
     public void DiscardChanges() => ChangeTracker.Clear();
 
+    public bool HasChanges() => ChangeTracker.HasChanges();
+
     /// <summary>The first half of the advisory lock key: keeps these locks apart from any other use of advisory locks.</summary>
     private const int ManagerBookLocks = 7301;
 
@@ -61,6 +63,14 @@ public class FtDbContext(DbContextOptions<FtDbContext> options)
     public DbSet<Alert> Alerts => Set<Alert>();
     public DbSet<KatalepsisFT.Domain.Audit.AuditEntry> AuditEntries => Set<KatalepsisFT.Domain.Audit.AuditEntry>();
     public DbSet<KatalepsisFT.Domain.Reports.ReportSchedule> ReportSchedules => Set<KatalepsisFT.Domain.Reports.ReportSchedule>();
+    public DbSet<KatalepsisFT.Domain.Execution.TradingAccount> TradingAccounts => Set<KatalepsisFT.Domain.Execution.TradingAccount>();
+    public DbSet<KatalepsisFT.Domain.Execution.TradingHalt> TradingHalts => Set<KatalepsisFT.Domain.Execution.TradingHalt>();
+    public DbSet<KatalepsisFT.Domain.Execution.ApprovalRequest> ApprovalRequests => Set<KatalepsisFT.Domain.Execution.ApprovalRequest>();
+    public DbSet<KatalepsisFT.Domain.Execution.StrategyKey> StrategyKeys => Set<KatalepsisFT.Domain.Execution.StrategyKey>();
+    public DbSet<KatalepsisFT.Domain.Execution.Order> Orders => Set<KatalepsisFT.Domain.Execution.Order>();
+    public DbSet<KatalepsisFT.Domain.Execution.OrderEvent> OrderEvents => Set<KatalepsisFT.Domain.Execution.OrderEvent>();
+    public DbSet<KatalepsisFT.Domain.Execution.TradingPosition> TradingPositions => Set<KatalepsisFT.Domain.Execution.TradingPosition>();
+    public DbSet<KatalepsisFT.Domain.Execution.SystemSetting> SystemSettings => Set<KatalepsisFT.Domain.Execution.SystemSetting>();
     public DbSet<AlertAction> AlertActions => Set<AlertAction>();
 
     protected override void OnModelCreating(ModelBuilder builder)

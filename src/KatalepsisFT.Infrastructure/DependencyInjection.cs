@@ -41,6 +41,21 @@ public static class DependencyInjection
         return services;
     }
 
+    /// <summary>
+    /// What the web service needs to take orders in: a way to seal trading keys, the book the execution service
+    /// publishes, and a way to wake it. Without a Key Value store there is no book and no wake-up call; orders are
+    /// still written down and found by the execution service on its next round.
+    /// </summary>
+    public static IServiceCollection AddExecutionClient(this IServiceCollection services)
+    {
+        services.AddSingleton<Application.Execution.ITradingVault, Execution.SealedTradingVault>();
+        services.AddSingleton<Application.Execution.IBookFeed>(provider => provider.GetService<IConnectionMultiplexer>() is { } keyValue ? new Execution.KeyValueBookFeed(keyValue) : new Execution.NoBookFeed());
+        services.AddSingleton<Application.Execution.IExecutionSignal>(provider =>
+            provider.GetService<IConnectionMultiplexer>() is { } keyValue ? new Execution.KeyValueExecutionSignal(keyValue, provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Execution.KeyValueExecutionSignal>>()) : new Execution.NoExecutionSignal()
+        );
+        return services;
+    }
+
     /// <summary>The mail account reports are sent from; without one configured, nothing is sent and the screens say so.</summary>
     public static IServiceCollection AddMail(this IServiceCollection services)
     {

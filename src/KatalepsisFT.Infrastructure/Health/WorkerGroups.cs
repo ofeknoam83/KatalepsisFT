@@ -7,5 +7,8 @@ public static class WorkerGroups
     public const string Defi = "defi";
     public const string Core = "core";
 
-    public static readonly IReadOnlyList<string> All = [Cefi, Defi, Core];
+    /// <summary>The execution service: market data streams, the order engine and the trading-key vault.</summary>
+    public const string Exec = "exec";
+
+    public static readonly IReadOnlyList<string> All = [Cefi, Defi, Core, Exec];
 }

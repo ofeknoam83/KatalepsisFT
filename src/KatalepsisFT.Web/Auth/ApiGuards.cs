@@ -12,6 +12,7 @@ public static class ApiGuards
     public const string RequestHeader = "X-KFT-Request";
 
     private const string AuthPrefix = "/api/auth";
+    private const string StrategyPrefix = "/api/strategy";
 
     public static IApplicationBuilder UseApiGuards(this IApplicationBuilder app)
     {
@@ -21,7 +22,9 @@ public static class ApiGuards
                 if (context.Request.Path.StartsWithSegments("/api"))
                 {
                     bool changesState = !HttpMethods.IsGet(context.Request.Method) && !HttpMethods.IsHead(context.Request.Method) && !HttpMethods.IsOptions(context.Request.Method);
-                    if (changesState && !context.Request.Headers.ContainsKey(RequestHeader))
+                    // A strategy authenticates with its own key in a header, not with a browser's cookie, so there is no cross-site request to forge.
+                    bool fromStrategy = context.Request.Path.StartsWithSegments(StrategyPrefix);
+                    if (changesState && !fromStrategy && !context.Request.Headers.ContainsKey(RequestHeader))
                     {
                         await RejectAsync(context, StatusCodes.Status400BadRequest, $"The {RequestHeader} header is required.");
                         return;

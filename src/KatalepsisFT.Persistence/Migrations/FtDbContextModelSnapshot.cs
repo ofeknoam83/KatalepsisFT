@@ -427,6 +427,551 @@ namespace KatalepsisFT.Persistence.Migrations
                     b.ToTable("venue_connections", (string)null);
                 });
 
+            modelBuilder.Entity("KatalepsisFT.Domain.Execution.ApprovalRequest", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("decided_at");
+
+                    b.Property<string>("DecidedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("decided_by");
+
+                    b.Property<int?>("FundId")
+                        .HasColumnType("integer")
+                        .HasColumnName("fund_id");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("note");
+
+                    b.Property<string>("PayloadJson")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("payload_json");
+
+                    b.Property<DateTimeOffset>("RequestedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("requested_at");
+
+                    b.Property<string>("RequestedBy")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("requested_by");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasMaxLength(600)
+                        .HasColumnType("character varying(600)")
+                        .HasColumnName("summary");
+
+                    b.Property<int?>("TradingAccountId")
+                        .HasColumnType("integer")
+                        .HasColumnName("trading_account_id");
+
+                    b.Property<int?>("TradingHaltId")
+                        .HasColumnType("integer")
+                        .HasColumnName("trading_halt_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_approval_requests");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_approval_requests_status");
+
+                    b.ToTable("approval_requests", (string)null);
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Execution.Order", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<decimal?>("ArrivalPrice")
+                        .HasPrecision(28, 10)
+                        .HasColumnType("numeric(28,10)")
+                        .HasColumnName("arrival_price");
+
+                    b.Property<string>("Asset")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("asset");
+
+                    b.Property<decimal>("AverageFillPrice")
+                        .HasPrecision(28, 10)
+                        .HasColumnType("numeric(28,10)")
+                        .HasColumnName("average_fill_price");
+
+                    b.Property<bool>("CancelRequested")
+                        .HasColumnType("boolean")
+                        .HasColumnName("cancel_requested");
+
+                    b.Property<string>("ClientOrderId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("client_order_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<decimal>("FeesUsd")
+                        .HasPrecision(20, 6)
+                        .HasColumnType("numeric(20,6)")
+                        .HasColumnName("fees_usd");
+
+                    b.Property<decimal>("FilledQuantity")
+                        .HasPrecision(28, 10)
+                        .HasColumnType("numeric(28,10)")
+                        .HasColumnName("filled_quantity");
+
+                    b.Property<int>("InstrumentType")
+                        .HasColumnType("integer")
+                        .HasColumnName("instrument_type");
+
+                    b.Property<decimal?>("LimitPrice")
+                        .HasPrecision(28, 10)
+                        .HasColumnType("numeric(28,10)")
+                        .HasColumnName("limit_price");
+
+                    b.Property<decimal>("Quantity")
+                        .HasPrecision(28, 10)
+                        .HasColumnType("numeric(28,10)")
+                        .HasColumnName("quantity");
+
+                    b.Property<bool>("ReduceOnly")
+                        .HasColumnType("boolean")
+                        .HasColumnName("reduce_only");
+
+                    b.Property<string>("RejectReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("reject_reason");
+
+                    b.Property<int>("Side")
+                        .HasColumnType("integer")
+                        .HasColumnName("side");
+
+                    b.Property<int>("Source")
+                        .HasColumnType("integer")
+                        .HasColumnName("source");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<int?>("StrategyKeyId")
+                        .HasColumnType("integer")
+                        .HasColumnName("strategy_key_id");
+
+                    b.Property<string>("SubmittedBy")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("submitted_by");
+
+                    b.Property<int>("TimeInForce")
+                        .HasColumnType("integer")
+                        .HasColumnName("time_in_force");
+
+                    b.Property<int>("TradingAccountId")
+                        .HasColumnType("integer")
+                        .HasColumnName("trading_account_id");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("integer")
+                        .HasColumnName("type");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_orders");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("ix_orders_created_at");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_orders_status");
+
+                    b.HasIndex("TradingAccountId", "ClientOrderId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_orders_trading_account_id_client_order_id");
+
+                    b.ToTable("orders", (string)null);
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Execution.OrderEvent", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("at");
+
+                    b.Property<string>("Detail")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("detail");
+
+                    b.Property<decimal?>("FeeUsd")
+                        .HasPrecision(20, 6)
+                        .HasColumnType("numeric(20,6)")
+                        .HasColumnName("fee_usd");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer")
+                        .HasColumnName("kind");
+
+                    b.Property<long>("OrderId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("order_id");
+
+                    b.Property<decimal?>("Price")
+                        .HasPrecision(28, 10)
+                        .HasColumnType("numeric(28,10)")
+                        .HasColumnName("price");
+
+                    b.Property<decimal?>("Quantity")
+                        .HasPrecision(28, 10)
+                        .HasColumnType("numeric(28,10)")
+                        .HasColumnName("quantity");
+
+                    b.Property<int?>("Venue")
+                        .HasColumnType("integer")
+                        .HasColumnName("venue");
+
+                    b.HasKey("Id")
+                        .HasName("pk_order_events");
+
+                    b.HasIndex("OrderId")
+                        .HasDatabaseName("ix_order_events_order_id");
+
+                    b.ToTable("order_events", (string)null);
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Execution.StrategyKey", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AccountIds")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("account_ids");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("created_by");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_enabled");
+
+                    b.Property<string>("KeyHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("key_hash");
+
+                    b.Property<DateTimeOffset?>("LastUsedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_used_at");
+
+                    b.Property<decimal>("MaxOrderNotionalUsd")
+                        .HasPrecision(20, 2)
+                        .HasColumnType("numeric(20,2)")
+                        .HasColumnName("max_order_notional_usd");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Prefix")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("prefix");
+
+                    b.HasKey("Id")
+                        .HasName("pk_strategy_keys");
+
+                    b.HasIndex("KeyHash")
+                        .IsUnique()
+                        .HasDatabaseName("ix_strategy_keys_key_hash");
+
+                    b.ToTable("strategy_keys", (string)null);
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Execution.SystemSetting", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("value");
+
+                    b.HasKey("Id")
+                        .HasName("pk_system_settings");
+
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasDatabaseName("ix_system_settings_name");
+
+                    b.ToTable("system_settings", (string)null);
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Execution.TradingAccount", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("EncryptedKey")
+                        .HasColumnType("text")
+                        .HasColumnName("encrypted_key");
+
+                    b.Property<string>("KeyHint")
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasColumnName("key_hint");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("label");
+
+                    b.Property<decimal>("Leverage")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("numeric(6,2)")
+                        .HasColumnName("leverage");
+
+                    b.Property<int>("ManagerAccountId")
+                        .HasColumnType("integer")
+                        .HasColumnName("manager_account_id");
+
+                    b.Property<int>("MarginMode")
+                        .HasColumnType("integer")
+                        .HasColumnName("margin_mode");
+
+                    b.Property<decimal>("MaxOrderNotionalUsd")
+                        .HasPrecision(20, 2)
+                        .HasColumnType("numeric(20,2)")
+                        .HasColumnName("max_order_notional_usd");
+
+                    b.Property<decimal>("MaxPositionNotionalUsd")
+                        .HasPrecision(20, 2)
+                        .HasColumnType("numeric(20,2)")
+                        .HasColumnName("max_position_notional_usd");
+
+                    b.Property<int>("Mode")
+                        .HasColumnType("integer")
+                        .HasColumnName("mode");
+
+                    b.Property<decimal>("PaperBalanceUsd")
+                        .HasPrecision(20, 2)
+                        .HasColumnType("numeric(20,2)")
+                        .HasColumnName("paper_balance_usd");
+
+                    b.Property<int>("PriceBandBps")
+                        .HasColumnType("integer")
+                        .HasColumnName("price_band_bps");
+
+                    b.Property<int>("Venue")
+                        .HasColumnType("integer")
+                        .HasColumnName("venue");
+
+                    b.HasKey("Id")
+                        .HasName("pk_trading_accounts");
+
+                    b.HasIndex("ManagerAccountId", "Venue")
+                        .IsUnique()
+                        .HasDatabaseName("ix_trading_accounts_manager_account_id_venue");
+
+                    b.ToTable("trading_accounts", (string)null);
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Execution.TradingHalt", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset>("PulledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("pulled_at");
+
+                    b.Property<string>("PulledBy")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("pulled_by");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("reason");
+
+                    b.Property<DateTimeOffset?>("ReleasedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("released_at");
+
+                    b.Property<string>("ReleasedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("released_by");
+
+                    b.Property<int>("Scope")
+                        .HasColumnType("integer")
+                        .HasColumnName("scope");
+
+                    b.Property<int?>("TradingAccountId")
+                        .HasColumnType("integer")
+                        .HasColumnName("trading_account_id");
+
+                    b.Property<int?>("Venue")
+                        .HasColumnType("integer")
+                        .HasColumnName("venue");
+
+                    b.HasKey("Id")
+                        .HasName("pk_trading_halts");
+
+                    b.HasIndex("ReleasedAt")
+                        .HasDatabaseName("ix_trading_halts_released_at");
+
+                    b.ToTable("trading_halts", (string)null);
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Execution.TradingPosition", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Asset")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("asset");
+
+                    b.Property<decimal>("AveragePrice")
+                        .HasPrecision(28, 10)
+                        .HasColumnType("numeric(28,10)")
+                        .HasColumnName("average_price");
+
+                    b.Property<decimal>("FeesUsd")
+                        .HasPrecision(20, 6)
+                        .HasColumnType("numeric(20,6)")
+                        .HasColumnName("fees_usd");
+
+                    b.Property<int>("InstrumentType")
+                        .HasColumnType("integer")
+                        .HasColumnName("instrument_type");
+
+                    b.Property<decimal>("Quantity")
+                        .HasPrecision(28, 10)
+                        .HasColumnType("numeric(28,10)")
+                        .HasColumnName("quantity");
+
+                    b.Property<decimal>("RealisedPnlUsd")
+                        .HasPrecision(20, 6)
+                        .HasColumnType("numeric(20,6)")
+                        .HasColumnName("realised_pnl_usd");
+
+                    b.Property<int>("TradingAccountId")
+                        .HasColumnType("integer")
+                        .HasColumnName("trading_account_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_trading_positions");
+
+                    b.HasIndex("TradingAccountId", "Asset", "InstrumentType")
+                        .IsUnique()
+                        .HasDatabaseName("ix_trading_positions_trading_account_id_asset_instrument_type");
+
+                    b.ToTable("trading_positions", (string)null);
+                });
+
             modelBuilder.Entity("KatalepsisFT.Domain.Funds.Fund", b =>
                 {
                     b.Property<int>("Id")
@@ -454,11 +999,19 @@ namespace KatalepsisFT.Persistence.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_demo");
 
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer")
+                        .HasColumnName("kind");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
                         .HasColumnName("name");
+
+                    b.Property<string>("OwnerName")
+                        .HasColumnType("text")
+                        .HasColumnName("owner_name");
 
                     b.HasKey("Id")
                         .HasName("pk_funds");
@@ -1453,6 +2006,54 @@ namespace KatalepsisFT.Persistence.Migrations
                     b.Navigation("ManagerAccount");
                 });
 
+            modelBuilder.Entity("KatalepsisFT.Domain.Execution.Order", b =>
+                {
+                    b.HasOne("KatalepsisFT.Domain.Execution.TradingAccount", "TradingAccount")
+                        .WithMany()
+                        .HasForeignKey("TradingAccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_orders_trading_accounts_trading_account_id");
+
+                    b.Navigation("TradingAccount");
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Execution.OrderEvent", b =>
+                {
+                    b.HasOne("KatalepsisFT.Domain.Execution.Order", "Order")
+                        .WithMany("Events")
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_order_events_orders_order_id");
+
+                    b.Navigation("Order");
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Execution.TradingAccount", b =>
+                {
+                    b.HasOne("KatalepsisFT.Domain.Funds.ManagerAccount", "ManagerAccount")
+                        .WithMany()
+                        .HasForeignKey("ManagerAccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_trading_accounts_manager_accounts_manager_account_id");
+
+                    b.Navigation("ManagerAccount");
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Execution.TradingPosition", b =>
+                {
+                    b.HasOne("KatalepsisFT.Domain.Execution.TradingAccount", "TradingAccount")
+                        .WithMany()
+                        .HasForeignKey("TradingAccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_trading_positions_trading_accounts_trading_account_id");
+
+                    b.Navigation("TradingAccount");
+                });
+
             modelBuilder.Entity("KatalepsisFT.Domain.Funds.Fund", b =>
                 {
                     b.HasOne("KatalepsisFT.Domain.Benchmarks.Benchmark", "Benchmark")
@@ -1683,6 +2284,11 @@ namespace KatalepsisFT.Persistence.Migrations
             modelBuilder.Entity("KatalepsisFT.Domain.Benchmarks.Benchmark", b =>
                 {
                     b.Navigation("Constituents");
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Execution.Order", b =>
+                {
+                    b.Navigation("Events");
                 });
 
             modelBuilder.Entity("KatalepsisFT.Domain.Funds.Fund", b =>

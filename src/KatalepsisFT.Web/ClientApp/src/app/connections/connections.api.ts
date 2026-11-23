@@ -45,6 +45,8 @@ export interface AddConnection {
 
 export interface NewFund {
   name: string;
+  kind: 'Fund' | 'Sma';
+  ownerName: string | null;
   benchmarkId: number | null;
   sleeves: { name: string; mandateType: MandateType; managers: { name: string; allocatedCapitalUsd: number }[] }[];
 }

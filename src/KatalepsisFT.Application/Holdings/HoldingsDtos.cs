@@ -26,7 +26,8 @@ public sealed record SleeveRefDto(int Id, string Name, MandateType MandateType);
 /// <param name="RetiredOn">The day the manager was retired; null while it is active.</param>
 public sealed record ManagerRefDto(int Id, string Name, int SleeveId, DateOnly? RetiredOn = null);
 
-public sealed record FundListItemDto(int Id, string Name, bool IsDemo, decimal NavUsd, DateOnly? AsOf, int Sleeves, int Managers);
+/// <param name="OwnerName">For a separately managed account: whose money it is.</param>
+public sealed record FundListItemDto(int Id, string Name, bool IsDemo, decimal NavUsd, DateOnly? AsOf, int Sleeves, int Managers, KatalepsisFT.Domain.Funds.FundKind Kind = KatalepsisFT.Domain.Funds.FundKind.Fund, string? OwnerName = null);
 
 public sealed record TypeExposureDto(InstrumentType Type, decimal LongUsd, decimal ShortUsd, decimal GrossUsd, decimal NetUsd);
 

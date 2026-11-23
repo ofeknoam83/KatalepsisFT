@@ -86,6 +86,7 @@ builder.Services.AddVenueAdapters();
 builder.Services.AddMarketData();
 builder.Services.AddApplication();
 builder.Services.AddMail();
+builder.Services.AddExecutionClient();
 
 // Live updates: with Key Value, workers and both web instances announce changes over it; without, this instance tells its own browsers.
 // Outgoing request logs print full addresses. Nothing secret is put in an address, and this keeps it that way if one ever is.
@@ -116,6 +117,14 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy(
+        "strategy",
+        // Generous for a strategy that trades, tight enough that a runaway loop cannot flood the order log.
+        context => System.Threading.RateLimiting.RateLimitPartition.GetTokenBucketLimiter(
+            context.Request.Headers[KatalepsisFT.Web.Execution.StrategyController.KeyHeader].FirstOrDefault() is { Length: > 12 } key ? key[..12] : context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new System.Threading.RateLimiting.TokenBucketRateLimiterOptions { TokenLimit = 100, TokensPerPeriod = 50, ReplenishmentPeriod = TimeSpan.FromSeconds(1), QueueLimit = 0 }
+        )
+    );
     options.AddPolicy(
         "sign-in",
         context =>

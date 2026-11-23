@@ -11,7 +11,9 @@ public sealed record NewManagerRequest(string Name, decimal AllocatedCapitalUsd)
 
 public sealed record NewSleeveRequest(string Name, MandateType MandateType, IReadOnlyList<NewManagerRequest> Managers);
 
-public sealed record NewFundRequest(string Name, int? BenchmarkId, IReadOnlyList<NewSleeveRequest> Sleeves);
+/// <param name="Kind">A pooled fund, or a separately managed account of one owner.</param>
+/// <param name="OwnerName">For a separately managed account: whose money it is.</param>
+public sealed record NewFundRequest(string Name, int? BenchmarkId, IReadOnlyList<NewSleeveRequest> Sleeves, FundKind Kind = FundKind.Fund, string? OwnerName = null);
 
 public sealed record FundCreatedDto(int Id, string Name);
 
@@ -512,9 +514,16 @@ public sealed class StructureService(IFtDbContext database, AlertEvaluator alert
 
         DateTimeOffset now = clock.GetUtcNow();
         DateOnly today = DateOnly.FromDateTime(now.UtcDateTime);
+        if (request.Kind == FundKind.Sma && string.IsNullOrWhiteSpace(request.OwnerName))
+        {
+            return (null, "A separately managed account needs its owner's name.");
+        }
+
         Fund fund = new()
         {
             Name = name,
+            Kind = request.Kind,
+            OwnerName = request.Kind == FundKind.Sma ? request.OwnerName!.Trim() : null,
             BenchmarkId = request.BenchmarkId,
             CreatedAt = now,
             Sleeves = request

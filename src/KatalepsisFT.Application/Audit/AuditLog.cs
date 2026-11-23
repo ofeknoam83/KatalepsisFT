@@ -113,5 +113,35 @@ public sealed class AuditLog(IFtDbContext database, TimeProvider clock)
         return schedule is null ? AuditTarget.None : new AuditTarget(schedule.FundId, schedule.Fund, $"{schedule.Frequency} {schedule.Kind} to {schedule.Recipients}");
     }
 
+    public async Task<AuditTarget> TradingAccountAsync(int accountId, CancellationToken cancellationToken)
+    {
+        var account = await database.TradingAccounts.Where(a => a.Id == accountId).Select(a => new { a.ManagerAccountId, a.Venue, a.Label }).FirstOrDefaultAsync(cancellationToken);
+        return account is null ? AuditTarget.None : await ManagerAsync(account.ManagerAccountId, cancellationToken, $"trading account on {Risk.VenueExposureService.NameOf(account.Venue)} \"{account.Label}\"");
+    }
+
+    public async Task<AuditTarget> ApprovalAsync(int requestId, CancellationToken cancellationToken)
+    {
+        var request = await database.ApprovalRequests.Where(r => r.Id == requestId).Select(r => new { r.FundId, r.Summary, r.RequestedBy }).FirstOrDefaultAsync(cancellationToken);
+        if (request is null)
+        {
+            return AuditTarget.None;
+        }
+
+        AuditTarget fund = request.FundId is int fundId ? await FundAsync(fundId, cancellationToken) : AuditTarget.None;
+        return fund with { Subject = $"{request.Summary} (asked for by {request.RequestedBy})" };
+    }
+
+    public async Task<AuditTarget> OrderAsync(long orderId, CancellationToken cancellationToken)
+    {
+        var order = await database.Orders.Where(o => o.Id == orderId).Select(o => new { o.TradingAccountId, o.Side, o.Quantity, o.Asset, o.InstrumentType }).FirstOrDefaultAsync(cancellationToken);
+        if (order is null)
+        {
+            return AuditTarget.None;
+        }
+
+        AuditTarget account = await TradingAccountAsync(order.TradingAccountId, cancellationToken);
+        return account with { Subject = $"{account.Subject} / order {orderId}: {order.Side} {order.Quantity:0.########} {order.Asset} {order.InstrumentType}" };
+    }
+
     private static string? Cut(string? text, int length) => text is null || text.Length <= length ? text : text[..length];
 }

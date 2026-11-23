@@ -49,7 +49,7 @@ export class FundsApi {
    * fund is open. Their own data names the fund but not its sleeves, so those are fetched when the fund is not the
    * current one.
    */
-  private open(fundId: number): void {
+  open(fundId: number): void {
     if (this.store.selectSnapshot(ViewState.fundId) === fundId || this.opening === fundId) {
       return;
     }

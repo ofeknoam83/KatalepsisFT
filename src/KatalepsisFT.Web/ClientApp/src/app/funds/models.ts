@@ -39,6 +39,9 @@ export interface FundListItem {
   asOf: string | null;
   sleeves: number;
   managers: number;
+  /** A pooled fund, or a separately managed account of one owner. */
+  kind: 'Fund' | 'Sma';
+  ownerName: string | null;
 }
 
 export interface TypeExposure {

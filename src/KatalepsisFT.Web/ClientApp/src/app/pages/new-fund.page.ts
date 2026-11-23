@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { FormArray, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
 import { Store } from '@ngxs/store';
@@ -40,13 +41,23 @@ type SleeveForm = FormGroup<{ name: FormControl<string>; mandateType: FormContro
     }
   `,
   template: `
-    <div class="page-head"><h1>New fund</h1><span class="sub">Sleeves and managers; positions arrive through venue keys you add afterwards</span></div>
+    <div class="page-head"><h1>New fund or SMA</h1><span class="sub">Sleeves and managers; positions arrive through venue keys you add afterwards</span></div>
     @if (error(); as message) {
       <nz-alert nzType="error" [nzMessage]="message" nzShowIcon style="display:block;margin-bottom:14px" />
     }
     <form class="panel" [formGroup]="form" (ngSubmit)="submit()" style="max-width:860px">
-      <div class="label">Fund name</div>
-      <input nz-input formControlName="name" maxlength="200" style="max-width:420px;margin-bottom:18px" data-testid="fund-name" />
+      <div class="row" style="grid-template-columns:230px 1fr 1fr;max-width:860px;margin-bottom:18px;align-items:start">
+        <div>
+          <div class="label">What it is</div>
+          <nz-select formControlName="kind" style="width:100%" data-testid="fund-kind">
+            <nz-option nzValue="Fund" nzLabel="Fund (pooled money)" /><nz-option nzValue="Sma" nzLabel="SMA (one owner's account)" />
+          </nz-select>
+        </div>
+        <div><div class="label">Name</div><input nz-input formControlName="name" maxlength="200" data-testid="fund-name" /></div>
+        @if (kind() === 'Sma') {
+          <div><div class="label">Whose money it is</div><input nz-input formControlName="ownerName" maxlength="200" data-testid="fund-owner" /></div>
+        }
+      </div>
 
       <div formArrayName="sleeves">
         @for (sleeve of form.controls.sleeves.controls; track sleeve; let s = $index) {
@@ -78,7 +89,7 @@ type SleeveForm = FormGroup<{ name: FormControl<string>; mandateType: FormContro
       <div style="display:flex;gap:12px">
         <button nz-button type="button" (click)="form.controls.sleeves.push(sleeve())">Add a sleeve</button>
         <span style="flex:1"></span>
-        <button nz-button nzType="primary" [disabled]="form.invalid" [nzLoading]="saving()" data-testid="create-fund">Create the fund</button>
+        <button nz-button nzType="primary" [disabled]="status() !== 'VALID' || (kind() === 'Sma' && owner().trim() === '')" [nzLoading]="saving()" data-testid="create-fund">{{ kind() === 'Sma' ? 'Create the SMA' : 'Create the fund' }}</button>
       </div>
     </form>
   `,
@@ -91,9 +102,15 @@ export class NewFundPage {
   protected readonly error = signal<string | null>(null);
   protected readonly saving = signal(false);
   protected readonly form = new FormGroup({
+    kind: new FormControl<'Fund' | 'Sma'>('Fund', { nonNullable: true }),
+    ownerName: new FormControl('', { nonNullable: true }),
     name: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
     sleeves: new FormArray<SleeveForm>([this.sleeve()]),
   });
+  // The form's own getters do not tell the page to draw again; these do.
+  protected readonly status = toSignal(this.form.statusChanges, { initialValue: this.form.status });
+  protected readonly kind = toSignal(this.form.controls.kind.valueChanges, { initialValue: 'Fund' as const });
+  protected readonly owner = toSignal(this.form.controls.ownerName.valueChanges, { initialValue: '' });
 
   protected manager(): ManagerForm {
     return new FormGroup({
@@ -116,9 +133,11 @@ export class NewFundPage {
       return;
     }
 
+    const value = this.form.getRawValue();
+
     this.saving.set(true);
     this.error.set(null);
-    this.api.createFund({ ...this.form.getRawValue(), benchmarkId: null }).subscribe({
+    this.api.createFund({ ...value, ownerName: value.kind === 'Sma' ? value.ownerName.trim() : null, benchmarkId: null }).subscribe({
       next: (fund) => {
         this.store.dispatch(new LoadFunds());
         void this.router.navigate(['/funds', fund.id, 'connections']);

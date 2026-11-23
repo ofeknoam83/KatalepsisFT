@@ -49,7 +49,23 @@ public sealed class TestDatabase : IAsyncLifetime
         }
 
         NpgsqlConnection.ClearAllPools();
-        await ExecuteOnServerAsync($"drop database if exists {_name} with (force)");
+        try
+        {
+            await ExecuteOnServerAsync($"drop database if exists {_name} with (force)");
+        }
+        catch (PostgresException e) when (e.SqlState == "42501")
+        {
+            // Postgres' own housekeeping was working in the database, and only a superuser may interrupt that.
+            // It is done within seconds; if not, a leftover test database harms nothing.
+            await Task.Delay(TimeSpan.FromSeconds(3));
+            try
+            {
+                await ExecuteOnServerAsync($"drop database if exists {_name} with (force)");
+            }
+            catch (PostgresException)
+            {
+            }
+        }
     }
 
     private WebApplicationFactory<Program>? _app;

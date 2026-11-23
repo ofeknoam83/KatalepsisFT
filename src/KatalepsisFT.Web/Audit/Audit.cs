@@ -29,6 +29,12 @@ public sealed class AuditAttribute(string action) : Attribute
     public string? Rule { get; init; }
     public string? Alert { get; init; }
     public string? Schedule { get; init; }
+    public string? TradingAccount { get; init; }
+    public string? Approval { get; init; }
+    public string? Order { get; init; }
+
+    /// <summary>The request carries the trading account's id in a field called TradingAccountId.</summary>
+    public bool TradingAccountFromBody { get; init; }
 
     /// <summary>The request carries the manager's id in a field called ManagerId.</summary>
     public bool ManagerFromBody { get; init; }
@@ -133,6 +139,31 @@ public sealed class AuditFilter(AuditLog audit, ILogger<AuditFilter> logger) : I
         if (Route(mark.Alert) is int alertId)
         {
             return await audit.AlertAsync(alertId, cancellationToken);
+        }
+
+        if (Route(mark.TradingAccount) is int tradingAccountId)
+        {
+            return await audit.TradingAccountAsync(tradingAccountId, cancellationToken);
+        }
+
+        if (mark.TradingAccountFromBody && body?.GetType().GetProperty("TradingAccountId")?.GetValue(body) is int accountFromBody)
+        {
+            return await audit.TradingAccountAsync(accountFromBody, cancellationToken);
+        }
+
+        if (mark.TradingAccountFromBody && body?.GetType().GetProperty("ManagerId")?.GetValue(body) is int managerOfOrder)
+        {
+            return await audit.ManagerAsync(managerOfOrder, cancellationToken);
+        }
+
+        if (Route(mark.Approval) is int approvalId)
+        {
+            return await audit.ApprovalAsync(approvalId, cancellationToken);
+        }
+
+        if (mark.Order is not null && context.RouteData.Values.TryGetValue(mark.Order, out object? order) && long.TryParse(Convert.ToString(order, CultureInfo.InvariantCulture), out long orderId))
+        {
+            return await audit.OrderAsync(orderId, cancellationToken);
         }
 
         if (Route(mark.Schedule) is int scheduleId)
