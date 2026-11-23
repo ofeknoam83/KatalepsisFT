@@ -8,6 +8,9 @@ import { NzTagModule } from 'ng-zorro-antd/tag';
 import { ExposureBar } from '../shared/exposure-bar';
 import { FORMAT_PIPES } from '../shared/format';
 import { pageData } from '../shared/page-data';
+import { Store } from '@ngxs/store';
+import { SessionState } from '../core/session.state';
+import { ManualBookPanel } from '../manual/manual-book';
 import { PerformancePanel } from '../performance/performance-panel';
 import { LiquidityPanel } from '../risk/liquidity-panel';
 import { RiskPanel } from '../risk/risk-panel';
@@ -16,7 +19,7 @@ import { FundsApi } from './funds.api';
 
 @Component({
   selector: 'app-manager-page',
-  imports: [DatePipe, DecimalPipe, RouterLink, NzAlertModule, NzTableModule, NzTabsModule, NzTagModule, ExposureBar, PageHead, PerformancePanel, RiskPanel, LiquidityPanel, ...FORMAT_PIPES],
+  imports: [DatePipe, DecimalPipe, RouterLink, NzAlertModule, NzTableModule, NzTabsModule, NzTagModule, ExposureBar, PageHead, PerformancePanel, RiskPanel, LiquidityPanel, ManualBookPanel, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (page.failed()) {
@@ -120,12 +123,20 @@ import { FundsApi } from './funds.api';
             <app-liquidity-panel scope="Manager" [scopeId]="d.manager.id" />
           </ng-template>
         </nz-tab>
+        @if (isAdmin()) {
+          <nz-tab nzTitle="Manual positions">
+            <ng-template nz-tab>
+              <app-manual-book [managerId]="d.manager.id" />
+            </ng-template>
+          </nz-tab>
+        }
       </nz-tabs>
     }
   `,
 })
 export class ManagerPage {
   private readonly api = inject(FundsApi);
+  protected readonly isAdmin = inject(Store).selectSignal(SessionState.isAdmin);
 
   protected readonly page = pageData((params, filter) => this.api.manager(Number(params.get('managerId')), filter));
   protected readonly unrealised = computed(() => (this.page.data()?.positions ?? []).reduce((sum, p) => sum + p.unrealizedPnlUsd, 0));

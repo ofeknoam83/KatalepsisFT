@@ -154,6 +154,25 @@ internal sealed class NavSampleConfiguration : IEntityTypeConfiguration<NavSampl
     }
 }
 
+internal sealed class ManualPositionConfiguration : IEntityTypeConfiguration<ManualPosition>
+{
+    public void Configure(EntityTypeBuilder<ManualPosition> position)
+    {
+        position.ToTable("manual_positions");
+        position.Property(x => x.Asset).HasMaxLength(32);
+        position.Property(x => x.Quantity).Quantity();
+        position.Property(x => x.Price).Price();
+        position.Property(x => x.EntryPrice).Price();
+        position.Property(x => x.Strike).Price();
+        position.Property(x => x.UnderlyingPrice).Price();
+        position.Property(x => x.Delta).Ratio();
+        position.Property(x => x.Note).HasMaxLength(500);
+        position.Property(x => x.UpdatedBy).HasMaxLength(256);
+        position.HasIndex(x => x.ManagerAccountId);
+        position.HasOne(x => x.ManagerAccount).WithMany().HasForeignKey(x => x.ManagerAccountId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
 internal sealed class PriceBarConfiguration : IEntityTypeConfiguration<PriceBar>
 {
     public void Configure(EntityTypeBuilder<PriceBar> bar)

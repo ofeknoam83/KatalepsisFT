@@ -23,6 +23,7 @@ public sealed class ManagerBookWriter(IFtDbContext database)
             .Select(c => c.LastSnapshotJson!)
             .ToListAsync(cancellationToken);
         List<VenuePosition> positions = snapshots.SelectMany(json => JsonSerializer.Deserialize<VenueSnapshot>(json, Json)!.Positions).ToList();
+        positions.AddRange(await ManualAsync(managerAccountId, cancellationToken));
 
         // The same instrument on two venues is one line in the manager's book.
         var lines = positions
@@ -92,6 +93,54 @@ public sealed class ManagerBookWriter(IFtDbContext database)
         return (nav, gross, net);
     }
 
+    /// <summary>
+    /// The manager's hand-entered positions in the shape connections report. A position without a price of its own
+    /// takes the asset's latest daily close; one that has neither was refused when it was entered.
+    /// </summary>
+    private async Task<List<VenuePosition>> ManualAsync(int managerAccountId, CancellationToken cancellationToken)
+    {
+        List<ManualPosition> manual = await database.ManualPositions.AsNoTracking().Where(p => p.ManagerAccountId == managerAccountId).ToListAsync(cancellationToken);
+        if (manual.Count == 0)
+        {
+            return [];
+        }
+
+        string[] symbols = manual.Select(p => p.Asset).Distinct().ToArray();
+        Dictionary<string, decimal> closes = await LatestClosesAsync(database, symbols, cancellationToken);
+        List<VenuePosition> result = [];
+        foreach (ManualPosition p in manual)
+        {
+            decimal? feed = closes.TryGetValue(p.Asset, out decimal close) ? close : null;
+            decimal? mark = p.Price ?? (p.Type == InstrumentType.Cash ? 1m : p.Type == InstrumentType.Option ? null : feed);
+            if (mark is null)
+            {
+                // Its price feed has no value at the moment. Dropping the line would shrink NAV without a word, so it is carried at its entry price.
+                mark = p.EntryPrice ?? throw new InvalidOperationException($"Manual position {p.Id} ({p.Asset}) has no price.");
+            }
+
+            result.Add(new VenuePosition(p.Type, p.Asset, p.Quantity, mark.Value, p.EntryPrice, null, p.Expiry, p.Strike, p.OptionRight, p.Type == InstrumentType.Option ? p.UnderlyingPrice ?? feed : null, p.Delta));
+        }
+
+        return result;
+    }
+
+    /// <summary>The most recent daily close of each asset that has any.</summary>
+    public static async Task<Dictionary<string, decimal>> LatestClosesAsync(IFtDbContext database, IReadOnlyCollection<string> symbols, CancellationToken cancellationToken)
+    {
+        var latest = await database
+            .PriceBars.Where(b => symbols.Contains(b.Asset.Symbol))
+            .GroupBy(b => b.Asset.Symbol)
+            .Select(g => new { Symbol = g.Key, Date = g.Max(b => b.Date) })
+            .ToListAsync(cancellationToken);
+        Dictionary<string, decimal> result = new(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in latest)
+        {
+            result[entry.Symbol] = await database.PriceBars.Where(b => b.Asset.Symbol == entry.Symbol && b.Date == entry.Date).Select(b => b.Close).FirstAsync(cancellationToken);
+        }
+
+        return result;
+    }
+
     /// <summary>What one snapshot adds to NAV, by the same rules as the book.</summary>
     public static decimal NavOf(VenueSnapshot snapshot) =>
         snapshot.Positions.Sum(p =>
@@ -118,7 +167,7 @@ public sealed class ManagerBookWriter(IFtDbContext database)
         Asset asset =
             database.Assets.Local.FirstOrDefault(a => a.Symbol == assetSymbol)
             ?? await database.Assets.FirstOrDefaultAsync(a => a.Symbol == assetSymbol, cancellationToken)
-            ?? database.Assets.Add(new Asset { Symbol = assetSymbol, Name = assetSymbol, AssetClass = type == InstrumentType.Cash ? AssetClass.Cash : AssetClass.Crypto }).Entity;
+            ?? database.Assets.Add(new Asset { Symbol = assetSymbol, Name = assetSymbol, AssetClass = type == InstrumentType.Cash ? AssetClass.Cash : type == InstrumentType.Equity ? AssetClass.Equity : AssetClass.Crypto }).Entity;
         instrument = new Instrument { Asset = asset, Type = type, Symbol = symbol, Expiry = expiry, Strike = strike, OptionRight = right };
         database.Instruments.Add(instrument);
         return instrument;

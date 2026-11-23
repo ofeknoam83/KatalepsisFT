@@ -1,3 +1,4 @@
+using KatalepsisFT.Application.Connections;
 using KatalepsisFT.Application.Prices;
 
 namespace KatalepsisFT.Worker;
@@ -5,7 +6,8 @@ namespace KatalepsisFT.Worker;
 /// <summary>
 /// Keeps the daily price history of every asset up to date, and loads it for an asset soon after a connection first
 /// brings it in. Risk figures need that history: without it an asset's beta is assumed and its traded volume unknown.
-/// The daily job does the same once a day; this closes the gap in between.
+/// The daily job does the same once a day; this closes the gap in between. It also revalues the books that consist
+/// of hand-entered positions only, since nothing else would.
 /// </summary>
 public sealed class PriceHistoryWorker(IServiceScopeFactory scopes, TimeProvider clock, ILogger<PriceHistoryWorker> logger) : BackgroundService
 {
@@ -40,6 +42,9 @@ public sealed class PriceHistoryWorker(IServiceScopeFactory scopes, TimeProvider
                 {
                     _notListed[symbol] = now;
                 }
+
+                // Books made only of hand-entered positions have no venue read to trigger them: revalue them here.
+                await scope.ServiceProvider.GetRequiredService<ManagerBookService>().RefreshManualOnlyAsync(stoppingToken);
 
                 if (result.BarsAdded > 0 || result.AssetsWithoutData.Count > 0)
                 {

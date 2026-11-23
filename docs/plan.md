@@ -287,7 +287,13 @@ Each phase ends deployed on Render and checked in the browser. Each is split int
   - [ ] Transfers in and out of an on-chain wallet are not read (the same provider would supply them), so they show as profit or loss; the connection says so
   - [ ] Solana is read from its free public endpoint, which limits how often it answers; a paid endpoint would be steadier
   - [ ] dYdX (its API refuses address lookups from the build environment), GMX, Uniswap and Aerodrome pool positions
-- [ ] **Phase 10 — Traditional positions**: manual entry screen and CSV/XLSX upload per manager, with cash flows; validation.
+- [ ] **Phase 10 — Traditional positions**
+  - [x] Positions entered by hand on any manager of a real fund (equity, spot, perp, future, option, cash), added to whatever its keys and wallets bring in
+  - [x] CSV upload that replaces the manager's manual book; any faulty line refuses the whole file and is named, so a half-loaded book is never valued; downloadable template
+  - [x] A position without a price takes the asset's latest daily close; an asset with no price feed (every equity today) needs a price entered by hand
+  - [x] Cash flows entered by hand, shown next to those read from venues
+  - [x] Books made only of manual positions are revalued every five minutes by the core worker, so prices move and each day gets its record
+  - [ ] XLSX upload (CSV only today); a price feed for equities, so their prices do not have to be typed
 
 Phases 0–5 run on the demo fund, so the full drill-down, performance, risk and alert experience is usable before the first live venue is connected. Phases 6–10 each add venues without changing the screens.
 

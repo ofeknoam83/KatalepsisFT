@@ -715,6 +715,90 @@ namespace KatalepsisFT.Persistence.Migrations
                     b.ToTable("cash_flows", (string)null);
                 });
 
+            modelBuilder.Entity("KatalepsisFT.Domain.Positions.ManualPosition", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Asset")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("asset");
+
+                    b.Property<decimal?>("Delta")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("numeric(18,8)")
+                        .HasColumnName("delta");
+
+                    b.Property<decimal?>("EntryPrice")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("numeric(18,8)")
+                        .HasColumnName("entry_price");
+
+                    b.Property<DateOnly?>("Expiry")
+                        .HasColumnType("date")
+                        .HasColumnName("expiry");
+
+                    b.Property<int>("ManagerAccountId")
+                        .HasColumnType("integer")
+                        .HasColumnName("manager_account_id");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("note");
+
+                    b.Property<int?>("OptionRight")
+                        .HasColumnType("integer")
+                        .HasColumnName("option_right");
+
+                    b.Property<decimal?>("Price")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("numeric(18,8)")
+                        .HasColumnName("price");
+
+                    b.Property<decimal>("Quantity")
+                        .HasPrecision(28, 8)
+                        .HasColumnType("numeric(28,8)")
+                        .HasColumnName("quantity");
+
+                    b.Property<decimal?>("Strike")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("numeric(18,8)")
+                        .HasColumnName("strike");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("integer")
+                        .HasColumnName("type");
+
+                    b.Property<decimal?>("UnderlyingPrice")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("numeric(18,8)")
+                        .HasColumnName("underlying_price");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_manual_positions");
+
+                    b.HasIndex("ManagerAccountId")
+                        .HasDatabaseName("ix_manual_positions_manager_account_id");
+
+                    b.ToTable("manual_positions", (string)null);
+                });
+
             modelBuilder.Entity("KatalepsisFT.Domain.Positions.NavSample", b =>
                 {
                     b.Property<long>("Id")
@@ -1316,6 +1400,18 @@ namespace KatalepsisFT.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_cash_flows_manager_accounts_manager_account_id");
+
+                    b.Navigation("ManagerAccount");
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Positions.ManualPosition", b =>
+                {
+                    b.HasOne("KatalepsisFT.Domain.Funds.ManagerAccount", "ManagerAccount")
+                        .WithMany()
+                        .HasForeignKey("ManagerAccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_manual_positions_manager_accounts_manager_account_id");
 
                     b.Navigation("ManagerAccount");
                 });
