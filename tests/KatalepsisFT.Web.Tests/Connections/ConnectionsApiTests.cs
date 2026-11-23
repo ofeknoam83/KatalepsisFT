@@ -1,3 +1,5 @@
+using KatalepsisFT.Application.Reports;
+using KatalepsisFT.Domain.Reports;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -53,6 +55,20 @@ internal sealed class FakeVenue(Venue venue, bool needsPassphrase = false, bool 
         TransfersFailure is null ? Task.FromResult<IReadOnlyList<VenueTransfer>>(TransfersByKey.GetValueOrDefault(credentials.ApiKey) ?? []) : throw TransfersFailure;
 }
 
+/// <summary>Keeps what would have been sent.</summary>
+internal sealed class FakeMail : KatalepsisFT.Application.Reports.IMailSender
+{
+    public bool IsConfigured { get; set; } = true;
+
+    public List<KatalepsisFT.Application.Reports.MailToSend> Sent { get; } = [];
+
+    public Task SendAsync(KatalepsisFT.Application.Reports.MailToSend mail, CancellationToken cancellationToken)
+    {
+        Sent.Add(mail);
+        return Task.CompletedTask;
+    }
+}
+
 public class ConnectionsApiTests(TestDatabase database) : IClassFixture<TestDatabase>, IAsyncLifetime
 {
     private const string Secret = "the-secret-that-must-never-come-back";
@@ -67,6 +83,7 @@ public class ConnectionsApiTests(TestDatabase database) : IClassFixture<TestData
 
     private static readonly FakeVenue Deribit = new(Venue.Deribit);
     private static readonly FakeVenue Okx = new(Venue.Okx, needsPassphrase: true);
+    private static readonly FakeMail Mail = new();
     private static readonly FakeVenue Wallet = new(Venue.Hyperliquid, usesAddress: true);
     private static WebApplicationFactory<Program>? _app;
 
@@ -84,7 +101,15 @@ public class ConnectionsApiTests(TestDatabase database) : IClassFixture<TestData
             services.AddSingleton<IVenueAdapter>(Deribit);
             services.AddSingleton<IVenueAdapter>(Okx);
             services.AddSingleton<IVenueAdapter>(Wallet);
+            foreach (ServiceDescriptor descriptor in services.Where(s => s.ServiceType == typeof(KatalepsisFT.Application.Reports.IMailSender)).ToList())
+            {
+                services.Remove(descriptor);
+            }
+
+            services.AddSingleton<KatalepsisFT.Application.Reports.IMailSender>(Mail);
         });
+        Mail.IsConfigured = true;
+        Mail.Sent.Clear();
         Deribit.Check = new CredentialCheck(false, false);
         Deribit.Failure = null;
         _admin = await SignInAsync(Roles.Admin);
@@ -547,6 +572,78 @@ public class ConnectionsApiTests(TestDatabase database) : IClassFixture<TestData
         closed.StillOpen.Should().Be(0);
         csv.Should().StartWith("id,severity,mandate_limit").And.Contain("80.0%").And.Contain("Back within the limit");
         (await Get<BreachRegisterDto>($"/api/funds/{fundId}/breaches?from=2020-01-01&to=2020-12-31")).Rows.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Reports_AreBuiltFromTheFundsFigures_AndGoOutByEmailOnTheirSchedule()
+    {
+        (int fundId, int managerId) = await NewFundAsync();
+        await AddAsync(managerId, "key-for-reports");
+        string fundName = (await Get<FundOverviewDto>($"/api/funds/{fundId}/overview")).Fund.Name;
+        using (IServiceScope seed = _app!.Services.CreateScope())
+        {
+            // Performance is always measured against something; this database starts without benchmarks.
+            FtDbContext db = seed.ServiceProvider.GetRequiredService<FtDbContext>();
+            if (!await db.Benchmarks.AnyAsync())
+            {
+                db.Benchmarks.Add(new KatalepsisFT.Domain.Benchmarks.Benchmark { Name = "Cash", Kind = KatalepsisFT.Domain.Benchmarks.BenchmarkKind.FixedRate, FixedAnnualRate = 0m });
+                await db.SaveChangesAsync();
+            }
+        }
+
+        // The factsheet is one page; the NAV sheet a workbook with three sheets.
+        HttpResponseMessage page = await _admin.GetAsync($"/api/funds/{fundId}/reports/factsheet");
+        string html = await page.Content.ReadAsStringAsync();
+        page.StatusCode.Should().Be(HttpStatusCode.OK, html.Length > 900 ? html[..900] : html);
+        page.Content.Headers.ContentType!.MediaType.Should().Be("text/html");
+        html.Should().Contain(fundName).And.Contain("$101,250.00").And.Contain("Where the money sits").And.Contain("Deribit").And.NotContain(Secret);
+        HttpResponseMessage sheet = await _admin.GetAsync($"/api/funds/{fundId}/reports/daily-nav");
+        sheet.Content.Headers.ContentDisposition!.FileName.Should().EndWith(".xlsx");
+        using (ClosedXML.Excel.XLWorkbook workbook = new(await sheet.Content.ReadAsStreamAsync()))
+        {
+            workbook.Worksheets.Select(w => w.Name).Should().Equal("Daily NAV", "Managers", "Cash flows");
+            workbook.Worksheet("Daily NAV").Cell(2, 2).GetValue<decimal>().Should().Be(101_250m);
+            workbook.Worksheet("Daily NAV").Cell(1, 5).GetString().Should().Be("Alpha Desk (USD)");
+            workbook.Worksheet("Managers").Cell(2, 3).GetValue<decimal>().Should().Be(101_250m);
+            workbook.Worksheet("Cash flows").Cell(2, 4).GetValue<decimal>().Should().Be(101_250m);
+        }
+
+        // A schedule needs real addresses; sending by hand delivers the report as an attachment.
+        (await _admin.PostAsJsonAsync($"/api/funds/{fundId}/report-schedules", new SaveReportScheduleRequest(ReportKind.DailyNav, ReportFrequency.Daily, 7, "not an address", true), Json)).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await _admin.PostAsJsonAsync($"/api/funds/{fundId}/report-schedules", new SaveReportScheduleRequest(ReportKind.DailyNav, ReportFrequency.Daily, 7, "board@example.com; ops@example.com", true), Json)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        ReportSchedulesDto listed = await Get<ReportSchedulesDto>($"/api/funds/{fundId}/report-schedules");
+        listed.MailConfigured.Should().BeTrue();
+        ReportScheduleDto schedule = listed.Schedules.Single();
+        schedule.Recipients.Should().Be("board@example.com, ops@example.com");
+        (await _admin.PostAsync($"/api/report-schedules/{schedule.Id}/send", null)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        MailToSend sent = Mail.Sent.Single();
+        sent.To.Should().Equal("board@example.com", "ops@example.com");
+        sent.Subject.Should().Contain(fundName).And.Contain("$101,250.00");
+        sent.Attachments.Single().FileName.Should().EndWith(".xlsx");
+        (await Get<ReportSchedulesDto>($"/api/funds/{fundId}/report-schedules")).Schedules.Single().LastSentOn.Should().Be(DateOnly.FromDateTime(DateTime.UtcNow));
+
+        // Without a mail account nothing goes out, and the reason is kept on the schedule.
+        Mail.IsConfigured = false;
+        HttpResponseMessage refused = await _admin.PostAsync($"/api/report-schedules/{schedule.Id}/send", null);
+        refused.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await Get<ReportSchedulesDto>($"/api/funds/{fundId}/report-schedules")).Schedules.Single().LastError.Should().Contain("no mail account");
+        (await (await SignInAsync(Roles.Viewer)).GetAsync($"/api/funds/{fundId}/report-schedules")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await (await SignInAsync(Roles.Viewer)).GetAsync($"/api/funds/{fundId}/reports/factsheet")).StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Theory]
+    [InlineData(ReportFrequency.Daily, "2026-11-25T08:00:00Z", null, true)]
+    [InlineData(ReportFrequency.Daily, "2026-11-25T06:59:00Z", null, false)]
+    [InlineData(ReportFrequency.Daily, "2026-11-25T08:00:00Z", "2026-11-25", false)]
+    [InlineData(ReportFrequency.Weekly, "2026-11-23T08:00:00Z", "2026-11-16", true)]
+    [InlineData(ReportFrequency.Weekly, "2026-11-25T08:00:00Z", "2026-11-16", false)]
+    [InlineData(ReportFrequency.Monthly, "2026-12-01T07:00:00Z", "2026-11-01", true)]
+    [InlineData(ReportFrequency.Monthly, "2026-12-02T07:00:00Z", "2026-11-01", false)]
+    public void ScheduledReport_IsDueOnItsDay_FromItsHour_OnceADay(ReportFrequency frequency, string now, string? lastSent, bool due)
+    {
+        ReportSchedule schedule = new() { Frequency = frequency, HourUtc = 7, Recipients = "a@example.com", CreatedBy = "test", LastSentOn = lastSent is null ? null : DateOnly.Parse(lastSent, global::System.Globalization.CultureInfo.InvariantCulture) };
+
+        ReportScheduleService.IsDue(schedule, DateTimeOffset.Parse(now, global::System.Globalization.CultureInfo.InvariantCulture)).Should().Be(due);
     }
 
     [Fact]

@@ -10,7 +10,8 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
   styles: `
     nav {
       display: flex;
-      gap: 26px;
+      gap: 24px;
+      flex-wrap: wrap;
       border-bottom: 1px solid #d9d9d9;
       margin-bottom: 14px;
     }
@@ -34,6 +35,7 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
       <a [routerLink]="['/funds', fundId(), 'risk']" routerLinkActive="on">Risk</a>
       <a [routerLink]="['/funds', fundId(), 'liquidity']" routerLinkActive="on">Liquidity</a>
       <a [routerLink]="['/funds', fundId(), 'alerts']" routerLinkActive="on">Alerts</a>
+      <a [routerLink]="['/funds', fundId(), 'reports']" routerLinkActive="on">Reports</a>
       @if (isAdmin()) {
         <a [routerLink]="['/funds', fundId(), 'structure']" routerLinkActive="on">Structure</a>
         <a [routerLink]="['/funds', fundId(), 'connections']" routerLinkActive="on">Connections</a>

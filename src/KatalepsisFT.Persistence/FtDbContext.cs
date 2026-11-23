@@ -60,6 +60,7 @@ public class FtDbContext(DbContextOptions<FtDbContext> options)
     public DbSet<AlertRule> AlertRules => Set<AlertRule>();
     public DbSet<Alert> Alerts => Set<Alert>();
     public DbSet<KatalepsisFT.Domain.Audit.AuditEntry> AuditEntries => Set<KatalepsisFT.Domain.Audit.AuditEntry>();
+    public DbSet<KatalepsisFT.Domain.Reports.ReportSchedule> ReportSchedules => Set<KatalepsisFT.Domain.Reports.ReportSchedule>();
     public DbSet<AlertAction> AlertActions => Set<AlertAction>();
 
     protected override void OnModelCreating(ModelBuilder builder)

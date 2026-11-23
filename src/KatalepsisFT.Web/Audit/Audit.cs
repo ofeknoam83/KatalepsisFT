@@ -28,6 +28,7 @@ public sealed class AuditAttribute(string action) : Attribute
     public string? CashFlow { get; init; }
     public string? Rule { get; init; }
     public string? Alert { get; init; }
+    public string? Schedule { get; init; }
 
     /// <summary>The request carries the manager's id in a field called ManagerId.</summary>
     public bool ManagerFromBody { get; init; }
@@ -132,6 +133,11 @@ public sealed class AuditFilter(AuditLog audit, ILogger<AuditFilter> logger) : I
         if (Route(mark.Alert) is int alertId)
         {
             return await audit.AlertAsync(alertId, cancellationToken);
+        }
+
+        if (Route(mark.Schedule) is int scheduleId)
+        {
+            return await audit.ScheduleAsync(scheduleId, cancellationToken);
         }
 
         return Route(mark.Fund) is int fundId ? await audit.FundAsync(fundId, cancellationToken) : AuditTarget.None;

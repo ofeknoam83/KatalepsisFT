@@ -74,6 +74,7 @@ builder.Services.AddScoped<IValidator<LoginRequest>, LoginRequestValidator>();
 builder.Services.AddScoped<IValidator<ChangePasswordRequest>, ChangePasswordRequestValidator>();
 builder.Services.AddScoped<IValidator<SaveAlertRuleRequest>, SaveAlertRuleRequestValidator>();
 builder.Services.AddScoped<IValidator<SnoozeRequest>, SnoozeRequestValidator>();
+builder.Services.AddScoped<IValidator<KatalepsisFT.Application.Reports.SaveReportScheduleRequest>, KatalepsisFT.Application.Reports.SaveReportScheduleRequestValidator>();
 builder.Services.AddScoped<IValidator<NoteRequest>, NoteRequestValidator>();
 builder.Services.AddScoped<IValidator<AddConnectionRequest>, AddConnectionRequestValidator>();
 builder.Services.AddScoped<IValidator<NewFundRequest>, NewFundRequestValidator>();
@@ -84,6 +85,7 @@ builder.Services.AddCredentialVault(builder.Configuration);
 builder.Services.AddVenueAdapters();
 builder.Services.AddMarketData();
 builder.Services.AddApplication();
+builder.Services.AddMail();
 
 // Live updates: with Key Value, workers and both web instances announce changes over it; without, this instance tells its own browsers.
 // Outgoing request logs print full addresses. Nothing secret is put in an address, and this keeps it that way if one ever is.

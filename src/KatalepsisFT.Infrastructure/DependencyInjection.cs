@@ -41,6 +41,13 @@ public static class DependencyInjection
         return services;
     }
 
+    /// <summary>The mail account reports are sent from; without one configured, nothing is sent and the screens say so.</summary>
+    public static IServiceCollection AddMail(this IServiceCollection services)
+    {
+        services.AddSingleton<KatalepsisFT.Application.Reports.IMailSender, Mail.SmtpMailSender>();
+        return services;
+    }
+
     /// <summary>Public market data: no credentials, read-only.</summary>
     public static IServiceCollection AddMarketData(this IServiceCollection services)
     {

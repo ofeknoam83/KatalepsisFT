@@ -107,5 +107,11 @@ public sealed class AuditLog(IFtDbContext database, TimeProvider clock)
         return rule with { Subject = $"Alert {alertId} on {rule.Subject}" };
     }
 
+    public async Task<AuditTarget> ScheduleAsync(int scheduleId, CancellationToken cancellationToken)
+    {
+        var schedule = await database.ReportSchedules.Where(s => s.Id == scheduleId).Select(s => new { s.FundId, Fund = s.Fund.Name, s.Kind, s.Frequency, s.Recipients }).FirstOrDefaultAsync(cancellationToken);
+        return schedule is null ? AuditTarget.None : new AuditTarget(schedule.FundId, schedule.Fund, $"{schedule.Frequency} {schedule.Kind} to {schedule.Recipients}");
+    }
+
     private static string? Cut(string? text, int length) => text is null || text.Length <= length ? text : text[..length];
 }

@@ -19,6 +19,7 @@ export const routes: Routes = [
       { path: 'funds/:fundId/performance', loadComponent: () => import('./funds/fund-performance.page').then((m) => m.FundPerformancePage) },
       { path: 'funds/:fundId/risk', loadComponent: () => import('./funds/fund-risk.page').then((m) => m.FundRiskPage) },
       { path: 'funds/:fundId/liquidity', loadComponent: () => import('./funds/fund-liquidity.page').then((m) => m.FundLiquidityPage) },
+      { path: 'funds/:fundId/reports', loadComponent: () => import('./funds/fund-reports.page').then((m) => m.FundReportsPage) },
       { path: 'funds/:fundId/alerts', loadComponent: () => import('./funds/fund-alerts.page').then((m) => m.FundAlertsPage) },
       { path: 'funds/:fundId/structure', canActivate: [adminOnly], loadComponent: () => import('./funds/fund-structure.page').then((m) => m.FundStructurePage) },
       { path: 'funds/:fundId/connections', canActivate: [adminOnly], loadComponent: () => import('./funds/fund-connections.page').then((m) => m.FundConnectionsPage) },

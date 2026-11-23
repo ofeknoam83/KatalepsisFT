@@ -65,6 +65,13 @@ if (hasPostgres && group.ToLowerInvariant() is WorkerGroups.Core)
     builder.Services.AddHostedService<PriceHistoryWorker>();
     builder.Services.AddScoped<KatalepsisFT.Application.Demo.DemoLiveService>();
     builder.Services.AddHostedService<DemoLiveWorker>();
+    // Reports that go out by email on their schedule.
+    builder.Services.AddMail();
+    builder.Services.AddScoped<KatalepsisFT.Application.Performance.PerformanceService>();
+    builder.Services.AddScoped<KatalepsisFT.Application.Alerts.AlertService>();
+    builder.Services.AddScoped<KatalepsisFT.Application.Reports.ReportService>();
+    builder.Services.AddScoped<KatalepsisFT.Application.Reports.ReportScheduleService>();
+    builder.Services.AddHostedService<ReportWorker>();
 }
 
 await builder.Build().RunAsync();

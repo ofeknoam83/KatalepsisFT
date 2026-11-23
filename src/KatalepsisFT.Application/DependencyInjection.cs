@@ -24,6 +24,8 @@ public static class DependencyInjection
         services.AddScoped<Alerts.AlertEvaluator>();
         services.AddScoped<Alerts.AlertService>();
         services.AddScoped<Audit.AuditLog>();
+        services.AddScoped<Reports.ReportService>();
+        services.AddScoped<Reports.ReportScheduleService>();
         services.TryAddSingleton(TimeProvider.System);
         return services;
     }

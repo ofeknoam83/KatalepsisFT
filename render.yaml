@@ -94,6 +94,18 @@ envVarGroups:
     envVars:
       - key: MASTER_KEY
         generateValue: true
+      # The mail account scheduled reports are sent from. Any provider's SMTP details work. Left empty, nothing is
+      # sent and the Reports page says so. Set them in the Render dashboard, under this environment group.
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: MAIL_FROM
+        sync: false
 
 databases:
   - name: katalepsis-ft-db

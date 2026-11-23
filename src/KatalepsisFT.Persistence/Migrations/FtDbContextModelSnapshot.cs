@@ -1025,6 +1025,73 @@ namespace KatalepsisFT.Persistence.Migrations
                     b.ToTable("position_snapshots", (string)null);
                 });
 
+            modelBuilder.Entity("KatalepsisFT.Domain.Reports.ReportSchedule", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("created_by");
+
+                    b.Property<int>("Frequency")
+                        .HasColumnType("integer")
+                        .HasColumnName("frequency");
+
+                    b.Property<int>("FundId")
+                        .HasColumnType("integer")
+                        .HasColumnName("fund_id");
+
+                    b.Property<int>("HourUtc")
+                        .HasColumnType("integer")
+                        .HasColumnName("hour_utc");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_enabled");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer")
+                        .HasColumnName("kind");
+
+                    b.Property<DateTimeOffset?>("LastAttemptAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_attempt_at");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("last_error");
+
+                    b.Property<DateOnly?>("LastSentOn")
+                        .HasColumnType("date")
+                        .HasColumnName("last_sent_on");
+
+                    b.Property<string>("Recipients")
+                        .IsRequired()
+                        .HasMaxLength(6000)
+                        .HasColumnType("character varying(6000)")
+                        .HasColumnName("recipients");
+
+                    b.HasKey("Id")
+                        .HasName("pk_report_schedules");
+
+                    b.HasIndex("FundId")
+                        .HasDatabaseName("ix_report_schedules_fund_id");
+
+                    b.ToTable("report_schedules", (string)null);
+                });
+
             modelBuilder.Entity("KatalepsisFT.Persistence.Identity.AppUser", b =>
                 {
                     b.Property<int>("Id")
@@ -1532,6 +1599,18 @@ namespace KatalepsisFT.Persistence.Migrations
                     b.Navigation("Instrument");
 
                     b.Navigation("ManagerAccount");
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Reports.ReportSchedule", b =>
+                {
+                    b.HasOne("KatalepsisFT.Domain.Funds.Fund", "Fund")
+                        .WithMany()
+                        .HasForeignKey("FundId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_report_schedules_funds_fund_id");
+
+                    b.Navigation("Fund");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<int>", b =>

@@ -58,3 +58,15 @@ internal sealed class AuditEntryConfiguration : IEntityTypeConfiguration<Katalep
         entry.HasIndex(x => new { x.FundId, x.At });
     }
 }
+
+internal sealed class ReportScheduleConfiguration : IEntityTypeConfiguration<KatalepsisFT.Domain.Reports.ReportSchedule>
+{
+    public void Configure(EntityTypeBuilder<KatalepsisFT.Domain.Reports.ReportSchedule> schedule)
+    {
+        schedule.ToTable("report_schedules");
+        schedule.Property(x => x.Recipients).HasMaxLength(6000);
+        schedule.Property(x => x.LastError).HasMaxLength(500);
+        schedule.Property(x => x.CreatedBy).HasMaxLength(256);
+        schedule.HasOne(x => x.Fund).WithMany().HasForeignKey(x => x.FundId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
