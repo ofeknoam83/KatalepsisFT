@@ -101,11 +101,23 @@ public sealed class MarketDataWorker(
     {
         KeyValueBookFeed feed = new(keyValue);
         DateTimeOffset warned = DateTimeOffset.MinValue;
+        // The first summary a minute in, once every venue has been timed a few times; then every ten minutes.
+        DateTimeOffset summarise = clock.GetUtcNow() + TimeSpan.FromMinutes(1);
         while (!stopping.IsCancellationRequested)
         {
             try
             {
-                await feed.PublishAsync(books, board.Snapshot(books, venues));
+                ExecutionStatus status = board.Snapshot(books, venues);
+                await feed.PublishAsync(books, status);
+                if (status.At >= summarise)
+                {
+                    summarise = status.At + TimeSpan.FromMinutes(10);
+                    logger.LogInformation(
+                        "Market data: {Venues}. Last look at open orders took {Round} ms.",
+                        string.Join("; ", status.Venues.Select(v => $"{v.Venue} {(v.Connected ? v.Books + " live books" : "no data")}, round trip {(v.RoundTripMs is double ms ? ms.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " ms" : "not measured")}")),
+                        status.RoundMs
+                    );
+                }
             }
             catch (Exception e) when (e is RedisException or TimeoutException)
             {
