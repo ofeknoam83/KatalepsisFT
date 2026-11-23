@@ -14,7 +14,7 @@ namespace KatalepsisFT.Venues.Mexc;
 /// Real orders at MEXC: spot against USDT, which is what Katalepsis trades there. The calls are those of
 /// Katalepsis' Infrastructure/Services/Mexc/MexcApiClient.cs (commit 9847e4f): everything in the address, signed
 /// as it is sent, with the same order types ("LIMIT", "LIMIT_MAKER" for maker only). MEXC's perpetuals are in the
-/// book for prices, but orders for them are not sent: Katalepsis does not trade them and MEXC restricts that interface.
+/// book for prices, but orders for them are not sent: Katalepsis does not trade them, so there is nothing of its to follow.
 /// </summary>
 public sealed class MexcOrderGateway(HttpClient http, TimeProvider clock) : RestOrderGateway(http, clock), IOrderGateway
 {
