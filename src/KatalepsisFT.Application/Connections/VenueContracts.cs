@@ -93,6 +93,12 @@ public interface IVenueAdapter
     /// <summary>Which worker group reads this venue.</summary>
     string WorkerGroup { get; }
 
+    /// <summary>
+    /// The shortest time between two reads of one account. A read is several requests, and a venue that counts
+    /// requests per key or per caller refuses accounts that are read faster than it allows.
+    /// </summary>
+    TimeSpan MinReadInterval => TimeSpan.FromSeconds(2);
+
     /// <summary>Proves the key works and reports what it may do. Throws <see cref="VenueException"/>.</summary>
     Task<CredentialCheck> CheckCredentialsAsync(VenueCredentials credentials, CancellationToken cancellationToken);
 

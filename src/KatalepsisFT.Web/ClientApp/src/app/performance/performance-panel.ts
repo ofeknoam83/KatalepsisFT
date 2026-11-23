@@ -193,7 +193,7 @@ export class PerformancePanel {
 
   private readonly loaded = keptData(
     combineLatest([toObservable(this.scope), toObservable(this.scopeId), this.store.select(ViewState.benchmarkId), this.store.select(ViewState.period)]),
-    toObservable(inject(LiveService).tick),
+    toObservable(inject(LiveService).slowTick),
     ([scope, id, benchmarkId, period]) => this.api.get(scope, id, benchmarkId, period),
     ([scope, id]) => `${scope}:${id}`,
   );

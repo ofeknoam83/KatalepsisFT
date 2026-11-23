@@ -1,8 +1,8 @@
 import { DestroyRef, Signal, inject, signal } from '@angular/core';
-import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
+import { toObservable } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, ParamMap } from '@angular/router';
 import { Store } from '@ngxs/store';
-import { EMPTY, Observable, catchError, combineLatest, switchMap, tap } from 'rxjs';
+import { Observable, Subscription, combineLatest } from 'rxjs';
 import { LiveService } from '../core/live.service';
 import { InstrumentFilter } from '../funds/models';
 import { ViewState } from '../funds/view.state';
@@ -30,37 +30,66 @@ export function keptData<K, T>(key: Observable<K>, reload: Observable<unknown>, 
   let shown: unknown = none;
   let asked: unknown = none;
 
-  combineLatest([key, reload])
-    .pipe(
-      switchMap(([k]) => {
-        const next = scope ? scope(k) : none;
-        if (scope && asked !== none && next !== asked) {
+  // The load in flight, the key it is for, and whether another reload was asked for meanwhile.
+  let running: Subscription | null = null;
+  let runningKey: unknown = none;
+  let again = false;
+
+  const start = (k: K): void => {
+    running?.unsubscribe();
+    runningKey = k;
+    again = false;
+    const next = scope ? scope(k) : none;
+    if (scope && asked !== none && next !== asked) {
+      shown = none;
+      data.set(null);
+      failed.set(false);
+    }
+
+    asked = next;
+    let done = false;
+    const finish = (): void => {
+      done = true;
+      running = null;
+      if (again) {
+        start(k);
+      }
+    };
+    const load$ = load(k).subscribe({
+      next: (value) => {
+        shown = k;
+        data.set(value);
+        failed.set(false);
+      },
+      error: () => {
+        if (shown !== k) {
           shown = none;
           data.set(null);
-          failed.set(false);
+          failed.set(true);
         }
 
-        asked = next;
-        return load(k).pipe(
-          tap((value) => {
-            shown = k;
-            data.set(value);
-            failed.set(false);
-          }),
-          catchError(() => {
-            if (shown !== k) {
-              shown = none;
-              data.set(null);
-              failed.set(true);
-            }
+        finish();
+      },
+      complete: finish,
+    });
+    // A load that answered at once has already finished; do not mark it as still running.
+    running = done ? null : load$;
+  };
 
-            return EMPTY;
-          }),
-        );
-      }),
-      takeUntilDestroyed(inject(DestroyRef)),
-    )
-    .subscribe();
+  // Figures can change every couple of seconds. A reload for the same key waits for the load in flight and then runs
+  // once: cancelling and restarting on every change would mean a slow request never gets to answer at all.
+  const changes = combineLatest([key, reload]).subscribe(([k]) => {
+    if (running !== null && k === runningKey) {
+      again = true;
+      return;
+    }
+
+    start(k);
+  });
+  inject(DestroyRef).onDestroy(() => {
+    changes.unsubscribe();
+    running?.unsubscribe();
+  });
   return { data: data.asReadonly(), failed: failed.asReadonly() };
 }
 

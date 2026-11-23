@@ -39,7 +39,8 @@ export interface Crumb {
       <span class="sub">{{ sub() }}</span>
       <span class="grow"></span>
       @if (asOf()) {
-        <span class="sub">As of end of {{ asOf() | date: 'd MMM y' : 'UTC' }} (UTC)</span>
+        <!-- Today's figures are the latest reading and still moving; an earlier day's are that day's last. -->
+        <span class="sub">{{ isToday() ? 'Live · today,' : 'As of end of' }} {{ asOf() | date: 'd MMM y' : 'UTC' }} (UTC)</span>
       }
       @if (showFilter()) {
         <nz-segmented [nzOptions]="options" [ngModel]="filter()" (nzValueChange)="setFilter($event)" data-testid="instrument-filter" />
@@ -57,7 +58,11 @@ export class PageHead {
   readonly demo = input(false);
   readonly showFilter = input(true);
 
-  protected readonly options: InstrumentFilter[] = ['All', 'Spot', 'Perp', 'Option', 'TradFi'];
+  protected isToday(): boolean {
+    return this.asOf() === new Date().toISOString().slice(0, 10);
+  }
+
+  protected readonly options: InstrumentFilter[] =['All', 'Spot', 'Perp', 'Option', 'TradFi'];
   protected readonly filter = this.store.selectSignal(ViewState.filter);
 
   protected setFilter(value: string | number): void {

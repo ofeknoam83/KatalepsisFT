@@ -32,6 +32,9 @@ public abstract partial class WalletAdapter(HttpClient http, TimeProvider clock)
 
     public string WorkerGroup => WorkerGroups.Defi;
 
+    /// <summary>Wallets are read through public chain nodes, which refuse callers that ask much more often than this.</summary>
+    public TimeSpan MinReadInterval => TimeSpan.FromSeconds(30);
+
     /// <summary>The address in the form the chain's nodes expect, or a <see cref="VenueException"/> saying what an address looks like.</summary>
     protected abstract string Address(VenueCredentials credentials);
 

@@ -7,23 +7,28 @@ using Microsoft.EntityFrameworkCore;
 namespace KatalepsisFT.Worker;
 
 /// <summary>
-/// Reads every connection of this worker's venues in turn, on an interval. A connection that keeps failing is tried
-/// less and less often, up to <see cref="ConnectionSyncService.MaxBackoff"/>. One connection failing never stops the others.
+/// Reads the connections of this worker's venues every couple of seconds, each no more often than its venue allows.
+/// Managers are read side by side; the connections of one manager one after another, since they write the same book.
+/// A connection that keeps failing is tried less and less often, up to <see cref="ConnectionSyncService.MaxBackoff"/>.
+/// One connection failing never stops the others.
 /// </summary>
 public sealed class ConnectionSyncWorker(IServiceScopeFactory scopes, WorkerIdentity identity, TimeProvider clock, ILogger<ConnectionSyncWorker> logger) : BackgroundService
 {
-    /// <summary>How often exchange accounts are read. Each read is pushed to open browsers as soon as it is stored.</summary>
-    public static readonly TimeSpan Interval = TimeSpan.FromSeconds(10);
+    /// <summary>How often the worker looks for connections that are due. Each read is pushed to open browsers as soon as it is stored.</summary>
+    public static readonly TimeSpan Interval = TimeSpan.FromSeconds(2);
 
-    /// <summary>Wallets are read through public chain nodes, which refuse callers that ask much more often than this.</summary>
-    public static readonly TimeSpan WalletInterval = TimeSpan.FromSeconds(30);
+    /// <summary>Accounts of one venue that may be read at the venue's full pace; with more, each is read proportionally less often, because venues also count requests per caller address.</summary>
+    public const int AccountsAtFullPace = 3;
 
-    /// <summary>Pause between two accounts, so a venue is not hit by all of them at once.</summary>
-    private static readonly TimeSpan Stagger = TimeSpan.FromMilliseconds(500);
+    /// <summary>Managers read at the same time.</summary>
+    private const int Parallelism = 8;
+
+    /// <summary>A timer that fires a moment early must not make a read wait a whole further round.</summary>
+    private static readonly TimeSpan Tolerance = TimeSpan.FromMilliseconds(300);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using PeriodicTimer timer = new(identity.Group == WorkerGroups.Defi ? WalletInterval : Interval, clock);
+        using PeriodicTimer timer = new(Interval, clock);
         do
         {
             try
@@ -40,34 +45,50 @@ public sealed class ConnectionSyncWorker(IServiceScopeFactory scopes, WorkerIden
 
     public async Task RunOnceAsync(CancellationToken cancellationToken)
     {
-        List<int> due;
+        List<List<int>> dueByManager;
         await using (AsyncServiceScope scope = scopes.CreateAsyncScope())
         {
-            Venue[] venues = scope.ServiceProvider.GetRequiredService<VenueAdapterRegistry>().All.Where(a => a.WorkerGroup == identity.Group).Select(a => a.Venue).ToArray();
+            Dictionary<Venue, TimeSpan> pace = scope.ServiceProvider.GetRequiredService<VenueAdapterRegistry>().All.Where(a => a.WorkerGroup == identity.Group).ToDictionary(a => a.Venue, a => a.MinReadInterval);
+            Venue[] venues = pace.Keys.ToArray();
             DateTimeOffset now = clock.GetUtcNow();
             var candidates = await scope
                 .ServiceProvider.GetRequiredService<FtDbContext>()
                 .VenueConnections.AsNoTracking()
                 .Where(c => venues.Contains(c.Venue) && c.State != ConnectionState.Disabled)
-                .Select(c => new { c.Id, c.LastAttemptAt, c.ConsecutiveFailures })
+                .Select(c => new { c.Id, c.ManagerAccountId, c.Venue, c.LastAttemptAt, c.ConsecutiveFailures })
                 .ToListAsync(cancellationToken);
-            due = candidates.Where(c => c.LastAttemptAt is null || c.LastAttemptAt.Value + ConnectionSyncService.Backoff(c.ConsecutiveFailures) <= now).Select(c => c.Id).ToList();
+            Dictionary<Venue, int> accounts = candidates.GroupBy(c => c.Venue).ToDictionary(g => g.Key, g => g.Count());
+            dueByManager = candidates
+                .Where(c =>
+                {
+                    TimeSpan wait = pace[c.Venue] * Math.Ceiling(accounts[c.Venue] / (double)AccountsAtFullPace);
+                    TimeSpan backoff = ConnectionSyncService.Backoff(c.ConsecutiveFailures);
+                    return c.LastAttemptAt is null || c.LastAttemptAt.Value + (backoff > wait ? backoff : wait) - Tolerance <= now;
+                })
+                .GroupBy(c => c.ManagerAccountId)
+                .Select(g => g.Select(c => c.Id).ToList())
+                .ToList();
         }
 
-        foreach (int id in due)
-        {
-            // A scope per connection: one failed write cannot leave half-saved state for the next.
-            await using AsyncServiceScope scope = scopes.CreateAsyncScope();
-            try
+        await Parallel.ForEachAsync(
+            dueByManager,
+            new ParallelOptions { MaxDegreeOfParallelism = Parallelism, CancellationToken = cancellationToken },
+            async (connectionIds, token) =>
             {
-                await scope.ServiceProvider.GetRequiredService<ConnectionSyncService>().SyncAsync(id, cancellationToken);
+                foreach (int id in connectionIds)
+                {
+                    // A scope per connection: one failed write cannot leave half-saved state for the next.
+                    await using AsyncServiceScope scope = scopes.CreateAsyncScope();
+                    try
+                    {
+                        await scope.ServiceProvider.GetRequiredService<ConnectionSyncService>().SyncAsync(id, token, paced: true);
+                    }
+                    catch (Exception e) when (e is not OperationCanceledException)
+                    {
+                        logger.LogError(e, "Reading connection {ConnectionId} failed unexpectedly.", id);
+                    }
+                }
             }
-            catch (Exception e) when (e is not OperationCanceledException)
-            {
-                logger.LogError(e, "Reading connection {ConnectionId} failed unexpectedly.", id);
-            }
-
-            await Task.Delay(Stagger, clock, cancellationToken);
-        }
+        );
     }
 }

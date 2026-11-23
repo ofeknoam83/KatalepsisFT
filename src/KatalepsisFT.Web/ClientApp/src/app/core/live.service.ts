@@ -12,8 +12,16 @@ export class LiveService {
   /** How often pages reload when the socket is not connected. */
   private static readonly fallbackMs = 15_000;
 
+  /** The heavier figures (risk, liquidity, performance, alerts) follow at this pace however often the fund changes. */
+  private static readonly slowMs = 15_000;
+
   /** Goes up by one whenever the fund being watched should be read again. */
   readonly tick = signal(0);
+
+  /** Follows <see cref="tick"/>, but at most once per fifteen seconds: for figures that weigh a year of history. */
+  readonly slowTick = signal(0);
+  private slowAt = 0;
+  private slowTimer: ReturnType<typeof setTimeout> | null = null;
   readonly connected = signal(false);
 
   private connection: HubConnection | null = null;
@@ -27,9 +35,26 @@ export class LiveService {
       .subscribe(() => this.stop());
     setInterval(() => {
       if (!this.connected() && this.fundId !== null) {
-        this.tick.update((t) => t + 1);
+        this.changed();
       }
     }, LiveService.fallbackMs);
+  }
+
+  private changed(): void {
+    this.tick.update((t) => t + 1);
+    if (this.slowTimer !== null) {
+      return;
+    }
+
+    const wait = this.slowAt + LiveService.slowMs - Date.now();
+    this.slowTimer = setTimeout(
+      () => {
+        this.slowTimer = null;
+        this.slowAt = Date.now();
+        this.slowTick.update((t) => t + 1);
+      },
+      Math.max(0, wait),
+    );
   }
 
   /** Follows one fund; the previous one is dropped. */
@@ -77,7 +102,7 @@ export class LiveService {
       .build();
     connection.on('fundChanged', (fundId: number) => {
       if (fundId === this.fundId) {
-        this.tick.update((t) => t + 1);
+        this.changed();
       }
     });
     connection.onreconnecting(() => this.connected.set(false));
@@ -124,7 +149,7 @@ export class LiveService {
     this.connected.set(true);
     if (this.fundId !== null) {
       void connection.invoke('WatchFund', this.fundId).catch(() => undefined);
-      this.tick.update((t) => t + 1);
+      this.changed();
     }
   }
 }

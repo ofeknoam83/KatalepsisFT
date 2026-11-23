@@ -27,8 +27,9 @@ public sealed class ConnectionSyncService(IFtDbContext database, VenueAdapterReg
     public static TimeSpan Backoff(int consecutiveFailures) =>
         consecutiveFailures <= 0 ? TimeSpan.Zero : TimeSpan.FromMinutes(Math.Min(MaxBackoff.TotalMinutes, Math.Pow(2, Math.Min(consecutiveFailures, 10) - 1)));
 
+    /// <param name="paced">True for the worker's reads every few seconds: the fund's alert rules are then checked at a slower pace.</param>
     /// <returns>False when the connection does not exist or is switched off.</returns>
-    public async Task<bool> SyncAsync(int connectionId, CancellationToken cancellationToken)
+    public async Task<bool> SyncAsync(int connectionId, CancellationToken cancellationToken, bool paced = false)
     {
         VenueConnection? connection = await database.VenueConnections.FirstOrDefaultAsync(c => c.Id == connectionId, cancellationToken);
         if (connection is null || connection.State == ConnectionState.Disabled)
@@ -68,7 +69,7 @@ public sealed class ConnectionSyncService(IFtDbContext database, VenueAdapterReg
             await database.SaveChangesAsync(cancellationToken);
             await ReadTransfersAsync(connection, adapter, credentials, snapshot, previousSuccess, now, cancellationToken);
             // The book just changed: rewrite today, sample it, check the fund's rules, tell whoever is watching.
-            await books.RefreshAsync(connection.ManagerAccountId, cancellationToken);
+            await books.RefreshAsync(connection.ManagerAccountId, cancellationToken, paced);
         }
         catch (VenueException e)
         {

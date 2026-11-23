@@ -171,7 +171,7 @@ export class LiquidityPanel {
   protected readonly participation = signal(0.1);
   private readonly loaded = keptData(
     combineLatest([toObservable(this.scope), toObservable(this.scopeId), toObservable(this.participation)]),
-    toObservable(inject(LiveService).tick),
+    toObservable(inject(LiveService).slowTick),
     ([scope, id, participation]) => this.api.liquidity(scope, id, participation),
     ([scope, id]) => `${scope}:${id}`,
   );

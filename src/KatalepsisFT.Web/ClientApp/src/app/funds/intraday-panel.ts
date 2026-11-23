@@ -32,7 +32,7 @@ export class IntradayPanel {
 
   protected readonly data = keptData(
     toObservable(this.fundId),
-    toObservable(inject(LiveService).tick),
+    toObservable(inject(LiveService).slowTick),
     (fundId) => this.api.intraday(fundId, 24),
     (fundId) => fundId,
   ).data;

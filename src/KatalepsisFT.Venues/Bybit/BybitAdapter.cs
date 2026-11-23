@@ -33,6 +33,9 @@ public sealed class BybitAdapter(TimeProvider clock) : IVenueAdapter
 
     public string WorkerGroup => WorkerGroups.Cefi;
 
+    /// <summary>A read is about ten requests: one per kind of position and per coin with options.</summary>
+    public TimeSpan MinReadInterval => TimeSpan.FromSeconds(5);
+
     public async Task<CredentialCheck> CheckCredentialsAsync(VenueCredentials credentials, CancellationToken cancellationToken)
     {
         using BybitRestClient client = Client(credentials);

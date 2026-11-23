@@ -226,7 +226,7 @@ export class AlertsInbox {
 
   private readonly loaded = keptData(
     combineLatest([toObservable(this.fundId), toObservable(this.state), toObservable(this.sleeveId)]),
-    combineLatest([toObservable(this.version), toObservable(inject(LiveService).tick)]),
+    combineLatest([toObservable(this.version), toObservable(inject(LiveService).slowTick)]),
     ([fundId, state, sleeveId]) => this.api.list(fundId, state, sleeveId),
     ([fundId]) => fundId,
   );

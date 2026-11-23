@@ -29,6 +29,9 @@ public sealed partial class HyperliquidAdapter(HttpClient http, TimeProvider clo
 
     public string WorkerGroup => WorkerGroups.Defi;
 
+    /// <summary>Hyperliquid weighs requests per caller address; a read with spot holdings is among the heavier ones.</summary>
+    public TimeSpan MinReadInterval => TimeSpan.FromSeconds(5);
+
     public async Task<CredentialCheck> CheckCredentialsAsync(VenueCredentials credentials, CancellationToken cancellationToken)
     {
         // Any well-formed address answers, with an empty account if it was never used; that is not an error.

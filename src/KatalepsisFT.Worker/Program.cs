@@ -61,6 +61,8 @@ if (hasPostgres && group.ToLowerInvariant() is WorkerGroups.Core)
     builder.Services.AddSingleton<KatalepsisFT.Application.Live.IFundChangeNotifier, KatalepsisFT.Infrastructure.KeyValue.KeyValueFundChangeNotifier>();
     builder.Services.AddScoped<ManagerBookService>();
     builder.Services.AddHostedService<PriceHistoryWorker>();
+    builder.Services.AddScoped<KatalepsisFT.Application.Demo.DemoLiveService>();
+    builder.Services.AddHostedService<DemoLiveWorker>();
 }
 
 await builder.Build().RunAsync();

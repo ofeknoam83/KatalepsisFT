@@ -203,7 +203,7 @@ export class RiskPanel {
 
   private readonly loaded = keptData(
     combineLatest([toObservable(this.scope), toObservable(this.scopeId)]),
-    toObservable(inject(LiveService).tick),
+    toObservable(inject(LiveService).slowTick),
     ([scope, id]) => this.api.risk(scope, id),
     ([scope, id]) => `${scope}:${id}`,
   );

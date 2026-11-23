@@ -54,6 +54,7 @@ public static class DependencyInjection
             provider.GetRequiredService<TimeProvider>()
         ));
         services.AddSingleton<IDailyPriceSource, BinanceDailyPriceSource>();
+        services.AddSingleton<ILivePriceSource, BinanceLivePriceSource>();
         services.AddHttpClient(YahooDailyPriceSource.HttpClientName, client => client.Timeout = MarketDataHttpClients.Timeout);
         services.AddSingleton<IDailyPriceSource, YahooDailyPriceSource>();
         return services;

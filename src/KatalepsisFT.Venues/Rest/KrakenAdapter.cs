@@ -27,6 +27,9 @@ public sealed class KrakenAdapter(HttpClient http, TimeProvider clock) : IVenueA
 
     public string WorkerGroup => WorkerGroups.Cefi;
 
+    /// <summary>Kraken counts private calls per key and lets the count fall by one every three seconds on a starter account.</summary>
+    public TimeSpan MinReadInterval => TimeSpan.FromSeconds(6);
+
     public async Task<CredentialCheck> CheckCredentialsAsync(VenueCredentials credentials, CancellationToken cancellationToken)
     {
         await PrivateAsync(credentials, "/0/private/Balance", [], cancellationToken);

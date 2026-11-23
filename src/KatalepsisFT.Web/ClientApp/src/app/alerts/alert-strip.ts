@@ -59,7 +59,7 @@ export class AlertStrip {
 
   protected readonly list = keptData(
     combineLatest([toObservable(this.fundId), toObservable(this.sleeveId)]),
-    toObservable(inject(LiveService).tick),
+    toObservable(inject(LiveService).slowTick),
     ([fundId, sleeveId]) => this.api.list(fundId, 'Active', sleeveId),
     ([fundId, sleeveId]) => `${fundId}:${sleeveId}`,
   ).data;
