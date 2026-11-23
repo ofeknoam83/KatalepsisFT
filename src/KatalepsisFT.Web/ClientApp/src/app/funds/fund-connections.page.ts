@@ -60,7 +60,7 @@ const STATE_COLOR = { Live: 'green', Failed: 'red', Pending: 'blue', Disabled: '
         <div class="panel">
           <h3>
             Connections
-            <span class="hint">Positions are read about once a minute, deposits and withdrawals every ten. A key that can trade or withdraw is refused.</span>
+            <span class="hint">Positions are read every few seconds, deposits and withdrawals every ten minutes. One manager can have any number of keys and wallets. A key that can trade or withdraw is refused.</span>
             <button nz-button nzType="primary" nzSize="small" style="margin-left:12px" [disabled]="!c.canAddKeys || c.managers.length === 0" (click)="open()" data-testid="add-key">Add a key or wallet</button>
           </h3>
           <nz-table [nzData]="c.connections" nzTemplateMode [nzShowPagination]="false" nzSize="small" data-testid="connections-table">

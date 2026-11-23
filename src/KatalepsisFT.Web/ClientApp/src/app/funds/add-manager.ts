@@ -46,7 +46,7 @@ interface ManagerForm {
         nzTitle="Add a manager"
         [nzOkText]="okText()"
         [nzOkLoading]="saving()"
-        [nzOkDisabled]="form.invalid || incomplete()"
+        [nzOkDisabled]="status() !== 'VALID' || incomplete()"
         [nzCancelText]="createdId() === null ? 'Cancel' : 'Finish later'"
         (nzOnOk)="submit()"
         (nzOnCancel)="close()"
@@ -120,7 +120,7 @@ interface ManagerForm {
                 <p class="note">The manager is added empty. A key, a wallet or positions can be given to it at any time; it counts in the fund from its first reading.</p>
               }
             }
-            <p class="note">It starts today. Whatever it holds at its first reading enters the fund as money arriving, not as a gain.</p>
+            <p class="note">More keys and wallets can be added to the same manager afterwards, on its page. It starts today. Whatever it holds at its first reading enters the fund as money arriving, not as a gain.</p>
           </form>
         </ng-container>
       </nz-modal>
@@ -169,6 +169,11 @@ export class AddManager {
     apiSecret: new FormControl('', { nonNullable: true }),
     passphrase: new FormControl('', { nonNullable: true }),
   });
+  /**
+   * Whether the form is valid, as a signal. The inputs live in the dialog's overlay, and typing there does not by
+   * itself redraw this component; reading the form's own "invalid" in the template would leave the button stale.
+   */
+  protected readonly status = toSignal(this.form.statusChanges, { initialValue: this.form.status });
   protected readonly source = toSignal(this.form.controls.source.valueChanges, { initialValue: 'key' as Source });
   private readonly venue = toSignal(this.form.controls.venue.valueChanges, { initialValue: null });
   private readonly key = toSignal(this.form.controls.apiKey.valueChanges, { initialValue: '' });
@@ -258,7 +263,7 @@ export class AddManager {
     const manual = this.form.controls.source.value === 'manual';
     this.saving.set(false);
     this.visible.set(false);
-    void this.router.navigate(['/managers', managerId], manual ? { queryParams: { tab: 'manual' } } : {});
+    void this.router.navigate(['/managers', managerId], { queryParams: { tab: manual ? 'manual' : 'keys' } });
   }
 
   protected close(): void {
@@ -266,7 +271,7 @@ export class AddManager {
     this.visible.set(false);
     if (created !== null) {
       // It was added without a key: show it, so it is clear that it exists and what it still needs.
-      void this.router.navigate(['/managers', created]);
+      void this.router.navigate(['/managers', created], { queryParams: { tab: 'keys' } });
     }
   }
 }
