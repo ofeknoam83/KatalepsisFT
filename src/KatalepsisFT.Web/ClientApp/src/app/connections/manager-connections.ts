@@ -1,4 +1,5 @@
 import { DatePipe } from '@angular/common';
+import { EditName } from '../shared/edit-name';
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -33,7 +34,7 @@ interface KeyForm {
  */
 @Component({
   selector: 'kft-manager-connections',
-  imports: [DatePipe, ReactiveFormsModule, NzAlertModule, NzButtonModule, NzFormModule, NzInputModule, NzModalModule, NzPopconfirmModule, NzSelectModule, NzTableModule, NzTagModule, ...FORMAT_PIPES],
+  imports: [DatePipe, EditName, ReactiveFormsModule, NzAlertModule, NzButtonModule, NzFormModule, NzInputModule, NzModalModule, NzPopconfirmModule, NzSelectModule, NzTableModule, NzTagModule, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (loaded.failed()) {
@@ -60,7 +61,7 @@ interface KeyForm {
             @for (row of rows(); track row.id) {
               <tr>
                 <td>{{ row.venueName }}</td>
-                <td>{{ row.label }}</td>
+                <td><app-edit-name [value]="row.label" [url]="'/api/connections/' + row.id + '/label'" what="this key or wallet" [maxlength]="100" /></td>
                 <td class="nowrap">…{{ row.keyHint }} @if (!row.permissionsVerified) {<nz-tag nzColor="orange">Permissions unverified</nz-tag>}</td>
                 <td>
                   <nz-tag [nzColor]="stateColor[row.state]">{{ row.state }}</nz-tag>

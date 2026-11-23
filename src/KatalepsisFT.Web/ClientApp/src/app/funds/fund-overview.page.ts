@@ -24,7 +24,7 @@ import { SLEEVE_COLORS } from './models';
     @if (page.data(); as d) {
       <app-page-head
         [crumbs]="[{ label: d.fund.name }]"
-        [title]="d.fund.name"
+        [title]="d.fund.name" [renameUrl]="'/api/funds/' + d.fund.id + '/name'" renameWhat="the fund"
         [demo]="d.fund.isDemo"
         [sub]="d.sleeves.length + ' sleeves · ' + managerCount() + ' managers'"
         [asOf]="d.asOf"

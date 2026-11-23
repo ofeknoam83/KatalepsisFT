@@ -8,6 +8,8 @@ import { NzSegmentedModule } from 'ng-zorro-antd/segmented';
 import { NzTagModule } from 'ng-zorro-antd/tag';
 import { InstrumentFilter } from '../funds/models';
 import { SetInstrumentFilter, ViewState } from '../funds/view.state';
+import { SessionState } from '../core/session.state';
+import { EditName } from './edit-name';
 
 export interface Crumb {
   label: string;
@@ -17,7 +19,7 @@ export interface Crumb {
 /** Breadcrumb, title, the day the numbers are from, and the instrument filter that follows the user across pages. */
 @Component({
   selector: 'app-page-head',
-  imports: [DatePipe, FormsModule, RouterLink, NzBreadCrumbModule, NzSegmentedModule, NzTagModule],
+  imports: [DatePipe, FormsModule, RouterLink, EditName, NzBreadCrumbModule, NzSegmentedModule, NzTagModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <nz-breadcrumb style="margin-bottom:8px">
@@ -32,7 +34,7 @@ export interface Crumb {
       }
     </nz-breadcrumb>
     <div class="page-head">
-      <h1>{{ title() }}</h1>
+      <h1><app-edit-name [value]="title()" [url]="isAdmin() && !demo() ? renameUrl() : null" [what]="renameWhat()" /></h1>
       @if (demo()) {
         <nz-tag nzColor="gold">Demo fund</nz-tag>
       }
@@ -57,6 +59,10 @@ export class PageHead {
   readonly asOf = input<string | null>(null);
   readonly demo = input(false);
   readonly showFilter = input(true);
+  /** Where an administrator's new name for the thing in the title is sent; left out, the title cannot be changed here. */
+  readonly renameUrl = input<string | null>(null);
+  readonly renameWhat = input('this');
+  protected readonly isAdmin = this.store.selectSignal(SessionState.isAdmin);
 
   protected isToday(): boolean {
     return this.asOf() === new Date().toISOString().slice(0, 10);

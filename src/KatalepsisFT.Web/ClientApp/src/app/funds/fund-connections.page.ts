@@ -1,4 +1,5 @@
 import { DatePipe } from '@angular/common';
+import { EditName } from '../shared/edit-name';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -35,14 +36,14 @@ const STATE_COLOR = { Live: 'green', Failed: 'red', Pending: 'blue', Disabled: '
 /** The read-only venue keys a fund's managers are read through. Admin only. */
 @Component({
   selector: 'app-fund-connections-page',
-  imports: [DatePipe, ReactiveFormsModule, NzAlertModule, NzButtonModule, NzFormModule, NzInputModule, NzModalModule, NzPopconfirmModule, NzSelectModule, NzTableModule, NzTagModule, PageHead, FundTabs, ...FORMAT_PIPES],
+  imports: [DatePipe, EditName, ReactiveFormsModule, NzAlertModule, NzButtonModule, NzFormModule, NzInputModule, NzModalModule, NzPopconfirmModule, NzSelectModule, NzTableModule, NzTagModule, PageHead, FundTabs, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (page.failed()) {
       <nz-alert nzType="error" nzMessage="Could not load the fund." nzShowIcon />
     }
     @if (page.data(); as d) {
-      <app-page-head [crumbs]="[{ label: d.fund.name, link: ['/funds', d.fund.id] }, { label: 'Connections' }]" [title]="d.fund.name" [demo]="d.fund.isDemo" sub="Read-only venue keys" [showFilter]="false" />
+      <app-page-head [crumbs]="[{ label: d.fund.name, link: ['/funds', d.fund.id] }, { label: 'Connections' }]" [title]="d.fund.name" [renameUrl]="'/api/funds/' + d.fund.id + '/name'" renameWhat="the fund" [demo]="d.fund.isDemo" sub="Read-only venue keys" [showFilter]="false" />
       <app-fund-tabs [fundId]="d.fund.id" />
       @if (error(); as message) {
         <nz-alert nzType="error" [nzMessage]="message" nzShowIcon nzCloseable (nzOnClose)="error.set(null)" style="display:block;margin-bottom:14px" />
@@ -72,7 +73,7 @@ const STATE_COLOR = { Live: 'green', Failed: 'red', Pending: 'blue', Disabled: '
                 <tr>
                   <td><b>{{ row.manager }}</b> <span style="color:#8c8c8c">· {{ row.sleeve }}</span></td>
                   <td>{{ row.venueName }}</td>
-                  <td>{{ row.label }}</td>
+                  <td><app-edit-name [value]="row.label" [url]="'/api/connections/' + row.id + '/label'" what="this key or wallet" [maxlength]="100" /></td>
                   <td class="nowrap">…{{ row.keyHint }} @if (!row.permissionsVerified) {<nz-tag nzColor="orange">Permissions unverified</nz-tag>}</td>
                   <td>
                     <nz-tag [nzColor]="stateColor[row.state]">{{ row.state }}</nz-tag>

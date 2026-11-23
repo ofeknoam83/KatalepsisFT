@@ -15,7 +15,7 @@ import { FundsApi } from './funds.api';
       <nz-alert nzType="error" nzMessage="Could not load the fund." nzShowIcon />
     }
     @if (page.data(); as d) {
-      <app-page-head [crumbs]="[{ label: d.fund.name, link: ['/funds', d.fund.id] }, { label: 'Liquidity' }]" [title]="d.fund.name" [demo]="d.fund.isDemo" sub="Time to turn positions into cash" [asOf]="d.asOf" [showFilter]="false" />
+      <app-page-head [crumbs]="[{ label: d.fund.name, link: ['/funds', d.fund.id] }, { label: 'Liquidity' }]" [title]="d.fund.name" [renameUrl]="'/api/funds/' + d.fund.id + '/name'" renameWhat="the fund" [demo]="d.fund.isDemo" sub="Time to turn positions into cash" [asOf]="d.asOf" [showFilter]="false" />
       <app-fund-tabs [fundId]="d.fund.id" />
       <app-liquidity-panel scope="Fund" [scopeId]="d.fund.id" />
     }

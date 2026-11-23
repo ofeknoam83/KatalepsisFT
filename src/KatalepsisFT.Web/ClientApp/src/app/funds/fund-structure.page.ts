@@ -12,6 +12,7 @@ import { NzTagModule } from 'ng-zorro-antd/tag';
 import { Observable, of } from 'rxjs';
 import { ConnectionsApi, LimitKind, MandateType, Structure } from '../connections/connections.api';
 import { keptData, pageData } from '../shared/page-data';
+import { EditName } from '../shared/edit-name';
 import { PageHead } from '../shared/page-head';
 import { FundTabs } from './fund-tabs';
 import { FundsApi } from './funds.api';
@@ -59,7 +60,7 @@ interface SleeveDraft {
 /** A fund's sleeves, each sleeve's mandate limits, and its managers. Admin only. */
 @Component({
   selector: 'app-fund-structure-page',
-  imports: [FormsModule, NzAlertModule, NzButtonModule, NzInputModule, NzInputNumberModule, NzPopconfirmModule, NzSelectModule, NzTagModule, PageHead, FundTabs],
+  imports: [EditName, FormsModule, NzAlertModule, NzButtonModule, NzInputModule, NzInputNumberModule, NzPopconfirmModule, NzSelectModule, NzTagModule, PageHead, FundTabs],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: `
     .grid {
@@ -109,7 +110,7 @@ interface SleeveDraft {
       <nz-alert nzType="error" nzMessage="Could not load the fund." nzShowIcon />
     }
     @if (page.data(); as d) {
-      <app-page-head [crumbs]="[{ label: d.fund.name, link: ['/funds', d.fund.id] }, { label: 'Structure' }]" [title]="d.fund.name" [demo]="d.fund.isDemo" sub="Sleeves, mandates and managers" [showFilter]="false" />
+      <app-page-head [crumbs]="[{ label: d.fund.name, link: ['/funds', d.fund.id] }, { label: 'Structure' }]" [title]="d.fund.name" [renameUrl]="'/api/funds/' + d.fund.id + '/name'" renameWhat="the fund" [demo]="d.fund.isDemo" sub="Sleeves, mandates and managers" [showFilter]="false" />
       <app-fund-tabs [fundId]="d.fund.id" />
       @if (error(); as message) {
         <nz-alert nzType="error" [nzMessage]="message" nzShowIcon nzCloseable (nzOnClose)="error.set(null)" style="display:block;margin-bottom:14px" />
@@ -126,7 +127,11 @@ interface SleeveDraft {
           <nz-alert nzType="info" nzShowIcon nzMessage="This is the built-in example fund. Its structure is shown here but cannot be changed." style="display:block;margin-bottom:14px" />
         }
         <div class="panel" data-testid="fund-form">
-          <h3>Fund</h3>
+          <h3>{{ s.kind === 'Sma' ? 'Separately managed account' : 'Fund' }}
+            @if (s.kind === 'Sma') {
+              <span class="hint">Owner: <app-edit-name [value]="s.ownerName ?? ''" [url]="s.canEdit ? '/api/funds/' + s.id + '/owner' : null" what="the owner" (saved)="reload()" /></span>
+            }
+          </h3>
           <div class="row">
             <div style="flex:1;max-width:380px"><div class="label">Name</div><input nz-input [ngModel]="fundName()" (ngModelChange)="fundName.set($event)" [disabled]="!s.canEdit" maxlength="200" /></div>
             <div style="width:240px">

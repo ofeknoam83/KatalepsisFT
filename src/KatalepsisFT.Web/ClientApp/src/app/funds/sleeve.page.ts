@@ -43,7 +43,7 @@ function heat(value: number, max: number): Record<string, string> {
     @if (page.data(); as d) {
       <app-page-head
         [crumbs]="[{ label: d.fund.name, link: ['/funds', d.fund.id] }, { label: d.sleeve.name }]"
-        [title]="d.sleeve.name"
+        [title]="d.sleeve.name" [renameUrl]="'/api/sleeves/' + d.sleeve.id + '/name'" renameWhat="the sleeve"
         [demo]="d.fund.isDemo"
         [sub]="'Sleeve · ' + (d.sleeve.mandateType | label) + ' · ' + d.managers.length + ' managers'"
         [asOf]="d.asOf"

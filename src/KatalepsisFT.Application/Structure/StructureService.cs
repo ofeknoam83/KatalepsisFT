@@ -29,7 +29,7 @@ public sealed record StructureSleeveDto(int Id, string Name, MandateType Mandate
 public sealed record BenchmarkOptionDto(int Id, string Name);
 
 /// <param name="CanEdit">False for the built-in example fund, which is rebuilt from its definition.</param>
-public sealed record StructureDto(int Id, string Name, int? BenchmarkId, bool CanEdit, IReadOnlyList<BenchmarkOptionDto> Benchmarks, IReadOnlyList<StructureSleeveDto> Sleeves);
+public sealed record StructureDto(int Id, string Name, int? BenchmarkId, bool CanEdit, IReadOnlyList<BenchmarkOptionDto> Benchmarks, IReadOnlyList<StructureSleeveDto> Sleeves, FundKind Kind = FundKind.Fund, string? OwnerName = null);
 
 public sealed record SaveFundRequest(string Name, int? BenchmarkId);
 
@@ -150,7 +150,9 @@ public sealed class StructureService(IFtDbContext database, AlertEvaluator alert
                     s.Limits.OrderBy(l => l.Kind).Select(l => new LimitDto(l.Kind, l.Value)).ToList(),
                     s.Managers.OrderBy(m => m.Id).Select(m => new StructureManagerDto(m.Id, m.Name, m.AllocatedCapitalUsd, m.DataSource, valued.Contains(m.Id), connections.GetValueOrDefault(m.Id), m.RetiredOn)).ToList()
                 ))
-                .ToList()
+                .ToList(),
+            fund.Kind,
+            fund.OwnerName
         );
     }
 

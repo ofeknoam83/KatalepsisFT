@@ -15,6 +15,7 @@ import { Observable, catchError, forkJoin, map, of, switchMap } from 'rxjs';
 import { ViewState } from '../funds/view.state';
 import { FORMAT_PIPES } from '../shared/format';
 import { keptData } from '../shared/page-data';
+import { EditName } from '../shared/edit-name';
 import { Trading } from '../trading/models';
 
 interface StrategyKey {
@@ -32,7 +33,7 @@ interface StrategyKey {
 /** Keys with which a strategy sends orders by itself, each tied to the trading accounts it may use. */
 @Component({
   selector: 'app-strategy-keys-page',
-  imports: [DatePipe, FormsModule, NzAlertModule, NzButtonModule, NzInputModule, NzInputNumberModule, NzSelectModule, NzTableModule, NzTagModule, ...FORMAT_PIPES],
+  imports: [DatePipe, EditName, FormsModule, NzAlertModule, NzButtonModule, NzInputModule, NzInputNumberModule, NzSelectModule, NzTableModule, NzTagModule, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page-head"><h1>Strategy keys</h1><span class="sub">For strategies that send their own orders</span></div>
@@ -53,7 +54,7 @@ interface StrategyKey {
           <tbody>
             @for (k of d.keys; track k.id) {
               <tr>
-                <td><b>{{ k.name }}</b>
+                <td><b><app-edit-name [value]="k.name" [url]="'/api/strategy-keys/' + k.id + '/name'" what="this strategy key" [maxlength]="100" (saved)="again()" /></b>
                   @if (!k.isEnabled) {
                     <nz-tag style="margin-left:6px">Switched off</nz-tag>
                   }
@@ -136,6 +137,10 @@ export class StrategyKeysPage {
 
   protected names(all: { id: number; label: string }[], ids: number[]): string {
     return ids.map((id) => all.find((a) => a.id === id)?.label ?? `account ${id}`).join('; ');
+  }
+
+  protected again(): void {
+    this.version.update((v) => v + 1);
   }
 
   protected add(): void {

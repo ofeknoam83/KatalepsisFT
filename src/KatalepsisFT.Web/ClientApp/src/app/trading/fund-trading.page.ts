@@ -18,6 +18,7 @@ import { Observable, combineLatest, filter, map, merge, of, timer } from 'rxjs';
 import { FundTabs } from '../funds/fund-tabs';
 import { FundsApi } from '../funds/funds.api';
 import { DynamicDecimalPipe } from '../shared/dynamic-decimal.pipe';
+import { EditName } from '../shared/edit-name';
 import { FORMAT_PIPES } from '../shared/format';
 import { PageHead } from '../shared/page-head';
 import { keptData } from '../shared/page-data';
@@ -41,14 +42,14 @@ interface Depth {
  */
 @Component({
   selector: 'app-fund-trading-page',
-  imports: [DatePipe, DecimalPipe, LowerCasePipe, FormsModule, NzAlertModule, NzButtonModule, NzCheckboxModule, NzInputModule, NzInputNumberModule, NzPopconfirmModule, NzSegmentedModule, NzSelectModule, NzTableModule, NzTagModule, PageHead, FundTabs, DynamicDecimalPipe, ...FORMAT_PIPES],
+  imports: [DatePipe, DecimalPipe, LowerCasePipe, EditName, FormsModule, NzAlertModule, NzButtonModule, NzCheckboxModule, NzInputModule, NzInputNumberModule, NzPopconfirmModule, NzSegmentedModule, NzSelectModule, NzTableModule, NzTagModule, PageHead, FundTabs, DynamicDecimalPipe, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (page.failed()) {
       <nz-alert nzType="error" nzMessage="Could not load trading for this fund." nzShowIcon />
     }
     @if (page.data(); as d) {
-      <app-page-head [crumbs]="[{ label: d.fundName, link: ['/funds', d.fundId] }, { label: 'Trading' }]" [title]="d.fundName" [demo]="d.isDemo" sub="Orders, positions and the market across venues" [showFilter]="false" />
+      <app-page-head [crumbs]="[{ label: d.fundName, link: ['/funds', d.fundId] }, { label: 'Trading' }]" [title]="d.fundName" [renameUrl]="'/api/funds/' + d.fundId + '/name'" renameWhat="the fund" [demo]="d.isDemo" sub="Orders, positions and the market across venues" [showFilter]="false" />
       <app-fund-tabs [fundId]="d.fundId" />
 
       <div class="status" data-testid="engine-status">
@@ -361,7 +362,7 @@ interface Depth {
           <tbody>
             @for (a of d.accounts; track a.id) {
               <tr [attr.data-testid]="'account-' + a.id">
-                <td><b>{{ a.manager }}</b> · {{ a.venueName }} <span class="hint">{{ a.label }} · {{ a.sleeve }}</span>
+                <td><b>{{ a.manager }}</b> · {{ a.venueName }} <span class="hint"><app-edit-name [value]="a.label" [url]="d.canAdmin ? '/api/trading-accounts/' + a.id + '/label' : null" what="this trading account" [maxlength]="100" (saved)="again()" /> · {{ a.sleeve }}</span>
                   @if (a.isHalted) {
                     <nz-tag nzColor="red" style="margin-left:6px">Halted</nz-tag>
                   }
@@ -764,6 +765,11 @@ export class FundTradingPage {
         this.target.set('a' + d.accounts[0].id);
       }
     });
+  }
+
+  /** Loads the page again now, without waiting for the next second. */
+  protected again(): void {
+    this.version.update((v) => v + 1);
   }
 
   protected abs(value: number): number {

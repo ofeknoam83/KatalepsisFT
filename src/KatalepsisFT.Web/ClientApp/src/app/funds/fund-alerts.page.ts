@@ -18,7 +18,7 @@ import { FundsApi } from './funds.api';
       <nz-alert nzType="error" nzMessage="Could not load the fund." nzShowIcon />
     }
     @if (page.data(); as d) {
-      <app-page-head [crumbs]="[{ label: d.fund.name, link: ['/funds', d.fund.id] }, { label: 'Alerts' }]" [title]="d.fund.name" [demo]="d.fund.isDemo" sub="Alerts, what was done about them, and the rules behind them" [asOf]="d.asOf" [showFilter]="false" />
+      <app-page-head [crumbs]="[{ label: d.fund.name, link: ['/funds', d.fund.id] }, { label: 'Alerts' }]" [title]="d.fund.name" [renameUrl]="'/api/funds/' + d.fund.id + '/name'" renameWhat="the fund" [demo]="d.fund.isDemo" sub="Alerts, what was done about them, and the rules behind them" [asOf]="d.asOf" [showFilter]="false" />
       <app-fund-tabs [fundId]="d.fund.id" />
       <!-- Each tab is built again when it is opened, so the inbox shows what a rule change just raised or closed. -->
       <nz-tabs [nzSelectedIndex]="tab()" (nzSelectedIndexChange)="tab.set($event)">

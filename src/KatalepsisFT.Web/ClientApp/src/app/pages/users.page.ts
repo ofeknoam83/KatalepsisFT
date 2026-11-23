@@ -14,6 +14,7 @@ import { NzTagModule } from 'ng-zorro-antd/tag';
 import { Observable, of } from 'rxjs';
 import { SessionState } from '../core/session.state';
 import { keptData } from '../shared/page-data';
+import { EditName } from '../shared/edit-name';
 
 type Role = 'Admin' | 'Trader' | 'Viewer';
 
@@ -36,7 +37,7 @@ const ROLE_NOTE: Record<Role, string> = {
 /** The people who can sign in, and what each may do. */
 @Component({
   selector: 'app-users-page',
-  imports: [DatePipe, FormsModule, NzAlertModule, NzButtonModule, NzInputModule, NzPopconfirmModule, NzSelectModule, NzTableModule, NzTagModule],
+  imports: [DatePipe, EditName, FormsModule, NzAlertModule, NzButtonModule, NzInputModule, NzPopconfirmModule, NzSelectModule, NzTableModule, NzTagModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page-head"><h1>Users</h1><span class="sub">Requests that need a second person need at least two administrators</span></div>
@@ -56,7 +57,7 @@ const ROLE_NOTE: Record<Role, string> = {
         <tbody>
           @for (u of users.data() ?? []; track u.id) {
             <tr>
-              <td><b>{{ u.displayName }}</b>
+              <td><b><app-edit-name [value]="u.displayName" [url]="'/api/users/' + u.id + '/name'" what="this person" [maxlength]="100" (saved)="again()" /></b>
                 @if (u.isDisabled) {
                   <nz-tag style="margin-left:6px">Switched off</nz-tag>
                 }
@@ -122,6 +123,10 @@ export class UsersPage {
   protected readonly name = signal('');
   protected readonly email = signal('');
   protected readonly role = signal<Role>('Trader');
+
+  protected again(): void {
+    this.version.update((v) => v + 1);
+  }
 
   protected add(): void {
     this.run(this.http.post<{ user: User; temporaryPassword: string }>('/api/users', { email: this.email().trim(), displayName: this.name().trim(), role: this.role() }), (created) => {

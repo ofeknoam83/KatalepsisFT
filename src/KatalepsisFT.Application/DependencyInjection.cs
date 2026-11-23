@@ -21,6 +21,7 @@ public static class DependencyInjection
         services.AddScoped<History.TrackRecordService>();
         services.AddScoped<Connections.ConnectionService>();
         services.AddScoped<Structure.StructureService>();
+        services.AddScoped<Structure.RenameService>();
         services.AddScoped<Alerts.AlertEvaluator>();
         services.AddScoped<Alerts.AlertService>();
         services.AddScoped<Audit.AuditLog>();

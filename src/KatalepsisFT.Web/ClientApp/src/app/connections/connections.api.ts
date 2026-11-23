@@ -77,6 +77,8 @@ export interface Structure {
   name: string;
   benchmarkId: number | null;
   canEdit: boolean;
+  kind: 'Fund' | 'Sma';
+  ownerName: string | null;
   benchmarks: { id: number; name: string }[];
   sleeves: StructureSleeve[];
 }

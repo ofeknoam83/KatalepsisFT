@@ -98,6 +98,27 @@ public sealed class UsersController(UserManager<AppUser> users) : ControllerBase
         return Ok(await DtoAsync(user));
     }
 
+    [Audit("User renamed")]
+    [HttpPost("{id:int}/name")]
+    public async Task<IActionResult> RenameAsync(int id, KatalepsisFT.Application.Structure.RenameRequest request)
+    {
+        string name = (request.Name ?? string.Empty).Trim();
+        if (name.Length is 0 or > 100)
+        {
+            return Conflict(new ErrorResponse("Give a name of up to 100 characters."));
+        }
+
+        AppUser? user = await users.FindByIdAsync(id.ToString(global::System.Globalization.CultureInfo.InvariantCulture));
+        if (user is null)
+        {
+            return NotFound();
+        }
+
+        user.DisplayName = name;
+        await users.UpdateAsync(user);
+        return Ok(await DtoAsync(user));
+    }
+
     [Audit("User switched off or on")]
     [HttpPost("{id:int}/disabled")]
     public async Task<IActionResult> SetDisabledAsync(int id, SetDisabledRequest request)

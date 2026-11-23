@@ -30,7 +30,7 @@ import { FundsApi } from './funds.api';
     @if (page.data(); as d) {
       <app-page-head
         [crumbs]="[{ label: d.fund.name, link: ['/funds', d.fund.id] }, { label: d.sleeve.name, link: ['/sleeves', d.sleeve.id] }, { label: d.manager.name }]"
-        [title]="d.manager.name"
+        [title]="d.manager.name" [renameUrl]="'/api/managers/' + d.manager.id + '/name'" renameWhat="the manager"
         [demo]="d.fund.isDemo"
         [sub]="'Manager · ' + d.sleeve.name + ' sleeve · since ' + (d.inceptionDate | date: 'd MMM y' : 'UTC') + (d.manager.retiredOn ? ' · retired ' + (d.manager.retiredOn | date: 'd MMM y' : 'UTC') : '')"
         [asOf]="d.asOf"

@@ -19,7 +19,7 @@ import { InstrumentType, SLEEVE_COLORS } from './models';
       <nz-alert nzType="error" nzMessage="Could not load the holdings." nzShowIcon />
     }
     @if (page.data(); as d) {
-      <app-page-head [crumbs]="[{ label: d.fund.name, link: ['/funds', d.fund.id] }, { label: 'Holdings' }]" [title]="d.fund.name" [demo]="d.fund.isDemo" sub="Holdings by asset" [asOf]="d.asOf" />
+      <app-page-head [crumbs]="[{ label: d.fund.name, link: ['/funds', d.fund.id] }, { label: 'Holdings' }]" [title]="d.fund.name" [renameUrl]="'/api/funds/' + d.fund.id + '/name'" renameWhat="the fund" [demo]="d.fund.isDemo" sub="Holdings by asset" [asOf]="d.asOf" />
       <app-fund-tabs [fundId]="d.fund.id" />
 
       <div class="tiles">

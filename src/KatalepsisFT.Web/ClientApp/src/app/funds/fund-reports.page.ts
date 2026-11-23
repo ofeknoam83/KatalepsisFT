@@ -52,7 +52,7 @@ const WHEN_LABEL: Record<ReportFrequency, string> = { Daily: 'Every day', Weekly
       <nz-alert nzType="error" nzMessage="Could not load the fund." nzShowIcon />
     }
     @if (page.data(); as d) {
-      <app-page-head [crumbs]="[{ label: d.fund.name, link: ['/funds', d.fund.id] }, { label: 'Reports' }]" [title]="d.fund.name" [demo]="d.fund.isDemo" sub="Documents to send or file" [asOf]="d.asOf" [showFilter]="false" />
+      <app-page-head [crumbs]="[{ label: d.fund.name, link: ['/funds', d.fund.id] }, { label: 'Reports' }]" [title]="d.fund.name" [renameUrl]="'/api/funds/' + d.fund.id + '/name'" renameWhat="the fund" [demo]="d.fund.isDemo" sub="Documents to send or file" [asOf]="d.asOf" [showFilter]="false" />
       <app-fund-tabs [fundId]="d.fund.id" />
 
       <div class="cards">
