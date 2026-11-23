@@ -148,11 +148,10 @@ public sealed class OrderEngineWorker(
     private static readonly TimeSpan Round = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan StandbyWait = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan CheckLockEvery = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan VaultRetry = TimeSpan.FromSeconds(15);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await PrepareVaultAsync(stoppingToken);
-
         // A new order wakes the engine at once instead of waiting for its next round.
         using SemaphoreSlim wake = new(0, 1);
         try
@@ -175,6 +174,8 @@ public sealed class OrderEngineWorker(
         }
 
         bool waitingLogged = false;
+        // On its own, so that leading on orders never waits for it and it keeps trying while orders are handled.
+        Task vault = PrepareVaultUntilSettledAsync(stoppingToken);
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -202,6 +203,15 @@ public sealed class OrderEngineWorker(
                 finally
                 {
                     board.IsLeader = false;
+                    // Closing a pooled connection only hands it back; the lock would stay with it. Give the lock up
+                    // by name. If the connection itself is broken, Postgres has already dropped the lock.
+                    try
+                    {
+                        await AskAsync(held, $"SELECT pg_advisory_unlock({LeaderLock})", CancellationToken.None);
+                    }
+                    catch (Exception e) when (e is NpgsqlException or InvalidOperationException or ObjectDisposedException)
+                    {
+                    }
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -221,6 +231,8 @@ public sealed class OrderEngineWorker(
                 }
             }
         }
+
+        await vault;
     }
 
     private async Task LeadAsync(NpgsqlConnection held, SemaphoreSlim wake, CancellationToken stopping)
@@ -261,7 +273,26 @@ public sealed class OrderEngineWorker(
     /// Makes sure the trading-key vault has its pair of keys. Without EXEC_MASTER_KEY the vault stays shut: paper
     /// trading works, and adding a trading key is refused with a clear message.
     /// </summary>
-    private async Task PrepareVaultAsync(CancellationToken stopping)
+    /// <summary>
+    /// The database may not be ready when this service starts (a release brings its tables a moment later), so the
+    /// vault is tried again until it has an answer either way.
+    /// </summary>
+    private async Task PrepareVaultUntilSettledAsync(CancellationToken stopping)
+    {
+        try
+        {
+            while (!await PrepareVaultAsync(stopping))
+            {
+                await Task.Delay(VaultRetry, stopping);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    /// <returns>False when it could not be found out, and is worth trying again.</returns>
+    private async Task<bool> PrepareVaultAsync(CancellationToken stopping)
     {
         try
         {
@@ -275,10 +306,13 @@ public sealed class OrderEngineWorker(
             {
                 logger.LogInformation("The trading-key vault is ready.");
             }
+
+            return true;
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
-            logger.LogError(e, "The trading-key vault could not be prepared. Trading keys cannot be stored until this is fixed.");
+            logger.LogWarning("The trading-key vault could not be prepared yet and will be tried again: {Reason}", e.Message);
+            return false;
         }
     }
 
