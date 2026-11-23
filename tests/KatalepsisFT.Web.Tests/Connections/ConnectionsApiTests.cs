@@ -345,7 +345,7 @@ public class ConnectionsApiTests(TestDatabase database) : IClassFixture<TestData
         VenueSnapshot other = new(DateTimeOffset.UtcNow, [new VenuePosition(InstrumentType.Spot, "BTC", 1m, 50_000m)]);
         ConnectionDto second = (await (await AddAsync(managerId, "key-racing-two", Venue.Okx, "passphrase", other)).Content.ReadFromJsonAsync<ConnectionDto>(Json))!;
 
-        HttpResponseMessage[] answers = await Task.WhenAll(Enumerable.Range(0, 12).Select(i => _admin.PostAsJsonAsync($"/api/connections/{(i % 2 == 0 ? first.Id : second.Id)}/sync", new { })));
+        HttpResponseMessage[] answers = await Task.WhenAll(Enumerable.Range(0, 40).Select(i => _admin.PostAsJsonAsync($"/api/connections/{(i % 2 == 0 ? first.Id : second.Id)}/sync", new { })));
 
         answers.Should().OnlyContain(r => r.StatusCode == HttpStatusCode.OK);
         (await Get<ConnectionsDto>($"/api/funds/{fundId}/connections")).Connections.Should().OnlyContain(c => c.State == ConnectionState.Live);

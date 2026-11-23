@@ -20,6 +20,25 @@ public class FtDbContext(DbContextOptions<FtDbContext> options)
 {
     public void DiscardChanges() => ChangeTracker.Clear();
 
+    /// <summary>The first half of the advisory lock key: keeps these locks apart from any other use of advisory locks.</summary>
+    private const int ManagerBookLocks = 7301;
+
+    public async Task<T> WithManagerLockAsync<T>(int managerAccountId, Func<Task<T>> work, CancellationToken cancellationToken)
+    {
+        // Already inside a transaction that holds the lock, or one the caller manages.
+        if (Database.CurrentTransaction is not null)
+        {
+            return await work();
+        }
+
+        await using Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction = await Database.BeginTransactionAsync(cancellationToken);
+        // Held until the transaction ends, so it is released even if the work fails or the process dies.
+        await Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({ManagerBookLocks}, {managerAccountId})", cancellationToken);
+        T result = await work();
+        await transaction.CommitAsync(cancellationToken);
+        return result;
+    }
+
     /// <summary>Keys that protect sign-in cookies. Stored here so every web instance can read a session another instance issued.</summary>
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
 

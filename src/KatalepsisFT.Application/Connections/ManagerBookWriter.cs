@@ -18,14 +18,15 @@ public sealed class ManagerBookWriter(IFtDbContext database)
     /// <returns>The book's NAV and its gross and net exposure.</returns>
     public async Task<(decimal NavUsd, decimal GrossUsd, decimal NetUsd)> WriteAsync(int managerAccountId, DateOnly day, CancellationToken cancellationToken)
     {
-        // Two services can write one manager's book in the same instant: an exchange read and a wallet read, or a
-        // read and an edit in the browser. The one that loses starts again from what is stored now; with reads
-        // every couple of seconds this would otherwise show up as a failed connection several times an hour.
+        // Two services can write one manager's book in the same instant: an exchange read and a wallet read, a read
+        // and an edit in the browser, two instances during a release. Each write holds the manager's lock from before
+        // it looks at what is stored until it has saved, so a second writer waits and then starts from the first
+        // one's result. The retry below is for whatever the lock does not cover, such as a connection that dropped.
         for (int attempt = 0; ; attempt++)
         {
             try
             {
-                return await WriteOnceAsync(managerAccountId, day, cancellationToken);
+                return await database.WithManagerLockAsync(managerAccountId, () => WriteOnceAsync(managerAccountId, day, cancellationToken), cancellationToken);
             }
             catch (DbUpdateException) when (attempt < 3)
             {

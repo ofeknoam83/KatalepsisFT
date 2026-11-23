@@ -34,4 +34,10 @@ public interface IFtDbContext
 
     /// <summary>Forgets every change not yet saved, so a unit of work that failed half way can still record that it failed.</summary>
     void DiscardChanges();
+
+    /// <summary>
+    /// Runs the work as one transaction that no other writer of the same manager's book can overlap, in this process
+    /// or any other: a second caller waits for the first to finish. Everything saved inside is kept or dropped together.
+    /// </summary>
+    Task<T> WithManagerLockAsync<T>(int managerAccountId, Func<Task<T>> work, CancellationToken cancellationToken);
 }
