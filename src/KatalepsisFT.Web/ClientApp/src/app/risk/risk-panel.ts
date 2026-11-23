@@ -1,16 +1,17 @@
 import { DecimalPipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
-import { toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
+import { toObservable } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { NzAlertModule } from 'ng-zorro-antd/alert';
 import { NzSpinModule } from 'ng-zorro-antd/spin';
 import { NzTableModule } from 'ng-zorro-antd/table';
 import { NzTagModule } from 'ng-zorro-antd/tag';
 import { LiveService } from '../core/live.service';
-import { catchError, combineLatest, of, switchMap, tap } from 'rxjs';
+import { combineLatest } from 'rxjs';
 import { PerformanceScope } from '../performance/models';
 import { FORMAT_PIPES, pct } from '../shared/format';
 import { heat } from '../shared/heat';
+import { keptData } from '../shared/page-data';
 import { RiaChartComponent, RiaChartSeries } from '../shared/ria-chart.component';
 import { MandateCheck } from './models';
 import { RiskApi } from './risk.api';
@@ -200,21 +201,14 @@ export class RiskPanel {
   readonly scope = input.required<PerformanceScope>();
   readonly scopeId = input.required<number>();
 
-  protected readonly failed = signal(false);
-  protected readonly data = toSignal(
-    combineLatest([toObservable(this.scope), toObservable(this.scopeId), toObservable(inject(LiveService).tick)]).pipe(
-      switchMap(([scope, id]) =>
-        this.api.risk(scope, id).pipe(
-          tap(() => this.failed.set(false)),
-          catchError(() => {
-            this.failed.set(true);
-            return of(null);
-          }),
-        ),
-      ),
-    ),
-    { initialValue: null },
+  private readonly loaded = keptData(
+    combineLatest([toObservable(this.scope), toObservable(this.scopeId)]),
+    toObservable(inject(LiveService).tick),
+    ([scope, id]) => this.api.risk(scope, id),
+    ([scope, id]) => `${scope}:${id}`,
   );
+  protected readonly failed = this.loaded.failed;
+  protected readonly data = this.loaded.data;
 
   protected readonly breaches = computed(() => (this.data()?.mandate ?? []).filter((m) => m.withinLimit === false).length);
   protected readonly rolling = computed<RiaChartSeries[]>(() => {

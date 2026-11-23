@@ -5,6 +5,7 @@ using KatalepsisFT.Persistence.Identity;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using SignInResult = Microsoft.AspNetCore.Identity.SignInResult;
 
 namespace KatalepsisFT.Web.Auth;
@@ -21,6 +22,7 @@ public sealed class AuthController(
     private const string WrongCredentials = "Email or password is incorrect.";
 
     [AllowAnonymous]
+    [EnableRateLimiting("sign-in")]
     [HttpPost("login")]
     public async Task<IActionResult> LoginAsync(LoginRequest request, CancellationToken cancellationToken)
     {

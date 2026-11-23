@@ -43,12 +43,14 @@ public sealed class NavHistory
     /// <summary>The managers among <paramref name="managerIds"/> that have been valued at least once.</summary>
     public int[] Valued(IEnumerable<int> managerIds) => managerIds.Where(_navs.ContainsKey).ToArray();
 
-    /// <summary>The last day on which every one of the managers has been valued. A fund never mixes days.</summary>
-    public DateOnly AsOf(int[] managerIds) => managerIds.Min(m => _navs[m].Keys.Max());
+    /// <summary>The last day on which any of the managers was valued. One that has not been read since keeps its last NAV.</summary>
+    public DateOnly AsOf(int[] managerIds) => managerIds.Max(m => _navs[m].Keys.Max());
 
     /// <summary>
     /// Sums the managers' NAV per day. A manager that appears after the series began brings its first NAV in as a flow,
-    /// so its arrival is not counted as a gain. A manager with a missing day keeps its last NAV for that day.
+    /// so its arrival is not counted as a gain. A manager with a missing day keeps its last NAV for that day, and money
+    /// that moved on such a day is counted on the next day the manager is valued: set against the old NAV it would
+    /// read as a loss one day and a gain the next.
     /// </summary>
     public NavSeries Series(int[] managerIds, DateOnly asOf)
     {
@@ -57,26 +59,34 @@ public sealed class NavHistory
         List<decimal> totals = [];
         List<decimal> netFlows = [];
         Dictionary<int, decimal> last = [];
+        Dictionary<int, decimal> waiting = [];
         for (DateOnly day = first; day <= asOf; day = day.AddDays(1))
         {
             decimal flow = 0m;
             foreach (int manager in managerIds)
             {
                 bool known = last.ContainsKey(manager);
-                if (_navs[manager].TryGetValue(day, out decimal nav))
-                {
-                    if (!known && day > first)
-                    {
-                        flow += nav;
-                    }
-
-                    last[manager] = nav;
-                }
-
+                bool valued = _navs[manager].TryGetValue(day, out decimal nav);
                 if (known && _flows.TryGetValue(manager, out Dictionary<DateOnly, decimal>? byDay) && byDay.TryGetValue(day, out decimal amount))
                 {
-                    flow += amount;
+                    waiting[manager] = waiting.GetValueOrDefault(manager) + amount;
                 }
+
+                if (!valued)
+                {
+                    continue;
+                }
+
+                if (!known && day > first)
+                {
+                    flow += nav;
+                }
+                else if (waiting.Remove(manager, out decimal moved))
+                {
+                    flow += moved;
+                }
+
+                last[manager] = nav;
             }
 
             dates.Add(day);

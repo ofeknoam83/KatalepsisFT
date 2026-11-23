@@ -41,9 +41,16 @@ public class DeribitAdapterTests
     {
         public List<HttpRequestMessage> Requests { get; } = [];
 
+        public List<string> Bodies { get; } = [];
+
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Requests.Add(request);
+            if (request.Content is not null)
+            {
+                Bodies.Add(request.Content.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult());
+            }
+
             (HttpStatusCode status, string body) = respond(request);
             return Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") });
         }
@@ -53,7 +60,8 @@ public class DeribitAdapterTests
     {
         StubHandler handler = new(request =>
         {
-            string path = request.RequestUri!.AbsolutePath;
+            // Sign-in is the one POST: a JSON-RPC call to the API root, routed here as if it had its own path.
+            string path = request.Method == HttpMethod.Post ? request.RequestUri!.AbsolutePath.TrimEnd('/') + "/public/auth" : request.RequestUri!.AbsolutePath;
             if (overrides?.Invoke(path) is { } custom)
             {
                 return custom;
@@ -93,7 +101,18 @@ public class DeribitAdapterTests
         );
         snapshot.ReportedEquityUsd.Should().Be(2.62m * 80_000m + 40_150m);
         handler.Requests.Where(r => r.RequestUri!.AbsolutePath.Contains("/private/")).Should().OnlyContain(r => r.Headers.Authorization!.Scheme == "Bearer" && r.Headers.Authorization.Parameter == "token-1");
-        handler.Requests.Should().OnlyContain(r => r.Method == HttpMethod.Get);
+        handler.Requests.Where(r => r.Method != HttpMethod.Get).Should().ContainSingle().Which.RequestUri!.AbsolutePath.Should().Be("/api/v2");
+    }
+
+    [Fact]
+    public async Task SignIn_SendsTheSecretInTheBody_AndNeverInAnAddress()
+    {
+        (DeribitAdapter adapter, StubHandler handler) = Adapter();
+
+        await adapter.GetSnapshotAsync(Credentials, CancellationToken.None);
+
+        handler.Requests.Should().OnlyContain(r => !r.RequestUri!.ToString().Contains(Credentials.ApiSecret) && !r.RequestUri.ToString().Contains(Credentials.ApiKey));
+        handler.Bodies.Should().ContainSingle().Which.Should().Contain("\"method\":\"public/auth\"").And.Contain(Credentials.ApiSecret).And.Contain("client_credentials");
     }
 
     [Theory]

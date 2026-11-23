@@ -1,6 +1,6 @@
 import { DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject, input, signal } from '@angular/core';
-import { toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { toObservable } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { NzAlertModule } from 'ng-zorro-antd/alert';
@@ -8,9 +8,10 @@ import { NzSegmentedModule } from 'ng-zorro-antd/segmented';
 import { NzSpinModule } from 'ng-zorro-antd/spin';
 import { NzTableModule } from 'ng-zorro-antd/table';
 import { LiveService } from '../core/live.service';
-import { catchError, combineLatest, of, switchMap, tap } from 'rxjs';
+import { combineLatest } from 'rxjs';
 import { PerformanceScope } from '../performance/models';
 import { FORMAT_PIPES } from '../shared/format';
+import { keptData } from '../shared/page-data';
 import { Ladder } from './models';
 import { RiskApi } from './risk.api';
 
@@ -168,21 +169,14 @@ export class LiquidityPanel {
     { label: '33%', value: 0.33 },
   ];
   protected readonly participation = signal(0.1);
-  protected readonly failed = signal(false);
-  protected readonly data = toSignal(
-    combineLatest([toObservable(this.scope), toObservable(this.scopeId), toObservable(this.participation), toObservable(inject(LiveService).tick)]).pipe(
-      switchMap(([scope, id, participation]) =>
-        this.api.liquidity(scope, id, participation).pipe(
-          tap(() => this.failed.set(false)),
-          catchError(() => {
-            this.failed.set(true);
-            return of(null);
-          }),
-        ),
-      ),
-    ),
-    { initialValue: null },
+  private readonly loaded = keptData(
+    combineLatest([toObservable(this.scope), toObservable(this.scopeId), toObservable(this.participation)]),
+    toObservable(inject(LiveService).tick),
+    ([scope, id, participation]) => this.api.liquidity(scope, id, participation),
+    ([scope, id]) => `${scope}:${id}`,
   );
+  protected readonly failed = this.loaded.failed;
+  protected readonly data = this.loaded.data;
 
   protected rows(d: NonNullable<ReturnType<typeof this.data>>): { name: string; ladder: Ladder; link: unknown[] | null }[] {
     return [{ name: d.scope.name, ladder: d.ladder, link: null }, ...d.children.map((c) => ({ name: c.name, ladder: c.ladder, link: [c.kind === 'Sleeve' ? '/sleeves' : '/managers', c.id] }))];

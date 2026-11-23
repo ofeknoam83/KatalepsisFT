@@ -66,7 +66,15 @@ public sealed class BybitAdapter(TimeProvider clock) : IVenueAdapter
             positions.AddRange(await PositionsAsync(client, Category.Option, coin, null, cancellationToken));
         }
 
-        return BybitMapper.Map(clock.GetUtcNow(), balance, positions);
+        // An option position carries the option's own price only; the price of what it is an option on is read apart.
+        Dictionary<string, decimal> underlying = new(StringComparer.OrdinalIgnoreCase);
+        foreach (string coin in positions.Where(p => p.Category == Category.Option && p.Position.Quantity != 0m).Select(p => p.Position.Symbol.Split('-')[0].ToUpperInvariant()).Distinct().ToList())
+        {
+            underlying[coin] = Data(await client.V5Api.ExchangeData.GetSpotTickersAsync($"{coin}USDT", cancellationToken), $"{coin} price").List.FirstOrDefault()?.LastPrice
+                ?? throw new VenueException(VenueFailure.Unavailable, $"Bybit gave no price for {coin}.");
+        }
+
+        return BybitMapper.Map(clock.GetUtcNow(), balance, positions, underlying);
     }
 
     /// <summary>Transfers into and out of the unified account, from its transaction log. Bybit answers for seven days at a time.</summary>
@@ -140,7 +148,7 @@ public static class BybitMapper
 {
     private static readonly string[] LinearQuotes = ["USDT", "USDC", "PERP"];
 
-    public static VenueSnapshot Map(DateTimeOffset asOf, BybitBalance balance, IEnumerable<(Category Category, BybitPosition Position)> positions)
+    public static VenueSnapshot Map(DateTimeOffset asOf, BybitBalance balance, IEnumerable<(Category Category, BybitPosition Position)> positions, IReadOnlyDictionary<string, decimal>? underlyingPrices = null)
     {
         List<VenuePosition> result = [];
         foreach (BybitAssetBalance asset in balance.Assets ?? [])
@@ -209,14 +217,14 @@ public static class BybitMapper
                             InstrumentType.Option,
                             parts[0].ToUpperInvariant(),
                             quantity,
-                            // The option's own mark; the position's "mark price" field can be the underlying's.
                             Math.Abs(value / position.Quantity),
                             entry,
                             null,
                             VenueText.DayMonthYear(parts[1]) ?? throw Missing(position, "a readable expiry"),
                             decimal.Parse(parts[2], CultureInfo.InvariantCulture),
                             parts[3].Equals("P", StringComparison.OrdinalIgnoreCase) ? OptionRight.Put : OptionRight.Call,
-                            mark,
+                            // The position's own "mark price" is the option's, not the coin's.
+                            underlyingPrices is not null && underlyingPrices.TryGetValue(parts[0], out decimal coinPrice) && coinPrice > 0m ? coinPrice : throw Missing(position, "a price for the coin it is an option on"),
                             delta / quantity
                         )
                     );

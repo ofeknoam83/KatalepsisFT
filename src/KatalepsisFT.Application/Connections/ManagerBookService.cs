@@ -25,11 +25,7 @@ public sealed class ManagerBookService(IFtDbContext database, ManagerBookWriter 
     /// </summary>
     public async Task<int> RefreshManualOnlyAsync(CancellationToken cancellationToken)
     {
-        List<int> managerIds = await database
-            .ManualPositions.Select(p => p.ManagerAccountId)
-            .Distinct()
-            .Where(id => !database.VenueConnections.Any(c => c.ManagerAccountId == id && c.State != Domain.Connections.ConnectionState.Disabled))
-            .ToListAsync(cancellationToken);
+        List<int> managerIds = await ManualOnlyAsync(cancellationToken);
         foreach (int id in managerIds)
         {
             await RefreshAsync(id, cancellationToken);
@@ -37,4 +33,11 @@ public sealed class ManagerBookService(IFtDbContext database, ManagerBookWriter 
 
         return managerIds.Count;
     }
+
+    public async Task<List<int>> ManualOnlyAsync(CancellationToken cancellationToken) =>
+        await database
+            .ManualPositions.Select(p => p.ManagerAccountId)
+            .Distinct()
+            .Where(id => !database.VenueConnections.Any(c => c.ManagerAccountId == id && c.State != Domain.Connections.ConnectionState.Disabled))
+            .ToListAsync(cancellationToken);
 }

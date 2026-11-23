@@ -53,14 +53,26 @@ public sealed class KucoinAdapter(TimeProvider clock) : IVenueAdapter
             {
                 futures.Add(overview.Data);
             }
+            else if (!(VenueException.IsRefusal(overview.ResponseStatusCode) || (overview.ResponseStatusCode == System.Net.HttpStatusCode.OK && overview.Error?.Code is not null)))
+            {
+                // No answer, a busy venue or a server error: fail the read rather than drop the futures account from the book.
+                Data(overview, $"{asset}-margined futures account");
+            }
             else
             {
-                // The spot call above proved the key is good, so this is a futures account that is missing or closed to the key.
+                // The venue said no, and the spot call above proved the key is good: a futures account that is missing or closed to the key.
                 notes.Add($"The {asset}-margined futures account was not read: {overview.Error?.Message ?? "no answer"}.");
             }
         }
 
         KucoinPosition[] positions = futures.Count == 0 ? [] : Data(await client.FuturesApi.Account.GetPositionsAsync(ct: cancellationToken), "futures positions");
+        // A position margined in another coin (ETH, USDC…) has its collateral in that coin's futures account. Counting
+        // the position without it would leave the whole collateral out of NAV, so each such account is read too.
+        foreach (string asset in positions.Where(p => p.CurrentQuantity != 0m && !string.IsNullOrEmpty(p.SettleAsset)).Select(p => p.SettleAsset!.ToUpperInvariant()).Distinct().Except(FuturesMarginAssets, StringComparer.OrdinalIgnoreCase).ToList())
+        {
+            futures.Add(Data(await client.FuturesApi.Account.GetAccountOverviewAsync(asset, cancellationToken), $"{asset}-margined futures account"));
+        }
+
         return KucoinMapper.Map(clock.GetUtcNow(), accounts, prices, futures, positions) with { Notes = notes.Count == 0 ? null : notes };
     }
 

@@ -53,21 +53,36 @@ public sealed class IntradayService(IFtDbContext database, TimeProvider clock)
 
         DateTimeOffset now = clock.GetUtcNow();
         DateTimeOffset from = now - TimeSpan.FromHours(hours);
-        // One step of lead-in, so a manager sampled just before the window still counts at its start.
-        DateTimeOffset loadFrom = from - TimeSpan.FromHours(1);
-        var samples = await database
+        // Each manager's last sample before the window opens it, however old: a manager that has not been read for a
+        // while is still part of the fund at its last reading, as it is in the daily figures.
+        var before = await database
             .NavSamples.AsNoTracking()
-            .Where(s => s.ManagerAccount.Sleeve.FundId == fundId && s.At >= loadFrom)
-            .OrderBy(s => s.At)
-            .Select(s => new { s.ManagerAccountId, s.At, s.NavUsd, s.GrossUsd, s.NetUsd })
+            .Where(s => s.ManagerAccount.Sleeve.FundId == fundId && s.At < from)
+            .GroupBy(s => s.ManagerAccountId)
+            .Select(g => new { ManagerAccountId = g.Key, At = g.Max(s => s.At) })
             .ToListAsync(cancellationToken);
+        var samples = (
+            await database
+                .NavSamples.AsNoTracking()
+                .Where(s => s.ManagerAccount.Sleeve.FundId == fundId && s.At >= from)
+                .OrderBy(s => s.At)
+                .Select(s => new { s.ManagerAccountId, s.At, s.NavUsd, s.GrossUsd, s.NetUsd })
+                .ToListAsync(cancellationToken)
+        );
+        foreach (var seed in before)
+        {
+            samples.Insert(
+                0,
+                await database.NavSamples.AsNoTracking().Where(s => s.ManagerAccountId == seed.ManagerAccountId && s.At == seed.At).Select(s => new { s.ManagerAccountId, s.At, s.NavUsd, s.GrossUsd, s.NetUsd }).FirstAsync(cancellationToken)
+            );
+        }
         if (samples.Count == 0)
         {
             return new IntradayDto([], [], [], []);
         }
 
         long stepTicks = Step.Ticks;
-        DateTimeOffset first = samples[0].At < from ? from : samples[0].At;
+        DateTimeOffset first = samples.Any(s => s.At < from) ? from : samples[0].At;
         DateTimeOffset cursor = new(first.UtcTicks / stepTicks * stepTicks + stepTicks, TimeSpan.Zero);
         List<DateTimeOffset> times = [];
         List<decimal> nav = [],

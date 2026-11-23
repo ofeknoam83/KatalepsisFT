@@ -62,6 +62,11 @@ public sealed class PerformanceService(IFtDbContext database)
             }
 
             NavSeries child = history.Series(valued, asOf);
+            if (child.Dates.Count == 0)
+            {
+                continue;
+            }
+
             double[] childReturns = child.Returns();
             // A child that started later than the scope is compared over its own days only.
             int childStart = Math.Max(0, child.Dates.FindIndex(d => d >= from));
@@ -119,8 +124,24 @@ public sealed class PerformanceService(IFtDbContext database)
             return null;
         }
 
-        List<DateOnly> dates = window.Select(b => b.Date).ToList();
-        double[] returns = ReturnCalculator.DailyReturns(window.Select(b => b.Close).ToList());
+        // One point per calendar day, a day without trading keeping the last price. Every annual figure here counts 365
+        // days to the year; a series with only trading days in it (shares) would have its volatility and annual
+        // return overstated, and would be compared with the benchmark over the wrong days.
+        List<DateOnly> dates = [];
+        List<decimal> closes = [];
+        int at = 0;
+        for (DateOnly day = window[0].Date; day <= asOf; day = day.AddDays(1))
+        {
+            while (at + 1 < window.Count && window[at + 1].Date <= day)
+            {
+                at++;
+            }
+
+            dates.Add(day);
+            closes.Add(window[at].Close);
+        }
+
+        double[] returns = ReturnCalculator.DailyReturns(closes);
         double[] benchmarkReturns = await BenchmarkReturnsAsync(benchmark, dates, cancellationToken);
         decimal[] equity = ReturnCalculator.GrowthIndex(returns);
         decimal[] benchmarkEquity = ReturnCalculator.GrowthIndex(benchmarkReturns);
@@ -252,6 +273,14 @@ public sealed class PerformanceService(IFtDbContext database)
             .Select(b => new { b.AssetId, b.Date, b.Close })
             .ToListAsync(cancellationToken);
         var byAsset = bars.GroupBy(b => b.AssetId).ToDictionary(g => g.Key, g => new SortedDictionary<DateOnly, decimal>(g.ToDictionary(b => b.Date, b => b.Close)));
+
+        // An asset with no prices at all cannot be part of the basket; the others share its weight, as they would in
+        // a real basket that could not buy it. Leaving the weight unfilled would turn part of the benchmark into cash.
+        totalWeight = benchmark.Constituents.Where(c => byAsset.ContainsKey(c.AssetId)).Sum(c => c.Weight);
+        if (totalWeight <= 0m)
+        {
+            return result;
+        }
 
         foreach (BenchmarkConstituent constituent in benchmark.Constituents)
         {

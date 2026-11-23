@@ -1,4 +1,6 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
+import { Actions, ofActionDispatched } from '@ngxs/store';
+import { Logout, SessionExpired } from './session.state';
 import { HubConnection, HubConnectionBuilder, HubConnectionState, HttpTransportType, LogLevel } from '@microsoft/signalr';
 
 /**
@@ -16,8 +18,13 @@ export class LiveService {
 
   private connection: HubConnection | null = null;
   private fundId: number | null = null;
+  private retry: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
+    // However the session ends, the socket ends with it.
+    inject(Actions)
+      .pipe(ofActionDispatched(Logout, SessionExpired))
+      .subscribe(() => this.stop());
     setInterval(() => {
       if (!this.connected() && this.fundId !== null) {
         this.tick.update((t) => t + 1);
@@ -47,8 +54,14 @@ export class LiveService {
   stop(): void {
     this.fundId = null;
     this.connected.set(false);
-    void this.connection?.stop();
+    if (this.retry !== null) {
+      clearTimeout(this.retry);
+      this.retry = null;
+    }
+
+    const connection = this.connection;
     this.connection = null;
+    void connection?.stop().catch(() => undefined);
   }
 
   private ensure(): HubConnection {
@@ -59,7 +72,7 @@ export class LiveService {
     // WebSockets only: the other transports need every request to reach the same server instance, and there are two.
     const connection = new HubConnectionBuilder()
       .withUrl('/hubs/live', { skipNegotiation: true, transport: HttpTransportType.WebSockets })
-      .withAutomaticReconnect({ nextRetryDelayInMilliseconds: (context) => Math.min(30_000, 1_000 * 2 ** Math.min(context.previousRetryCount, 5)) })
+      .withAutomaticReconnect({ nextRetryDelayInMilliseconds: (context) => LiveService.retryDelay(context.previousRetryCount) })
       .configureLogging(LogLevel.None)
       .build();
     connection.on('fundChanged', (fundId: number) => {
@@ -71,11 +84,39 @@ export class LiveService {
     connection.onreconnected(() => this.joined(connection));
     connection.onclose(() => this.connected.set(false));
     this.connection = connection;
-    connection
-      .start()
-      .then(() => this.joined(connection))
-      .catch(() => this.connected.set(false));
+    this.start(connection, 0);
     return connection;
+  }
+
+  /**
+   * Connects, trying again with growing pauses for as long as this connection is wanted. Automatic reconnect only
+   * covers a connection that was up once, so a first attempt that fails (server restarting, network down) is retried here.
+   */
+  private start(connection: HubConnection, attempt: number): void {
+    connection.start().then(
+      () => {
+        if (this.connection === connection) {
+          this.joined(connection);
+        }
+      },
+      () => {
+        // Stopped or replaced while connecting: nothing to retry.
+        if (this.connection !== connection) {
+          return;
+        }
+
+        this.connected.set(false);
+        this.retry = setTimeout(() => {
+          this.retry = null;
+          this.start(connection, attempt + 1);
+        }, LiveService.retryDelay(attempt));
+      },
+    );
+  }
+
+  /** 1, 2, 4… seconds, at most 30. */
+  private static retryDelay(attempt: number): number {
+    return Math.min(30_000, 1_000 * 2 ** Math.min(attempt, 5));
   }
 
   /** After connecting or reconnecting: say which fund is watched, and reload once to catch what was missed meanwhile. */

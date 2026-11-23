@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { Action, Selector, State, StateContext } from '@ngxs/store';
-import { tap } from 'rxjs';
+import { EMPTY, catchError, tap } from 'rxjs';
+import { Logout, SessionExpired } from '../core/session.state';
 import { FundsApi } from './funds.api';
 import { PerformancePeriod } from '../performance/models';
 import { FundListItem, InstrumentFilter, SleeveRef } from './models';
@@ -36,6 +37,8 @@ export class SetFundSleeves {
 
 export interface ViewStateModel {
   funds: FundListItem[] | null;
+  /** True when the last attempt to read the fund list failed. */
+  fundsFailed: boolean;
   filter: InstrumentFilter;
   fundId: number | null;
   sleeves: SleeveRef[];
@@ -43,8 +46,10 @@ export interface ViewStateModel {
   period: PerformancePeriod;
 }
 
+const DEFAULTS: ViewStateModel = { funds: null, fundsFailed: false, filter: 'All', fundId: null, sleeves: [], benchmarkId: null, period: 'Ytd' };
+
 /** What stays the same while the user moves between pages: the fund list, the instrument filter, the current fund. */
-@State<ViewStateModel>({ name: 'view', defaults: { funds: null, filter: 'All', fundId: null, sleeves: [], benchmarkId: null, period: 'Ytd' } })
+@State<ViewStateModel>({ name: 'view', defaults: DEFAULTS })
 @Injectable()
 export class ViewState {
   private readonly api = inject(FundsApi);
@@ -52,6 +57,11 @@ export class ViewState {
   @Selector()
   static funds(state: ViewStateModel): FundListItem[] | null {
     return state.funds;
+  }
+
+  @Selector()
+  static fundsFailed(state: ViewStateModel): boolean {
+    return state.fundsFailed;
   }
 
   @Selector()
@@ -91,7 +101,20 @@ export class ViewState {
 
   @Action(LoadFunds)
   loadFunds(ctx: StateContext<ViewStateModel>) {
-    return this.api.funds().pipe(tap((funds) => ctx.patchState({ funds })));
+    return this.api.funds().pipe(
+      tap((funds) => ctx.patchState({ funds, fundsFailed: false })),
+      // A list already on screen stays; the landing page offers to try again.
+      catchError(() => {
+        ctx.patchState({ fundsFailed: true });
+        return EMPTY;
+      }),
+    );
+  }
+
+  /** The next person to sign in must not see anything of this session's funds. */
+  @Action([Logout, SessionExpired])
+  reset(ctx: StateContext<ViewStateModel>) {
+    ctx.setState(DEFAULTS);
   }
 
   @Action(SetInstrumentFilter)

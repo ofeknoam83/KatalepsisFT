@@ -2,6 +2,7 @@ import { DatePipe, DecimalPipe } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { keptData } from '../shared/page-data';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { NzAlertModule } from 'ng-zorro-antd/alert';
 import { NzButtonModule } from 'ng-zorro-antd/button';
@@ -13,7 +14,7 @@ import { NzPopconfirmModule } from 'ng-zorro-antd/popconfirm';
 import { NzSelectModule } from 'ng-zorro-antd/select';
 import { NzTableModule } from 'ng-zorro-antd/table';
 import { NzTagModule } from 'ng-zorro-antd/tag';
-import { Observable, catchError, combineLatest, of, switchMap } from 'rxjs';
+import { Observable } from 'rxjs';
 import { FORMAT_PIPES } from '../shared/format';
 
 type InstrumentType = 'Spot' | 'Perp' | 'Future' | 'Option' | 'Equity' | 'Cash';
@@ -94,6 +95,10 @@ const TEMPLATE =
     }
     @if (saved(); as message) {
       <nz-alert nzType="success" [nzMessage]="message" nzShowIcon nzCloseable (nzOnClose)="saved.set(null)" style="display:block;margin-bottom:14px" />
+    }
+    @if (book.failed()) {
+      <nz-alert nzType="error" nzMessage="Could not load the positions entered by hand." nzShowIcon [nzAction]="retry" style="display:block;margin-bottom:14px" data-testid="manual-failed" />
+      <ng-template #retry><button nz-button nzSize="small" (click)="reload()">Try again</button></ng-template>
     }
     @if (data(); as d) {
       @if (!d.canEdit) {
@@ -247,10 +252,13 @@ export class ManualBookPanel {
   protected readonly editing = signal<ManualPosition | null | undefined>(undefined);
   private readonly version = signal(0);
 
-  protected readonly data = toSignal(
-    combineLatest([toObservable(this.managerId), toObservable(this.version)]).pipe(switchMap(([id]) => this.http.get<ManualBook>(`/api/managers/${id}/manual`).pipe(catchError(() => of(null))))),
-    { initialValue: null },
+  protected readonly book = keptData(
+    toObservable(this.managerId),
+    toObservable(this.version),
+    (id) => this.http.get<ManualBook>(`/api/managers/${id}/manual`),
+    (id) => id,
   );
+  protected readonly data = this.book.data;
 
   protected readonly form = new FormGroup<PositionForm>({
     type: new FormControl<InstrumentType>('Equity', { nonNullable: true }),
@@ -268,7 +276,7 @@ export class ManualBookPanel {
   protected readonly type = toSignal(this.form.controls.type.valueChanges, { initialValue: this.form.controls.type.value });
 
   protected readonly flowForm = new FormGroup({
-    date: new FormControl(new Date().toISOString().slice(0, 10), { nonNullable: true, validators: [Validators.required] }),
+    date: new FormControl(today(), { nonNullable: true, validators: [Validators.required] }),
     amountUsd: new FormControl<number | null>(null, { validators: [Validators.required] }),
     note: new FormControl('', { nonNullable: true }),
   });
@@ -338,19 +346,30 @@ export class ManualBookPanel {
 
   protected addFlow(): void {
     const v = this.flowForm.getRawValue();
-    this.run(this.http.post(`/api/managers/${this.managerId()}/cash-flows`, { date: v.date, amountUsd: v.amountUsd, note: v.note || null }), 'Cash flow added.');
-    this.flowForm.patchValue({ amountUsd: null, note: '' });
+    // The amount and note are cleared only once the server has taken them; a refused cash flow stays to be corrected.
+    this.run(this.http.post(`/api/managers/${this.managerId()}/cash-flows`, { date: v.date, amountUsd: v.amountUsd, note: v.note || null }), 'Cash flow added.', () => this.flowForm.patchValue({ amountUsd: null, note: '' }));
   }
 
-  protected run(request: Observable<unknown>, message: string): void {
+  protected reload(): void {
+    this.version.update((n) => n + 1);
+  }
+
+  protected run(request: Observable<unknown>, message: string, done?: () => void): void {
     this.errors.set([]);
     this.saved.set(null);
     request.subscribe({
       next: () => {
+        done?.();
         this.saved.set(message);
         this.version.update((n) => n + 1);
       },
       error: (e: { error?: { errors?: string[]; message?: string } }) => this.errors.set(e.error?.errors ?? [e.error?.message ?? 'That did not work. Try again.']),
     });
   }
+}
+
+/** Today's date where the user is, as the date box wants it. toISOString would give the UTC day, which is a day off late in the evening west of UTC and early in the morning east of it. */
+function today(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }

@@ -283,6 +283,101 @@ public class ConnectionsApiTests(TestDatabase database) : IClassFixture<TestData
     }
 
     [Fact]
+    public async Task ConnectionJoiningOrLeavingTheBook_IsMoneyMoving_NotPerformance()
+    {
+        (_, int managerId) = await NewFundAsync();
+        await AddAsync(managerId, "key-stays");
+        VenueSnapshot second = new(DateTimeOffset.UtcNow, [new VenuePosition(InstrumentType.Spot, "BTC", 1m, 50_000m)]);
+        ConnectionDto okx = (await (await AddAsync(managerId, "key-comes-and-goes", Venue.Okx, "passphrase", second)).Content.ReadFromJsonAsync<ConnectionDto>(Json))!;
+        await _admin.PostAsJsonAsync($"/api/connections/{okx.Id}/enabled", new { enabled = false });
+        // While it was off the account grew; switching it on brings in what is there now, not what was last read.
+        Okx.SnapshotsByKey["key-comes-and-goes"] = new VenueSnapshot(DateTimeOffset.UtcNow, [new VenuePosition(InstrumentType.Spot, "BTC", 1m, 60_000m)]);
+        await _admin.PostAsJsonAsync($"/api/connections/{okx.Id}/enabled", new { enabled = true });
+        (await _admin.DeleteAsync($"/api/connections/{okx.Id}")).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        using IServiceScope read = _app!.Services.CreateScope();
+        FtDbContext db = read.ServiceProvider.GetRequiredService<FtDbContext>();
+        List<decimal> flows = await db.CashFlows.Where(f => f.ManagerAccountId == managerId).OrderBy(f => f.Id).Select(f => f.AmountUsd).ToListAsync();
+        flows.Should().Equal(101_250m, 50_000m, -50_000m, 60_000m, -60_000m);
+        (await db.NavSnapshots.Where(n => n.ManagerAccountId == managerId).Select(n => n.NavUsd).SingleAsync()).Should().Be(101_250m);
+    }
+
+    [Fact]
+    public async Task ManagerNotReadForDays_StaysInTheFundAtItsLastReading_AndDoesNotHoldTheOthersBack()
+    {
+        NewFundRequest request = new($"Fund {Guid.NewGuid():N}", null, [new NewSleeveRequest("Directional", MandateType.Directional, [new NewManagerRequest("Stale Desk", 1m), new NewManagerRequest("Fresh Desk", 1m)])]);
+        int fundId = (await (await _admin.PostAsJsonAsync("/api/funds", request, Json)).Content.ReadFromJsonAsync<FundCreatedDto>(Json))!.Id;
+        List<ConnectionManagerDto> managers = (await Get<ConnectionsDto>($"/api/funds/{fundId}/connections")).Managers.ToList();
+        int stale = managers.Single(m => m.Name == "Stale Desk").Id;
+        int fresh = managers.Single(m => m.Name == "Fresh Desk").Id;
+        await AddAsync(stale, "key-stale");
+        await AddAsync(fresh, "key-fresh", Venue.Okx, "passphrase", new VenueSnapshot(DateTimeOffset.UtcNow, [new VenuePosition(InstrumentType.Spot, "BTC", 1m, 50_000m)]));
+        DateOnly today = DateOnly.FromDateTime(DateTime.UtcNow);
+        using (IServiceScope scope = _app!.Services.CreateScope())
+        {
+            // The stale desk was last read five days ago; the fresh one started three days ago and was read today.
+            FtDbContext db = scope.ServiceProvider.GetRequiredService<FtDbContext>();
+            await db.NavSnapshots.Where(n => n.ManagerAccountId == stale).ExecuteUpdateAsync(u => u.SetProperty(n => n.Date, today.AddDays(-5)));
+            await db.PositionSnapshots.Where(n => n.ManagerAccountId == stale).ExecuteUpdateAsync(u => u.SetProperty(n => n.Date, today.AddDays(-5)));
+            await db.CashFlows.Where(n => n.ManagerAccountId == stale || n.ManagerAccountId == fresh).ExecuteDeleteAsync();
+            db.NavSnapshots.Add(new NavSnapshot { ManagerAccountId = fresh, Date = today.AddDays(-3), NavUsd = 50_000m });
+            await db.SaveChangesAsync();
+        }
+
+        FundOverviewDto overview = await Get<FundOverviewDto>($"/api/funds/{fundId}/overview");
+        using IServiceScope read = _app!.Services.CreateScope();
+        KatalepsisFT.Application.Performance.NavHistory history = await KatalepsisFT.Application.Performance.NavHistory.LoadAsync(read.ServiceProvider.GetRequiredService<FtDbContext>(), [stale, fresh], CancellationToken.None);
+        KatalepsisFT.Application.Performance.NavSeries series = history.Series([stale, fresh], history.AsOf([stale, fresh]));
+
+        overview.AsOf.Should().Be(today);
+        overview.Totals.NavUsd.Should().Be(151_250m);
+        // Five days ago the stale desk alone; the fresh desk arrives two days later as a flow, never as a gain.
+        series.Dates[^1].Should().Be(today);
+        series.Navs.Should().Equal(101_250m, 101_250m, 151_250m, 151_250m, 151_250m, 151_250m);
+        series.Returns().Should().OnlyContain(r => r == 0d);
+    }
+
+    [Fact]
+    public async Task SameKeyTwice_IsRefused()
+    {
+        (_, int managerId) = await NewFundAsync();
+        await AddAsync(managerId, "key-only-once");
+
+        HttpResponseMessage again = await AddAsync(managerId, "key-only-once");
+
+        again.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await again.Content.ReadFromJsonAsync<ErrorResponse>(Json))!.Message.Should().Be("This key is already connected in this fund as \"Main account\".");
+    }
+
+    [Fact]
+    public async Task BalanceOneVenueCallsCash_AndAnotherCallsSpot_IsOneLine()
+    {
+        (int fundId, int managerId) = await NewFundAsync();
+        await AddAsync(managerId, "key-cash", book: new VenueSnapshot(DateTimeOffset.UtcNow, [new VenuePosition(InstrumentType.Cash, "USDT", 1_000m, 1m)]));
+        VenueSnapshot spot = new(DateTimeOffset.UtcNow, [new VenuePosition(InstrumentType.Spot, "USDT", 500m, 1m)]);
+
+        HttpResponseMessage added = await AddAsync(managerId, "key-spot", Venue.Okx, "passphrase", spot);
+
+        added.StatusCode.Should().Be(HttpStatusCode.OK, await added.Content.ReadAsStringAsync());
+        (await Get<FundOverviewDto>($"/api/funds/{fundId}/overview")).Totals.NavUsd.Should().Be(1_500m);
+        (await Get<ManagerDetailDto>($"/api/managers/{managerId}")).Positions.Should().ContainSingle().Which.Quantity.Should().Be(1_500m);
+    }
+
+    [Fact]
+    public async Task ReadThatFailsInAnUnexpectedWay_ShowsOnTheConnection()
+    {
+        (int fundId, int managerId) = await NewFundAsync();
+        ConnectionDto connection = (await (await AddAsync(managerId, "key-then-broken")).Content.ReadFromJsonAsync<ConnectionDto>(Json))!;
+        Deribit.SnapshotsByKey.Remove("key-then-broken");
+
+        await _admin.PostAsJsonAsync($"/api/connections/{connection.Id}/sync", new { });
+
+        ConnectionDto after = (await Get<ConnectionsDto>($"/api/funds/{fundId}/connections")).Connections.Single();
+        after.State.Should().Be(ConnectionState.Failed);
+        after.LastError.Should().Be("Unexpected error: KeyNotFoundException. The server log has the details.");
+    }
+
+    [Fact]
     public async Task EachRead_ChecksTheFundsAlertRules()
     {
         (int fundId, int managerId) = await NewFundAsync();
@@ -325,7 +420,8 @@ public class ConnectionsApiTests(TestDatabase database) : IClassFixture<TestData
         await _admin.PostAsJsonAsync($"/api/connections/{connection.Id}/sync", new { });
 
         using IServiceScope read = _app!.Services.CreateScope();
-        var flows = await read.ServiceProvider.GetRequiredService<FtDbContext>().CashFlows.Where(f => f.ManagerAccountId == managerId).OrderBy(f => f.AmountUsd).ToListAsync();
+        // The connection's own arrival in the book is a flow too; it has no transfer behind it.
+        var flows = await read.ServiceProvider.GetRequiredService<FtDbContext>().CashFlows.Where(f => f.ManagerAccountId == managerId && f.ExternalId != null).OrderBy(f => f.AmountUsd).ToListAsync();
         flows.Select(f => f.AmountUsd).Should().Equal(-5_000m, 5_000m);
         flows.Select(f => f.Kind).Should().Equal(CashFlowKind.Redemption, CashFlowKind.Subscription);
         flows.Should().OnlyContain(f => f.Date == DateOnly.FromDateTime(DateTime.UtcNow) || f.Date == DateOnly.FromDateTime(soon.UtcDateTime));

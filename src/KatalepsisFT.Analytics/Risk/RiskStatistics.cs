@@ -105,12 +105,16 @@ public static class RiskStatistics
         {
             IReadOnlyList<double> part = partReturns[p];
             int m = Math.Min(part.Count, n);
-            double meanP = part.Take(m).Average();
+            // A part that started after the whole added nothing to the whole's return before it existed: those days
+            // count as zeros. Measuring it over its own days only, against the whole's variance over all of them,
+            // would shrink its share and the shares would no longer add up to 1.
+            double meanP = part.Skip(part.Count - m).Sum() / n;
             double covariance = 0;
-            for (int i = 0; i < m; i++)
+            for (int i = 0; i < n; i++)
             {
-                // Align on the most recent days.
-                covariance += (part[part.Count - m + i] - meanP) * (wholeReturns[n - m + i] - meanW);
+                // Aligned on the most recent days.
+                double own = i >= n - m ? part[part.Count - n + i] : 0.0;
+                covariance += (own - meanP) * (wholeReturns[i] - meanW);
             }
 
             shares[p] = weights[p] * covariance / variance;

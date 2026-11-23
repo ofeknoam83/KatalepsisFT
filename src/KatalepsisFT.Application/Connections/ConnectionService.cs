@@ -1,3 +1,4 @@
+using System.Text.Json;
 using FluentValidation;
 using KatalepsisFT.Domain.Connections;
 using KatalepsisFT.Domain.Funds;
@@ -127,6 +128,17 @@ public sealed class ConnectionService(IFtDbContext database, VenueAdapterRegistr
             return new ConnectionChange(null, $"{adapter.DisplayName} keys come with a passphrase.");
         }
 
+        // The same key twice in one fund would count the account twice.
+        string hint = credentials.ApiKey.Length <= 4 ? credentials.ApiKey : credentials.ApiKey[^4..];
+        int fundId = await database.Sleeves.Where(s => s.Id == manager.SleeveId).Select(s => s.FundId).SingleAsync(cancellationToken);
+        foreach (VenueConnection other in await database.VenueConnections.AsNoTracking().Where(c => c.Venue == request.Venue && c.KeyHint == hint && c.ManagerAccount.Sleeve.FundId == fundId).ToListAsync(cancellationToken))
+        {
+            if (string.Equals(vault.Unprotect(other.EncryptedCredentials).ApiKey, credentials.ApiKey, adapter.UsesAddress ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+            {
+                return new ConnectionChange(null, $"This {(adapter.UsesAddress ? "address" : "key")} is already connected in this fund as \"{other.Label}\".");
+            }
+        }
+
         CredentialCheck check;
         try
         {
@@ -185,12 +197,18 @@ public sealed class ConnectionService(IFtDbContext database, VenueAdapterRegistr
         {
             connection.State = ConnectionState.Pending;
             connection.ConsecutiveFailures = 0;
+            // What it last read may be months old and must not go back into the book; the first fresh read brings
+            // the account in as it is now. Whatever was moved while it was off is already part of that reading.
+            connection.LastSnapshotJson = null;
+            connection.TransfersCheckedAt = clock.GetUtcNow();
+            connection.TransfersError = null;
             await database.SaveChangesAsync(cancellationToken);
             await sync.SyncAsync(connectionId, cancellationToken);
         }
         else if (!enabled && connection.State != ConnectionState.Disabled)
         {
             connection.State = ConnectionState.Disabled;
+            RecordLeaving(connection);
             await database.SaveChangesAsync(cancellationToken);
             await RewriteBookAsync(connection.ManagerAccountId, cancellationToken);
         }
@@ -207,10 +225,27 @@ public sealed class ConnectionService(IFtDbContext database, VenueAdapterRegistr
             return false;
         }
 
+        if (connection.State != ConnectionState.Disabled)
+        {
+            RecordLeaving(connection);
+        }
+
         database.VenueConnections.Remove(connection);
         await database.SaveChangesAsync(cancellationToken);
         await RewriteBookAsync(connection.ManagerAccountId, cancellationToken);
         return true;
+    }
+
+    /// <summary>The value a connection takes out of its manager's book is money leaving, not a loss.</summary>
+    private void RecordLeaving(VenueConnection connection)
+    {
+        if (connection.LastSnapshotJson is null)
+        {
+            return;
+        }
+
+        decimal value = ManagerBookWriter.NavOf(JsonSerializer.Deserialize<VenueSnapshot>(connection.LastSnapshotJson, ManagerBookWriter.Json)!);
+        database.CashFlows.Add(ConnectionSyncService.BookChange(connection.ManagerAccountId, -value, clock.GetUtcNow(), $"Connection \"{connection.Label}\" taken out of the book"));
     }
 
     /// <summary>History is kept; only today's book changes, and only if the manager has been valued before.</summary>

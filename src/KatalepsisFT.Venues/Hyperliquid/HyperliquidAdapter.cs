@@ -49,7 +49,19 @@ public sealed partial class HyperliquidAdapter(HttpClient http, TimeProvider clo
             mids = await InfoAsync(new { type = "allMids" }, cancellationToken);
         }
 
-        return HyperliquidMapper.Map(clock.GetUtcNow(), perps, spot, spotMeta, mids);
+        VenueSnapshot snapshot = HyperliquidMapper.Map(clock.GetUtcNow(), perps, spot, spotMeta, mids);
+        // Money placed in vaults is still the account's, at what the vault says the share is worth now. Without it a
+        // deposit into a vault would look like money lost.
+        JsonElement vaults = await InfoAsync(new { type = "userVaultEquities", user = address }, cancellationToken);
+        decimal inVaults = HyperliquidMapper.VaultEquity(vaults);
+        return inVaults == 0m
+            ? snapshot
+            : snapshot with
+            {
+                Positions = [.. snapshot.Positions, new VenuePosition(InstrumentType.Cash, "USDC", inVaults, 1m)],
+                ReportedEquityUsd = snapshot.ReportedEquityUsd + Math.Round(inVaults, 2),
+                Notes = [.. snapshot.Notes ?? [], $"Includes {inVaults:N2} USD held in vaults, shown as USDC."],
+            };
     }
 
     public async Task<IReadOnlyList<VenueTransfer>> GetTransfersAsync(VenueCredentials credentials, DateTimeOffset since, CancellationToken cancellationToken)
@@ -165,6 +177,9 @@ public static class HyperliquidMapper
         return new VenueSnapshot(asOf, result, Math.Round(accountValue + spotValue, 2));
     }
 
+    /// <summary>What the address holds in vaults, in USD.</summary>
+    public static decimal VaultEquity(JsonElement vaults) => vaults.ValueKind == JsonValueKind.Array ? vaults.EnumerateArray().Sum(v => Number(v, "equity")) : 0m;
+
     /// <summary>Deposits, withdrawals and transfers to or from other addresses. Moves between the user's own perp and spot accounts are not flows.</summary>
     public static IReadOnlyList<VenueTransfer> Transfers(JsonElement ledger, string address)
     {
@@ -187,6 +202,10 @@ public static class HyperliquidMapper
                 case "internalTransfer":
                     result.Add(new VenueTransfer(id, at, "USDC", outgoing ? -(Number(delta, "usdc") + Number(delta, "fee")) : Number(delta, "usdc")));
                     break;
+                case "send" when Text(delta, "user").Equals(Text(delta, "destination"), StringComparison.OrdinalIgnoreCase):
+                    // Between the address's own accounts.
+                    break;
+                case "send":
                 case "spotTransfer":
                     result.Add(new VenueTransfer(id, at, SpotAsset(Text(delta, "token")), outgoing ? -Number(delta, "amount") : Number(delta, "amount")));
                     break;

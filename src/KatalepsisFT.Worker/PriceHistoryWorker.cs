@@ -21,6 +21,33 @@ public sealed class PriceHistoryWorker(IServiceScopeFactory scopes, TimeProvider
 
     private readonly Dictionary<string, DateTimeOffset> _notListed = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Books made only of hand-entered positions have no venue read to trigger them, so they are revalued here. It
+    /// runs before prices are loaded and each book on its own, so neither a price source that is down nor one book
+    /// that cannot be written leaves the others without today's record.
+    /// </summary>
+    private async Task RevalueManualBooksAsync(CancellationToken stoppingToken)
+    {
+        List<int> managerIds;
+        await using (AsyncServiceScope scope = scopes.CreateAsyncScope())
+        {
+            managerIds = await scope.ServiceProvider.GetRequiredService<ManagerBookService>().ManualOnlyAsync(stoppingToken);
+        }
+
+        foreach (int id in managerIds)
+        {
+            try
+            {
+                await using AsyncServiceScope scope = scopes.CreateAsyncScope();
+                await scope.ServiceProvider.GetRequiredService<ManagerBookService>().RefreshAsync(id, stoppingToken);
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                logger.LogWarning(e, "The hand-entered book of manager {ManagerId} could not be revalued.", id);
+            }
+        }
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         using PeriodicTimer timer = new(Interval, clock);
@@ -34,6 +61,7 @@ public sealed class PriceHistoryWorker(IServiceScopeFactory scopes, TimeProvider
                     _notListed.Remove(stale);
                 }
 
+                await RevalueManualBooksAsync(stoppingToken);
                 await using AsyncServiceScope scope = scopes.CreateAsyncScope();
                 PriceBackfillResult result = await scope
                     .ServiceProvider.GetRequiredService<PriceBackfillService>()
@@ -42,9 +70,6 @@ public sealed class PriceHistoryWorker(IServiceScopeFactory scopes, TimeProvider
                 {
                     _notListed[symbol] = now;
                 }
-
-                // Books made only of hand-entered positions have no venue read to trigger them: revalue them here.
-                await scope.ServiceProvider.GetRequiredService<ManagerBookService>().RefreshManualOnlyAsync(stoppingToken);
 
                 if (result.BarsAdded > 0 || result.AssetsWithoutData.Count > 0)
                 {

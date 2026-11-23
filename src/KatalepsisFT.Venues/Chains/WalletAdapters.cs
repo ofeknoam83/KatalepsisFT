@@ -151,25 +151,19 @@ public sealed class EvmWalletAdapter(HttpClient http, TimeProvider clock) : Wall
             })
         );
 
+        // Every chain must answer. A wallet read with one chain missing would take that chain's value out of the book
+        // and bring it back on the next read, and both moves would be counted as performance. A failed read keeps the
+        // last complete book and says which chain is in the way.
         foreach ((EvmChain chain, JsonElement? answer, string? error) in answers)
         {
-            try
+            if (answer is null)
             {
-                if (answer is null)
-                {
-                    throw new VenueException(VenueFailure.Unavailable, error!);
-                }
-
-                foreach ((string asset, decimal quantity) in WalletMath.EvmBalances(chain, answer.Value))
-                {
-                    holdings[asset] = holdings.GetValueOrDefault(asset) + quantity;
-                }
+                throw new VenueException(VenueFailure.Unavailable, $"{chain.Name} was not read: {error}");
             }
-            catch (VenueException e)
+
+            foreach ((string asset, decimal quantity) in WalletMath.EvmBalances(chain, answer.Value))
             {
-                // One chain's node being down should not hide the wallet on the other six, but it must be said.
-                notes.Add($"{chain.Name} was not read: {e.Message}");
-                continue;
+                holdings[asset] = holdings.GetValueOrDefault(asset) + quantity;
             }
 
             try
@@ -178,14 +172,8 @@ public sealed class EvmWalletAdapter(HttpClient http, TimeProvider clock) : Wall
             }
             catch (VenueException e)
             {
-                // The wallet's own balances above stand; what is missing is whatever sits in pools on this chain.
-                notes.Add($"Pool positions on {chain.Name} were not read: {e.Message}");
+                throw new VenueException(e.Failure, $"Pool positions on {chain.Name} were not read: {e.Message}", e);
             }
-        }
-
-        if (notes.Count == ChainData.EvmChains.Count)
-        {
-            throw new VenueException(VenueFailure.Unavailable, "none of the chains answered.");
         }
 
         return (holdings, notes);

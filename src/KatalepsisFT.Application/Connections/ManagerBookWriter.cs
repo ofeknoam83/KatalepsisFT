@@ -25,18 +25,21 @@ public sealed class ManagerBookWriter(IFtDbContext database)
         List<VenuePosition> positions = snapshots.SelectMany(json => JsonSerializer.Deserialize<VenueSnapshot>(json, Json)!.Positions).ToList();
         positions.AddRange(await ManualAsync(managerAccountId, cancellationToken));
 
-        // The same instrument on two venues is one line in the manager's book.
+        // The same instrument on two venues is one line in the manager's book. Lines are told apart by the
+        // instrument's name, so a balance one source calls cash and another calls spot is still one line: two rows
+        // for one instrument on one day cannot be stored, and the book would never be written again.
         var lines = positions
             .Where(p => p.Quantity != 0m)
-            .GroupBy(p => new { p.Type, Asset = p.Asset.ToUpperInvariant(), p.Expiry, p.Strike, p.OptionRight })
+            .GroupBy(p => SymbolOf(p.Type, p.Asset.ToUpperInvariant(), p.Expiry, p.Strike, p.OptionRight))
             .Select(g =>
             {
+                VenuePosition first = g.First();
                 decimal quantity = g.Sum(p => p.Quantity);
                 decimal absolute = g.Sum(p => Math.Abs(p.Quantity));
                 decimal Weighted(Func<VenuePosition, decimal?> pick) => g.Sum(p => Math.Abs(p.Quantity) * (pick(p) ?? 0m)) / absolute;
                 return new
                 {
-                    g.Key,
+                    Key = new { first.Type, Asset = first.Asset.ToUpperInvariant(), first.Expiry, first.Strike, first.OptionRight },
                     Quantity = quantity,
                     Mark = Weighted(p => p.MarkPrice),
                     Entry = g.All(p => p.EntryPrice is not null) ? Weighted(p => p.EntryPrice) : (decimal?)null,
@@ -55,7 +58,7 @@ public sealed class ManagerBookWriter(IFtDbContext database)
         foreach (var line in lines)
         {
             Instrument instrument = await EnsureInstrumentAsync(line.Key.Type, line.Key.Asset, line.Key.Expiry, line.Key.Strike, line.Key.OptionRight, cancellationToken);
-            PositionValue value = PositionValuer.Value(new PositionInput(line.Key.Type, line.Quantity, line.Mark, 1m, line.Entry, line.Underlying ?? line.Mark, line.Delta ?? (line.Key.Type == InstrumentType.Option ? 0m : null)));
+            PositionValue value = PositionValuer.Value(new PositionInput(instrument.Type, line.Quantity, line.Mark, 1m, line.Entry, line.Underlying ?? line.Mark, line.Delta ?? (instrument.Type == InstrumentType.Option ? 0m : null)));
             // What a perp or future adds to NAV is whatever the venue has not yet paid into the cash balance.
             decimal marketValue = instrument.Type is InstrumentType.Perp or InstrumentType.Future && line.Unsettled is decimal unsettled ? Math.Round(unsettled, 2) : value.MarketValueUsd;
             nav += marketValue;
@@ -149,15 +152,18 @@ public sealed class ManagerBookWriter(IFtDbContext database)
                 : PositionValuer.Value(new PositionInput(p.Type, p.Quantity, p.MarkPrice, 1m, p.EntryPrice, p.UnderlyingPrice ?? p.MarkPrice, p.Delta ?? (p.Type == InstrumentType.Option ? 0m : null))).MarketValueUsd
         );
 
-    private async Task<Instrument> EnsureInstrumentAsync(InstrumentType type, string assetSymbol, DateOnly? expiry, decimal? strike, OptionRight? right, CancellationToken cancellationToken)
-    {
-        string symbol = type switch
+    private static string SymbolOf(InstrumentType type, string assetSymbol, DateOnly? expiry, decimal? strike, OptionRight? right) =>
+        type switch
         {
             InstrumentType.Perp => $"{assetSymbol}-PERP",
             InstrumentType.Future => $"{assetSymbol} {expiry:d-MMM-yy} future",
             InstrumentType.Option => $"{assetSymbol} {expiry:d-MMM-yy} {strike:0.########} {(right == OptionRight.Put ? "put" : "call")}",
             _ => assetSymbol,
         };
+
+    private async Task<Instrument> EnsureInstrumentAsync(InstrumentType type, string assetSymbol, DateOnly? expiry, decimal? strike, OptionRight? right, CancellationToken cancellationToken)
+    {
+        string symbol = SymbolOf(type, assetSymbol, expiry, strike, right);
         Instrument? instrument = database.Instruments.Local.FirstOrDefault(i => i.Symbol == symbol) ?? await database.Instruments.FirstOrDefaultAsync(i => i.Symbol == symbol, cancellationToken);
         if (instrument is not null)
         {

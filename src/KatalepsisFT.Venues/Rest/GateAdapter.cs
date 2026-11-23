@@ -47,9 +47,10 @@ public sealed class GateAdapter(HttpClient http, TimeProvider clock) : IVenueAda
             futures = await GetAsync(credentials, "/futures/usdt/accounts", string.Empty, cancellationToken);
             positions = await GetAsync(credentials, "/futures/usdt/positions", "holding=true", cancellationToken);
         }
-        catch (VenueException e)
+        catch (VenueException e) when (e.Refused)
         {
-            // The spot call above proved the key is good, so this is a futures account that is missing or closed to the key.
+            // The venue said no, and the spot call above proved the key is good: a futures account that is missing or
+            // closed to the key. A venue that merely failed to answer is not caught here and fails the whole read.
             notes.Add($"The futures account was not read: {e.Message}");
             futures = null;
             positions = null;
@@ -89,7 +90,10 @@ public sealed class GateAdapter(HttpClient http, TimeProvider clock) : IVenueAda
         string label = body is JsonElement error ? RestVenue.Text(error, "label") : string.Empty;
         string message = body is JsonElement described ? RestVenue.Text(described, "message") : string.Empty;
         bool rejected = status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden || label is "INVALID_KEY" or "INVALID_SIGNATURE" or "FORBIDDEN" or "READ_ONLY" or "IP_FORBIDDEN";
-        throw new VenueException(rejected ? VenueFailure.Rejected : VenueFailure.Unavailable, $"{(message.Length > 0 ? RestVenue.Short(message) : "HTTP " + (int)status)}{(label.Length > 0 ? $" ({label})" : string.Empty)} on {path}.");
+        throw new VenueException(rejected ? VenueFailure.Rejected : VenueFailure.Unavailable, $"{(message.Length > 0 ? RestVenue.Short(message) : "HTTP " + (int)status)}{(label.Length > 0 ? $" ({label})" : string.Empty)} on {path}.")
+        {
+            Refused = rejected || (body is not null && VenueException.IsRefusal(status)),
+        };
     }
 }
 

@@ -22,6 +22,8 @@ if (!hasKeyValue)
     return 2;
 }
 
+// Outgoing request logs print full addresses. Nothing secret is put in an address, and this keeps it that way if one ever is.
+builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
 builder.Services.AddSingleton(new WorkerIdentity(group.ToLowerInvariant()));
 builder.Services.AddHostedService<HeartbeatPublisher>();
 
@@ -49,7 +51,6 @@ if (hasPostgres && group.ToLowerInvariant() is WorkerGroups.Cefi or WorkerGroups
 if (hasPostgres && group.ToLowerInvariant() is WorkerGroups.Core)
 {
     builder.Logging.AddFilter("Microsoft.EntityFrameworkCore", LogLevel.Warning);
-    builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
     builder.Services.AddPersistence();
     builder.Services.AddMarketData();
     builder.Services.AddScoped<KatalepsisFT.Application.Prices.PriceBackfillService>();

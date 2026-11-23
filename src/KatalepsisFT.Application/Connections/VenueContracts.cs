@@ -60,6 +60,16 @@ public enum VenueFailure
 public sealed class VenueException(VenueFailure failure, string message, Exception? inner = null) : Exception(message, inner)
 {
     public VenueFailure Failure { get; } = failure;
+
+    /// <summary>
+    /// True when the venue itself answered "no" to this request, as opposed to not answering, being busy or failing.
+    /// Only such an answer may be read as "this account has no such part"; anything else must fail the whole read,
+    /// or a timeout on one part would quietly take that part's value out of the book.
+    /// </summary>
+    public bool Refused { get; init; } = failure == VenueFailure.Rejected;
+
+    /// <summary>Whether an HTTP answer is the venue saying no (a 4xx other than "too many requests" or a timeout) and not a failure to answer.</summary>
+    public static bool IsRefusal(System.Net.HttpStatusCode? status) => status is { } code && (int)code is >= 400 and < 500 and not 408 and not 429;
 }
 
 /// <summary>

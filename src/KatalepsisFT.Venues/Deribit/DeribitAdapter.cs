@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Text.Json;
 using KatalepsisFT.Application.Connections;
 using KatalepsisFT.Domain.Connections;
@@ -53,7 +54,10 @@ public sealed class DeribitAdapter(HttpClient http, TimeProvider clock) : IVenue
         List<(string Currency, decimal Balance, decimal Equity)> balances = [];
         foreach (JsonElement summary in summaries.GetProperty("summaries").EnumerateArray())
         {
-            decimal balance = Number(summary, "balance") ?? 0m;
+            // Deribit's own sum: equity = balance + this session's futures profit, realised and open, + options value.
+            // Open profit and options arrive with the positions; what was realised since the last daily settlement is
+            // in neither until 08:00 UTC, so it is added to the cash here or a closed trade's result would go missing.
+            decimal balance = (Number(summary, "balance") ?? 0m) + (Number(summary, "futures_session_rpl") ?? 0m);
             decimal equity = Number(summary, "equity") ?? 0m;
             if (balance != 0m || equity != 0m)
             {
@@ -96,8 +100,15 @@ public sealed class DeribitAdapter(HttpClient http, TimeProvider clock) : IVenue
 
     private async Task<(string Token, string Scope)> SignInAsync(VenueCredentials credentials, CancellationToken cancellationToken)
     {
-        string query = $"public/auth?client_id={Uri.EscapeDataString(credentials.ApiKey)}&client_secret={Uri.EscapeDataString(credentials.ApiSecret)}&grant_type=client_credentials";
-        JsonElement result = await GetAsync(query, null, cancellationToken);
+        // The key and secret travel in the body of a POST, never in the address: addresses end up in request logs.
+        JsonElement result = await SendAsync(
+            new HttpRequestMessage(HttpMethod.Post, new Uri(BaseUrl.TrimEnd('/')))
+            {
+                Content = JsonContent.Create(new { jsonrpc = "2.0", id = 1, method = "public/auth", @params = new { grant_type = "client_credentials", client_id = credentials.ApiKey, client_secret = credentials.ApiSecret } }),
+            },
+            "public/auth",
+            cancellationToken
+        );
         return (result.GetProperty("access_token").GetString()!, result.TryGetProperty("scope", out JsonElement scope) ? scope.GetString() ?? string.Empty : string.Empty);
     }
 
@@ -105,12 +116,18 @@ public sealed class DeribitAdapter(HttpClient http, TimeProvider clock) : IVenue
     private async Task<JsonElement> GetAsync(string pathAndQuery, string? token, CancellationToken cancellationToken)
     {
         string method = pathAndQuery.Split('?')[0];
-        using HttpRequestMessage request = new(HttpMethod.Get, new Uri(new Uri(BaseUrl), pathAndQuery));
+        HttpRequestMessage request = new(HttpMethod.Get, new Uri(new Uri(BaseUrl), pathAndQuery));
         if (token is not null)
         {
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         }
 
+        return await SendAsync(request, method, cancellationToken);
+    }
+
+    private async Task<JsonElement> SendAsync(HttpRequestMessage outgoing, string method, CancellationToken cancellationToken)
+    {
+        using HttpRequestMessage request = outgoing;
         HttpResponseMessage response;
         string body;
         try

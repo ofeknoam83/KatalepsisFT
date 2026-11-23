@@ -31,4 +31,7 @@ public interface IFtDbContext
     DbSet<AlertAction> AlertActions { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken);
+
+    /// <summary>Forgets every change not yet saved, so a unit of work that failed half way can still record that it failed.</summary>
+    void DiscardChanges();
 }

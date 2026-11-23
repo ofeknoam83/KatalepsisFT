@@ -1,6 +1,6 @@
 import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
-import { toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { toObservable } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { Store } from '@ngxs/store';
@@ -15,9 +15,10 @@ import { NzSpinModule } from 'ng-zorro-antd/spin';
 import { NzTableModule } from 'ng-zorro-antd/table';
 import { NzTagModule } from 'ng-zorro-antd/tag';
 import { LiveService } from '../core/live.service';
-import { Observable, catchError, combineLatest, of, switchMap, tap } from 'rxjs';
+import { Observable, catchError, combineLatest, of } from 'rxjs';
 import { SessionState } from '../core/session.state';
 import { ViewState } from '../funds/view.state';
+import { keptData } from '../shared/page-data';
 import { AlertsApi } from './alerts.api';
 import { Alert, AlertAction, AlertListState, Assignee, SEVERITY_COLOR } from './models';
 
@@ -221,23 +222,16 @@ export class AlertsInbox {
   protected readonly note = signal('');
   protected readonly busy = signal(false);
   protected readonly error = signal<string | null>(null);
-  protected readonly failed = signal(false);
   private readonly version = signal(0);
 
-  protected readonly data = toSignal(
-    combineLatest([toObservable(this.fundId), toObservable(this.state), toObservable(this.sleeveId), toObservable(this.version), toObservable(inject(LiveService).tick)]).pipe(
-      switchMap(([fundId, state, sleeveId]) =>
-        this.api.list(fundId, state, sleeveId).pipe(
-          tap(() => this.failed.set(false)),
-          catchError(() => {
-            this.failed.set(true);
-            return of(null);
-          }),
-        ),
-      ),
-    ),
-    { initialValue: null },
+  private readonly loaded = keptData(
+    combineLatest([toObservable(this.fundId), toObservable(this.state), toObservable(this.sleeveId)]),
+    combineLatest([toObservable(this.version), toObservable(inject(LiveService).tick)]),
+    ([fundId, state, sleeveId]) => this.api.list(fundId, state, sleeveId),
+    ([fundId]) => fundId,
   );
+  protected readonly failed = this.loaded.failed;
+  protected readonly data = this.loaded.data;
   protected readonly assignees = signal<Assignee[]>([]);
 
   constructor() {

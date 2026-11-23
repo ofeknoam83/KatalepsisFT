@@ -30,7 +30,7 @@ import { FundsApi } from './funds.api';
         [crumbs]="[{ label: d.fund.name, link: ['/funds', d.fund.id] }, { label: d.sleeve.name, link: ['/sleeves', d.sleeve.id] }, { label: d.manager.name }]"
         [title]="d.manager.name"
         [demo]="d.fund.isDemo"
-        [sub]="'Manager · ' + d.sleeve.name + ' sleeve · since ' + (d.inceptionDate | date: 'd MMM y')"
+        [sub]="'Manager · ' + d.sleeve.name + ' sleeve · since ' + (d.inceptionDate | date: 'd MMM y' : 'UTC')"
         [asOf]="d.asOf"
       />
 

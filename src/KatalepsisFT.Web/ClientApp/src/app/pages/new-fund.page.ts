@@ -98,7 +98,8 @@ export class NewFundPage {
   protected manager(): ManagerForm {
     return new FormGroup({
       name: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
-      allocatedCapitalUsd: new FormControl(0, { nonNullable: true, validators: [Validators.min(0)] }),
+      // Required: an emptied box holds null, which the server cannot read as an amount.
+      allocatedCapitalUsd: new FormControl(0, { nonNullable: true, validators: [Validators.required, Validators.min(0)] }),
     });
   }
 

@@ -12,11 +12,11 @@ import { NzSelectModule } from 'ng-zorro-antd/select';
 import { NzTableModule } from 'ng-zorro-antd/table';
 import { NzTagModule } from 'ng-zorro-antd/tag';
 import { LiveService } from '../core/live.service';
-import { Observable, catchError, combineLatest, of, switchMap } from 'rxjs';
+import { Observable, combineLatest, of } from 'rxjs';
 import { toObservable } from '@angular/core/rxjs-interop';
 import { ConnectionsApi, Venue } from '../connections/connections.api';
 import { FORMAT_PIPES } from '../shared/format';
-import { pageData } from '../shared/page-data';
+import { keptData, pageData } from '../shared/page-data';
 import { PageHead } from '../shared/page-head';
 import { FundTabs } from './fund-tabs';
 import { FundsApi } from './funds.api';
@@ -38,11 +38,18 @@ const STATE_COLOR = { Live: 'green', Failed: 'red', Pending: 'blue', Disabled: '
   imports: [DatePipe, ReactiveFormsModule, NzAlertModule, NzButtonModule, NzFormModule, NzInputModule, NzModalModule, NzPopconfirmModule, NzSelectModule, NzTableModule, NzTagModule, PageHead, FundTabs, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
+    @if (page.failed()) {
+      <nz-alert nzType="error" nzMessage="Could not load the fund." nzShowIcon />
+    }
     @if (page.data(); as d) {
       <app-page-head [crumbs]="[{ label: d.fund.name, link: ['/funds', d.fund.id] }, { label: 'Connections' }]" [title]="d.fund.name" [demo]="d.fund.isDemo" sub="Read-only venue keys" [showFilter]="false" />
       <app-fund-tabs [fundId]="d.fund.id" />
       @if (error(); as message) {
         <nz-alert nzType="error" [nzMessage]="message" nzShowIcon nzCloseable (nzOnClose)="error.set(null)" style="display:block;margin-bottom:14px" />
+      }
+      @if (connections.failed()) {
+        <nz-alert nzType="error" nzMessage="Could not load the connections." nzShowIcon [nzAction]="retry" style="display:block;margin-bottom:14px" data-testid="connections-failed" />
+        <ng-template #retry><button nz-button nzSize="small" (click)="reload()">Try again</button></ng-template>
       }
       @if (data(); as c) {
         @if (c.managers.length === 0) {
@@ -158,10 +165,13 @@ export class FundConnectionsPage {
   private readonly version = signal(0);
   private readonly fundId = computed(() => this.page.data()?.fund.id ?? null);
 
-  protected readonly data = toSignal(
-    combineLatest([toObservable(this.fundId), toObservable(this.version), toObservable(inject(LiveService).tick)]).pipe(switchMap(([fundId]) => (fundId === null ? of(null) : this.api.list(fundId).pipe(catchError(() => of(null)))))),
-    { initialValue: null },
+  protected readonly connections = keptData(
+    toObservable(this.fundId),
+    combineLatest([toObservable(this.version), toObservable(inject(LiveService).tick)]),
+    (fundId) => (fundId === null ? of(null) : this.api.list(fundId)),
+    (fundId) => fundId,
   );
+  protected readonly data = this.connections.data;
 
   protected readonly form = new FormGroup<KeyForm>({
     managerId: new FormControl<number | null>(null, { validators: [Validators.required] }),
@@ -203,6 +213,10 @@ export class FundConnectionsPage {
           this.formError.set(e.error?.message ?? 'The key could not be saved.');
         },
       });
+  }
+
+  protected reload(): void {
+    this.version.update((v) => v + 1);
   }
 
   protected act(request: Observable<unknown>): void {

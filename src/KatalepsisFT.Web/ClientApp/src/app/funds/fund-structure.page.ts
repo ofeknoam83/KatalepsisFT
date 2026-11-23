@@ -1,5 +1,5 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
-import { toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, signal, untracked } from '@angular/core';
+import { toObservable } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { Store } from '@ngxs/store';
 import { NzAlertModule } from 'ng-zorro-antd/alert';
@@ -9,9 +9,9 @@ import { NzInputNumberModule } from 'ng-zorro-antd/input-number';
 import { NzPopconfirmModule } from 'ng-zorro-antd/popconfirm';
 import { NzSelectModule } from 'ng-zorro-antd/select';
 import { NzTagModule } from 'ng-zorro-antd/tag';
-import { Observable, catchError, combineLatest, of, switchMap } from 'rxjs';
+import { Observable, of } from 'rxjs';
 import { ConnectionsApi, LimitKind, MandateType, Structure } from '../connections/connections.api';
-import { pageData } from '../shared/page-data';
+import { keptData, pageData } from '../shared/page-data';
 import { PageHead } from '../shared/page-head';
 import { FundTabs } from './fund-tabs';
 import { FundsApi } from './funds.api';
@@ -38,6 +38,8 @@ interface ManagerDraft {
   id: number;
   name: string;
   capital: number | null;
+  /** What the server held when this manager was last read or saved. */
+  saved: { name: string; capital: number | null };
   hasHistory: boolean;
   connections: number;
 }
@@ -47,6 +49,8 @@ interface SleeveDraft {
   name: string;
   mandateType: MandateType;
   limits: Record<LimitKind, number | null>;
+  /** What the server held when this sleeve was last read or saved. */
+  saved: { name: string; mandateType: MandateType; limits: Record<LimitKind, number | null> };
   managers: ManagerDraft[];
   newManager: string;
 }
@@ -94,6 +98,9 @@ interface SleeveDraft {
     }
   `,
   template: `
+    @if (page.failed()) {
+      <nz-alert nzType="error" nzMessage="Could not load the fund." nzShowIcon />
+    }
     @if (page.data(); as d) {
       <app-page-head [crumbs]="[{ label: d.fund.name, link: ['/funds', d.fund.id] }, { label: 'Structure' }]" [title]="d.fund.name" [demo]="d.fund.isDemo" sub="Sleeves, mandates and managers" [showFilter]="false" />
       <app-fund-tabs [fundId]="d.fund.id" />
@@ -102,6 +109,10 @@ interface SleeveDraft {
       }
       @if (saved(); as message) {
         <nz-alert nzType="success" [nzMessage]="message" nzShowIcon nzCloseable (nzOnClose)="saved.set(null)" style="display:block;margin-bottom:14px" />
+      }
+      @if (structure.failed()) {
+        <nz-alert nzType="error" nzMessage="Could not load the fund's structure." nzShowIcon [nzAction]="retry" style="display:block;margin-bottom:14px" data-testid="structure-failed" />
+        <ng-template #retry><button nz-button nzSize="small" (click)="reload()">Try again</button></ng-template>
       }
       @if (data(); as s) {
         @if (!s.canEdit) {
@@ -119,7 +130,7 @@ interface SleeveDraft {
                 }
               </nz-select>
             </div>
-            <button nz-button nzType="primary" style="margin-top:20px" [disabled]="!s.canEdit || fundName().trim() === ''" (click)="run(api.saveFund(s.id, fundName(), benchmarkId()), 'Fund saved.', true)">Save</button>
+            <button nz-button nzType="primary" style="margin-top:20px" [disabled]="!s.canEdit || fundName().trim() === ''" (click)="saveFund(s.id)">Save</button>
           </div>
         </div>
 
@@ -158,7 +169,7 @@ interface SleeveDraft {
                     <nz-input-number [(ngModel)]="manager.capital" [nzMin]="0" [nzStep]="1000000" [nzDisabled]="!s.canEdit" style="width:100%" />
                     <span class="row">
                       @if (s.canEdit) {
-                        <a (click)="run(api.saveManager(manager.id, manager.name, manager.capital ?? 0), 'Manager saved.')">Save</a>
+                        <a (click)="saveManager(manager)">Save</a>
                         @if (manager.hasHistory || manager.connections > 0) {
                           <nz-tag [title]="'A manager with history or venue keys stays in the fund'">{{ manager.connections > 0 ? manager.connections + (manager.connections === 1 ? ' key' : ' keys') : 'Has history' }}</nz-tag>
                         } @else {
@@ -171,7 +182,7 @@ interface SleeveDraft {
                 @if (s.canEdit) {
                   <div class="manager" style="margin-top:10px">
                     <input nz-input [(ngModel)]="sleeve.newManager" placeholder="New manager" maxlength="200" data-testid="new-manager" />
-                    <button nz-button [disabled]="sleeve.newManager.trim() === ''" (click)="run(api.addManager(sleeve.id, sleeve.newManager, 0), 'Manager added.')">Add a manager</button>
+                    <button nz-button [disabled]="sleeve.newManager.trim() === ''" (click)="addManager(sleeve)">Add a manager</button>
                   </div>
                 }
               </div>
@@ -211,22 +222,84 @@ export class FundStructurePage {
   private readonly version = signal(0);
   private readonly fundId = computed(() => this.page.data()?.fund.id ?? null);
 
-  protected readonly data = toSignal(
-    combineLatest([toObservable(this.fundId), toObservable(this.version)]).pipe(switchMap(([fundId]) => (fundId === null ? of(null) : this.api.structure(fundId).pipe(catchError(() => of(null)))))),
-    { initialValue: null },
+  protected readonly structure = keptData(
+    toObservable(this.fundId),
+    toObservable(this.version),
+    (fundId) => (fundId === null ? of(null) : this.api.structure(fundId)),
+    (fundId) => fundId,
   );
+  protected readonly data = this.structure.data;
 
-  /** An editable copy of what the server holds; rebuilt after every save. */
-  protected readonly drafts = computed<SleeveDraft[]>(() => (this.data()?.sleeves ?? []).map((s) => this.draft(s)));
+  /**
+   * What is in the boxes. Each draft remembers what the server held when it was last read, so that a reload after a
+   * save brings in the server's values only where nothing was typed since: unsaved edits elsewhere on the page stay.
+   */
+  protected readonly drafts = signal<SleeveDraft[]>([]);
+  /** The fund name and benchmark as the server holds them, and the fund the drafts belong to. */
+  private fundSaved: { id: number; name: string; benchmarkId: number | null } | null = null;
 
   constructor() {
     effect(() => {
       const s = this.data();
       if (s) {
-        this.fundName.set(s.name);
-        this.benchmarkId.set(s.benchmarkId);
+        untracked(() => this.merge(s));
       }
     });
+  }
+
+  /** Brings a freshly read structure into the drafts, leaving alone every box that was edited and not saved. */
+  private merge(s: Structure): void {
+    const before = this.fundSaved?.id === s.id ? this.fundSaved : null;
+    if (before === null) {
+      // Another fund, or the first load: nothing typed here belongs to it.
+      this.newSleeve.set('');
+      this.newSleeveType.set('Directional');
+    }
+
+    if (before === null || this.fundName() === before.name) {
+      this.fundName.set(s.name);
+    }
+
+    if (before === null || this.benchmarkId() === before.benchmarkId) {
+      this.benchmarkId.set(s.benchmarkId);
+    }
+
+    this.fundSaved = { id: s.id, name: s.name, benchmarkId: s.benchmarkId };
+
+    const current = new Map((before === null ? [] : this.drafts()).map((d) => [d.id, d]));
+    this.drafts.set(
+      s.sleeves.map((sleeve) => {
+        const fresh = this.draft(sleeve);
+        const draft = current.get(sleeve.id);
+        if (!draft) {
+          return fresh;
+        }
+
+        // The same objects are kept, because the template and a save in flight hold on to them.
+        draft.name = kept(draft.name, draft.saved.name, fresh.name);
+        draft.mandateType = kept(draft.mandateType, draft.saved.mandateType, fresh.mandateType);
+        for (const { kind } of LIMITS) {
+          draft.limits[kind] = kept(draft.limits[kind] ?? null, draft.saved.limits[kind], fresh.limits[kind]);
+        }
+
+        draft.saved = fresh.saved;
+        const managers = new Map(draft.managers.map((m) => [m.id, m]));
+        draft.managers = fresh.managers.map((freshManager) => {
+          const manager = managers.get(freshManager.id);
+          if (!manager) {
+            return freshManager;
+          }
+
+          manager.name = kept(manager.name, manager.saved.name, freshManager.name);
+          manager.capital = kept(manager.capital ?? null, manager.saved.capital, freshManager.capital);
+          manager.saved = freshManager.saved;
+          manager.hasHistory = freshManager.hasHistory;
+          manager.connections = freshManager.connections;
+          return manager;
+        });
+        return draft;
+      }),
+    );
   }
 
   private draft(sleeve: Structure['sleeves'][number]): SleeveDraft {
@@ -241,44 +314,102 @@ export class FundStructurePage {
       name: sleeve.name,
       mandateType: sleeve.mandateType,
       limits,
-      managers: sleeve.managers.map((m) => ({ id: m.id, name: m.name, capital: m.allocatedCapitalUsd, hasHistory: m.hasHistory, connections: m.connections })),
+      saved: { name: sleeve.name, mandateType: sleeve.mandateType, limits: { ...limits } },
+      managers: sleeve.managers.map((m) => ({
+        id: m.id,
+        name: m.name,
+        capital: m.allocatedCapitalUsd,
+        saved: { name: m.name, capital: m.allocatedCapitalUsd },
+        hasHistory: m.hasHistory,
+        connections: m.connections,
+      })),
       newManager: '',
     };
   }
 
+  protected reload(): void {
+    this.version.update((v) => v + 1);
+  }
+
+  protected saveFund(fundId: number): void {
+    const sent = { id: fundId, name: this.fundName(), benchmarkId: this.benchmarkId() };
+    this.run(this.api.saveFund(fundId, sent.name, sent.benchmarkId), 'Fund saved.', true, () => {
+      if (this.fundSaved?.id === fundId) {
+        this.fundSaved = sent;
+      }
+    });
+  }
+
   protected saveSleeve(sleeve: SleeveDraft): void {
-    const limits = LIMITS.filter((l) => sleeve.limits[l.kind] !== null && sleeve.limits[l.kind] !== undefined).map((l) => ({
+    const sent: SleeveDraft['saved'] = {
+      name: sleeve.name,
+      mandateType: sleeve.mandateType,
+      limits: Object.fromEntries(LIMITS.map((l) => [l.kind, sleeve.limits[l.kind] ?? null])) as Record<LimitKind, number | null>,
+    };
+    const limits = LIMITS.filter((l) => sent.limits[l.kind] !== null).map((l) => ({
       kind: l.kind,
-      value: l.unit === 'days' ? sleeve.limits[l.kind]! : sleeve.limits[l.kind]! / 100,
+      value: l.unit === 'days' ? sent.limits[l.kind]! : sent.limits[l.kind]! / 100,
     }));
-    this.run(this.api.saveSleeve(sleeve.id, sleeve.name, sleeve.mandateType, limits), 'Sleeve and limits saved. The alert rules were checked against them.', true);
+    // Once saved, what was sent is what the server holds; anything typed while the request ran still counts as unsaved.
+    this.run(this.api.saveSleeve(sleeve.id, sent.name, sent.mandateType, limits), 'Sleeve and limits saved. The alert rules were checked against them.', true, () => (sleeve.saved = sent));
+  }
+
+  protected saveManager(manager: ManagerDraft): void {
+    const capital = manager.capital ?? null;
+    if (capital === null) {
+      this.saved.set(null);
+      this.error.set(`Enter the allocated capital for ${manager.name.trim() || 'this manager'} before saving; use 0 for none.`);
+      return;
+    }
+
+    const sent = { name: manager.name, capital };
+    this.run(this.api.saveManager(manager.id, sent.name, capital), 'Manager saved.', false, () => (manager.saved = sent));
+  }
+
+  protected addManager(sleeve: SleeveDraft): void {
+    const name = sleeve.newManager;
+    this.run(this.api.addManager(sleeve.id, name, 0), 'Manager added.', false, () => {
+      if (sleeve.newManager === name) {
+        sleeve.newManager = '';
+      }
+    });
   }
 
   protected addSleeve(fundId: number): void {
-    this.run(this.api.addSleeve(fundId, this.newSleeve(), this.newSleeveType()), 'Sleeve added.', true);
-    this.newSleeve.set('');
+    const name = this.newSleeve();
+    this.run(this.api.addSleeve(fundId, name, this.newSleeveType()), 'Sleeve added.', true, () => {
+      if (this.newSleeve() === name) {
+        this.newSleeve.set('');
+      }
+    });
   }
 
-  /** Runs one change, then reloads the structure; names shown in the navigation are reloaded too when they may have changed. */
-  protected run(request: Observable<unknown>, message: string, namesChanged = false): void {
+  /**
+   * Runs one change, then reloads the structure; names shown in the navigation are reloaded too when they may have
+   * changed. A change the server refuses leaves the page exactly as it was typed.
+   */
+  protected run(request: Observable<unknown>, message: string, namesChanged = false, done?: () => void): void {
     this.error.set(null);
     this.saved.set(null);
     request.subscribe({
       next: () => {
+        done?.();
         this.saved.set(message);
         this.version.update((v) => v + 1);
         if (namesChanged) {
           this.store.dispatch(new LoadFunds());
           const id = this.fundId();
           if (id !== null) {
-            this.funds.overview(id, 'All').subscribe();
+            this.funds.overview(id, 'All').subscribe({ error: () => undefined });
           }
         }
       },
-      error: (e: { error?: { message?: string } }) => {
-        this.error.set(e.error?.message ?? 'That could not be saved.');
-        this.version.update((v) => v + 1);
-      },
+      error: (e: { error?: { message?: string } }) => this.error.set(e.error?.message ?? 'That could not be saved.'),
     });
   }
+}
+
+/** The value a box should hold after a reload: the server's, unless the box was edited since it was last read. */
+function kept<T>(typed: T, saved: T, server: T): T {
+  return typed === saved ? server : typed;
 }

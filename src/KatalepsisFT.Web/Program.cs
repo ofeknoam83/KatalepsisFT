@@ -86,6 +86,8 @@ builder.Services.AddMarketData();
 builder.Services.AddApplication();
 
 // Live updates: with Key Value, workers and both web instances announce changes over it; without, this instance tells its own browsers.
+// Outgoing request logs print full addresses. Nothing secret is put in an address, and this keeps it that way if one ever is.
+builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
 builder.Services.AddSignalR();
 if (hasKeyValue)
 {
@@ -107,9 +109,40 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     options.KnownProxies.Clear();
 });
 
+// Sign-in attempts are counted per caller address as well as per account, so one caller cannot try many accounts quickly.
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy(
+        "sign-in",
+        context =>
+            context.Connection.RemoteIpAddress is { } caller
+                ? System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(caller.ToString(), _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions { PermitLimit = 20, Window = TimeSpan.FromMinutes(1) })
+                // Only an in-process test host has no caller address.
+                : System.Threading.RateLimiting.RateLimitPartition.GetNoLimiter(string.Empty)
+    );
+});
+
 WebApplication app = builder.Build();
 
 app.UseForwardedHeaders();
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHsts();
+}
+
+// Every answer: no guessing of content types, no display inside another site's frame, no address sent on to other sites.
+app.Use(
+    (context, next) =>
+    {
+        IHeaderDictionary headers = context.Response.Headers;
+        headers.XContentTypeOptions = "nosniff";
+        headers.XFrameOptions = "DENY";
+        headers["Referrer-Policy"] = "no-referrer";
+        headers.ContentSecurityPolicy = "frame-ancestors 'none'; object-src 'none'; base-uri 'self'";
+        return next();
+    }
+);
 // The Angular app: files are public, the data behind them is not.
 app.UseDefaultFiles();
 // Script and style files carry a hash of their content in their name, so they can be kept for good. The page that
@@ -120,6 +153,7 @@ StaticFileOptions appFiles = new()
         context.Context.Response.Headers.CacheControl = context.File.Name.Equals("index.html", StringComparison.OrdinalIgnoreCase) ? "no-cache" : "public, max-age=31536000, immutable",
 };
 app.UseStaticFiles(appFiles);
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseApiGuards();
 app.UseAuthorization();

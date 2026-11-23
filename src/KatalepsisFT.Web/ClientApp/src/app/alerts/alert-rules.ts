@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { keptData } from '../shared/page-data';
 import { FormControl, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Store } from '@ngxs/store';
 import { NzAlertModule } from 'ng-zorro-antd/alert';
@@ -12,7 +13,7 @@ import { NzSelectModule } from 'ng-zorro-antd/select';
 import { NzSwitchModule } from 'ng-zorro-antd/switch';
 import { NzTableModule } from 'ng-zorro-antd/table';
 import { NzTagModule } from 'ng-zorro-antd/tag';
-import { Observable, catchError, combineLatest, of, switchMap } from 'rxjs';
+import { Observable } from 'rxjs';
 import { SessionState } from '../core/session.state';
 import { AlertsApi } from './alerts.api';
 import { AlertMetric, AlertOperator, AlertRule, AlertSeverity, METRICS, SEVERITY_COLOR, SaveAlertRule } from './models';
@@ -81,6 +82,9 @@ const DAYS: AlertMetric = 'SlowestDaysToLiquidate';
     <nz-modal [nzVisible]="editing() !== undefined" [nzTitle]="editing() ? 'Edit rule' : 'New rule'" nzOkText="Save" [nzOkDisabled]="form.invalid" (nzOnOk)="submit()" (nzOnCancel)="editing.set(undefined)">
       <ng-container *nzModalContent>
         <form nz-form nzLayout="vertical" [formGroup]="form">
+          @if (formError(); as message) {
+            <nz-alert nzType="error" [nzMessage]="message" nzShowIcon style="display:block;margin-bottom:14px" data-testid="rule-error" />
+          }
           @if (editing()?.fromMandate) {
             <nz-alert nzType="info" nzShowIcon nzMessage="This rule follows a mandate limit. Its condition changes with the limit; here you can set its severity and switch it on or off." style="display:block;margin-bottom:14px" />
           }
@@ -147,12 +151,19 @@ export class AlertRules {
   protected readonly severityColor = SEVERITY_COLOR;
   protected readonly isAdmin = this.store.selectSignal(SessionState.isAdmin);
   protected readonly error = signal<string | null>(null);
+  /** What went wrong with the rule in the dialog; shown inside it, so the input is still there to correct. */
+  protected readonly formError = signal<string | null>(null);
 
   /** undefined: closed; null: a new rule; otherwise the rule being edited. */
   protected readonly editing = signal<AlertRule | null | undefined>(undefined);
   private readonly version = signal(0);
 
-  protected readonly data = toSignal(combineLatest([toObservable(this.fundId), toObservable(this.version)]).pipe(switchMap(([fundId]) => this.api.rules(fundId).pipe(catchError(() => of(null))))), { initialValue: null });
+  protected readonly data = keptData(
+    toObservable(this.fundId),
+    toObservable(this.version),
+    (fundId) => this.api.rules(fundId),
+    (fundId) => fundId,
+  ).data;
 
   protected readonly form = new FormGroup<RuleForm>({
     scope: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
@@ -182,6 +193,7 @@ export class AlertRules {
       }
     }
 
+    this.formError.set(null);
     this.editing.set(rule);
   }
 
@@ -198,22 +210,26 @@ export class AlertRules {
       isEnabled: value.isEnabled,
     };
     const rule = this.editing();
-    this.save(rule ? this.api.updateRule(rule.id, body) : this.api.createRule(this.fundId(), body), true);
-  }
-
-  protected save(request: Observable<unknown>, close = false): void {
     this.error.set(null);
-    request.subscribe({
+    this.formError.set(null);
+    (rule ? this.api.updateRule(rule.id, body) : this.api.createRule(this.fundId(), body)).subscribe({
       next: () => {
-        if (close) {
-          this.editing.set(undefined);
-        }
-
+        this.editing.set(undefined);
         this.version.update((v) => v + 1);
       },
+      // The dialog stays open with what was typed.
+      error: (e: { error?: { message?: string } }) => this.formError.set(e.error?.message ?? 'Could not save the rule.'),
+    });
+  }
+
+  /** Switches a rule on or off, or deletes it, straight from the table. */
+  protected save(request: Observable<unknown>): void {
+    this.error.set(null);
+    request.subscribe({
+      next: () => this.version.update((v) => v + 1),
       error: (e: { error?: { message?: string } }) => {
-        this.editing.set(undefined);
         this.error.set(e.error?.message ?? 'Could not save the rule.');
+        // Reloaded so that a switch that was flipped goes back to what the server holds.
         this.version.update((v) => v + 1);
       },
     });

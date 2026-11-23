@@ -1,8 +1,9 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
-import { toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { toObservable } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { LiveService } from '../core/live.service';
-import { catchError, combineLatest, of, switchMap } from 'rxjs';
+import { combineLatest } from 'rxjs';
+import { keptData } from '../shared/page-data';
 import { AlertsApi } from './alerts.api';
 
 /** One line saying how many alerts are active for a fund or one of its sleeves, linking to the inbox. Nothing when there are none. */
@@ -56,10 +57,12 @@ export class AlertStrip {
   readonly fundId = input.required<number>();
   readonly sleeveId = input<number | null>(null);
 
-  protected readonly list = toSignal(
-    combineLatest([toObservable(this.fundId), toObservable(this.sleeveId), toObservable(inject(LiveService).tick)]).pipe(switchMap(([fundId, sleeveId]) => this.api.list(fundId, 'Active', sleeveId).pipe(catchError(() => of(null))))),
-    { initialValue: null },
-  );
+  protected readonly list = keptData(
+    combineLatest([toObservable(this.fundId), toObservable(this.sleeveId)]),
+    toObservable(inject(LiveService).tick),
+    ([fundId, sleeveId]) => this.api.list(fundId, 'Active', sleeveId),
+    ([fundId, sleeveId]) => `${fundId}:${sleeveId}`,
+  ).data;
   protected readonly summary = computed(() => {
     const l = this.list();
     if (!l) {

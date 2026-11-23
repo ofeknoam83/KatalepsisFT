@@ -52,26 +52,32 @@ public sealed class FundBookReader(IFtDbContext database)
         List<Sleeve> sleeves = await database.Sleeves.AsNoTracking().Include(s => s.Limits).Where(s => s.FundId == fundId).OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(cancellationToken);
         List<ManagerAccount> managers = await database.ManagerAccounts.AsNoTracking().Where(m => m.Sleeve.FundId == fundId).OrderBy(m => m.Id).ToListAsync(cancellationToken);
 
-        // The latest day on which every manager with any history has been valued; a fund never mixes days.
-        DateOnly? asOf = await database
+        // Each manager's last valued day. The fund is as of the latest of them, and a manager that has not been read
+        // since (a failing connection, a closed account) stays in the book at its last reading. Holding the whole
+        // fund back to the slowest manager would let one dead connection freeze every figure.
+        Dictionary<int, DateOnly> lastDay = await database
             .NavSnapshots.Where(n => n.ManagerAccount.Sleeve.FundId == fundId)
             .GroupBy(n => n.ManagerAccountId)
-            .Select(g => (DateOnly?)g.Max(n => n.Date))
-            .MinAsync(cancellationToken);
-        if (asOf is null)
+            .Select(g => new { ManagerAccountId = g.Key, Date = g.Max(n => n.Date) })
+            .ToDictionaryAsync(x => x.ManagerAccountId, x => x.Date, cancellationToken);
+        if (lastDay.Count == 0)
         {
             // Nothing has been read yet: an empty book as of today, so date arithmetic downstream stays in range.
             return new FundBook(fund, DateOnly.FromDateTime(DateTime.UtcNow), sleeves, managers, []);
         }
 
+        DateOnly asOf = lastDay.Values.Max();
+        List<DateOnly> days = lastDay.Values.Distinct().ToList();
+
         Dictionary<int, Sleeve> sleeveById = sleeves.ToDictionary(s => s.Id);
         Dictionary<int, ManagerAccount> managerById = managers.ToDictionary(m => m.Id);
         var raw = await database
             .PositionSnapshots.AsNoTracking()
-            .Where(p => p.Date == asOf && p.ManagerAccount.Sleeve.FundId == fundId)
+            .Where(p => days.Contains(p.Date) && p.ManagerAccount.Sleeve.FundId == fundId)
             .Select(p => new
             {
                 p.ManagerAccountId,
+                p.Date,
                 Asset = p.Instrument.Asset.Symbol,
                 p.Instrument.Type,
                 Instrument = p.Instrument.Symbol,
@@ -84,14 +90,14 @@ public sealed class FundBookReader(IFtDbContext database)
             })
             .ToListAsync(cancellationToken);
 
-        List<HoldingRow> rows = raw.Select(p =>
+        List<HoldingRow> rows = raw.Where(p => lastDay[p.ManagerAccountId] == p.Date).Select(p =>
             {
                 ManagerAccount manager = managerById[p.ManagerAccountId];
                 Sleeve sleeve = sleeveById[manager.SleeveId];
                 return new HoldingRow(sleeve.Id, sleeve.Name, manager.Id, manager.Name, p.Asset, p.Type, p.Instrument, p.Quantity, p.EntryPrice, p.MarkPrice, p.MarketValueUsd, p.ExposureUsd, p.UnrealizedPnlUsd);
             })
             .ToList();
-        return new FundBook(fund, asOf.Value, sleeves, managers, rows);
+        return new FundBook(fund, asOf, sleeves, managers, rows);
     }
 
     /// <summary>Price, changes and average traded volume for the given assets as of a day.</summary>

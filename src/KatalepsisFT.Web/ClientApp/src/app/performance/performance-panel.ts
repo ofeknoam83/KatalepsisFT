@@ -1,16 +1,17 @@
 import { DatePipe, DecimalPipe, NgTemplateOutlet } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
-import { toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
+import { toObservable } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { Store } from '@ngxs/store';
 import { NzAlertModule } from 'ng-zorro-antd/alert';
 import { NzSpinModule } from 'ng-zorro-antd/spin';
 import { NzTableModule } from 'ng-zorro-antd/table';
 import { LiveService } from '../core/live.service';
-import { catchError, combineLatest, of, switchMap, tap } from 'rxjs';
+import { combineLatest } from 'rxjs';
 import { ViewState } from '../funds/view.state';
 import { FORMAT_PIPES } from '../shared/format';
 import { heat } from '../shared/heat';
+import { keptData } from '../shared/page-data';
 import { RiaChartComponent, RiaChartSeries } from '../shared/ria-chart.component';
 import { PerformanceScope, PnlLine } from './models';
 import { PerformanceApi } from './performance.api';
@@ -190,21 +191,14 @@ export class PerformancePanel {
   readonly scope = input.required<PerformanceScope>();
   readonly scopeId = input.required<number>();
 
-  protected readonly failed = signal(false);
-  protected readonly data = toSignal(
-    combineLatest([toObservable(this.scope), toObservable(this.scopeId), this.store.select(ViewState.benchmarkId), this.store.select(ViewState.period), toObservable(inject(LiveService).tick)]).pipe(
-      switchMap(([scope, id, benchmarkId, period]) =>
-        this.api.get(scope, id, benchmarkId, period).pipe(
-          tap(() => this.failed.set(false)),
-          catchError(() => {
-            this.failed.set(true);
-            return of(null);
-          }),
-        ),
-      ),
-    ),
-    { initialValue: null },
+  private readonly loaded = keptData(
+    combineLatest([toObservable(this.scope), toObservable(this.scopeId), this.store.select(ViewState.benchmarkId), this.store.select(ViewState.period)]),
+    toObservable(inject(LiveService).tick),
+    ([scope, id, benchmarkId, period]) => this.api.get(scope, id, benchmarkId, period),
+    ([scope, id]) => `${scope}:${id}`,
   );
+  protected readonly failed = this.loaded.failed;
+  protected readonly data = this.loaded.data;
 
   protected readonly lines = computed<RiaChartSeries[]>(() => {
     const d = this.data();

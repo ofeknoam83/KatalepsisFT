@@ -21,6 +21,8 @@ public sealed class ConnectionSyncService(IFtDbContext database, VenueAdapterReg
     /// <summary>Each read looks back a little further than the last, so a transfer completing late is not missed.</summary>
     private static readonly TimeSpan TransferOverlap = TimeSpan.FromHours(6);
 
+    private static readonly HashSet<string> DollarCoins = new(StringComparer.OrdinalIgnoreCase) { "USD", "USDT", "USDC", "DAI", "FDUSD", "TUSD", "USDE", "PYUSD", "USDS", "BUSD", "USDP" };
+
     /// <summary>When a failing connection may be tried again: 1, 2, 4 … minutes, capped.</summary>
     public static TimeSpan Backoff(int consecutiveFailures) =>
         consecutiveFailures <= 0 ? TimeSpan.Zero : TimeSpan.FromMinutes(Math.Min(MaxBackoff.TotalMinutes, Math.Pow(2, Math.Min(consecutiveFailures, 10) - 1)));
@@ -47,6 +49,17 @@ public sealed class ConnectionSyncService(IFtDbContext database, VenueAdapterReg
 
             VenueCredentials credentials = vault.Unprotect(connection.EncryptedCredentials);
             VenueSnapshot snapshot = await adapter.GetSnapshotAsync(credentials, cancellationToken);
+            if (await SwitchedOffMeanwhileAsync(connection, cancellationToken))
+            {
+                return false;
+            }
+
+            // A connection whose value was not in the book until now brings it in as money arriving, not as a gain.
+            if (connection.LastSnapshotJson is null)
+            {
+                AddBookChange(connection.ManagerAccountId, ManagerBookWriter.NavOf(snapshot), now, $"{adapter.DisplayName} connection \"{connection.Label}\" added to the book");
+            }
+
             connection.LastSnapshotJson = JsonSerializer.Serialize(snapshot, ManagerBookWriter.Json);
             connection.State = ConnectionState.Live;
             connection.LastSuccessAt = now;
@@ -60,15 +73,62 @@ public sealed class ConnectionSyncService(IFtDbContext database, VenueAdapterReg
         catch (VenueException e)
         {
             // The book is left as it was: a failed read is an error, never an empty book.
+            if (await SwitchedOffMeanwhileAsync(connection, cancellationToken))
+            {
+                return false;
+            }
+
             connection.State = ConnectionState.Failed;
             connection.LastError = e.Message.Length <= 500 ? e.Message : e.Message[..500];
             connection.ConsecutiveFailures++;
             await database.SaveChangesAsync(cancellationToken);
             logger.LogWarning("Connection {ConnectionId} on {Venue} failed: {Reason}", connection.Id, connection.Venue, e.Message);
         }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // Anything else (a key that cannot be decrypted, an answer in a shape nobody expected, the book refusing
+            // to save) must show on the connection too: left silent it would keep its "Live" badge over stale data
+            // and be tried again every minute. The note is written by a statement of its own, because whatever
+            // failed may have left this unit of work unable to save.
+            logger.LogError(e, "Connection {ConnectionId} on {Venue} failed unexpectedly.", connection.Id, connection.Venue);
+            string reason = $"Unexpected error: {e.GetType().Name}. The server log has the details.";
+            database.DiscardChanges();
+            VenueConnection? stored = await database.VenueConnections.FirstOrDefaultAsync(c => c.Id == connectionId, cancellationToken);
+            if (stored is not null && stored.State != ConnectionState.Disabled)
+            {
+                stored.State = ConnectionState.Failed;
+                stored.LastError = reason;
+                stored.LastAttemptAt = now;
+                stored.ConsecutiveFailures++;
+                await database.SaveChangesAsync(cancellationToken);
+            }
+        }
 
         return true;
     }
+
+    /// <summary>
+    /// True when an administrator switched the connection off while the venue was being read. The read is dropped:
+    /// saving it would switch the connection back on and put its positions back in the book.
+    /// </summary>
+    private async Task<bool> SwitchedOffMeanwhileAsync(VenueConnection connection, CancellationToken cancellationToken)
+    {
+        ConnectionState? stored = await database.VenueConnections.AsNoTracking().Where(c => c.Id == connection.Id).Select(c => (ConnectionState?)c.State).FirstOrDefaultAsync(cancellationToken);
+        return stored is null or ConnectionState.Disabled;
+    }
+
+    /// <summary>Value entering or leaving a manager's book because a connection did, kept as a cash flow so it is not read as performance.</summary>
+    private void AddBookChange(int managerAccountId, decimal usd, DateTimeOffset now, string note) => database.CashFlows.Add(BookChange(managerAccountId, usd, now, note));
+
+    public static CashFlow BookChange(int managerAccountId, decimal usd, DateTimeOffset now, string note) =>
+        new()
+        {
+            ManagerAccountId = managerAccountId,
+            Date = DateOnly.FromDateTime(now.UtcDateTime),
+            Kind = usd >= 0m ? CashFlowKind.Subscription : CashFlowKind.Redemption,
+            AmountUsd = Math.Round(usd, 2),
+            Note = note.Length <= 200 ? note : note[..200],
+        };
 
     /// <summary>
     /// Records deposits and withdrawals as cash flows, so returns are measured on the money that was there. Trouble
@@ -127,6 +187,12 @@ public sealed class ConnectionSyncService(IFtDbContext database, VenueAdapterReg
             && held.Asset.Equals(asset, StringComparison.OrdinalIgnoreCase))
         {
             return held.MarkPrice;
+        }
+
+        // A dollar coin that has left the account entirely is still a dollar; no price history is kept for cash.
+        if (DollarCoins.Contains(asset) || await database.Assets.AnyAsync(a => a.Symbol == asset && a.AssetClass == AssetClass.Cash, cancellationToken))
+        {
+            return 1m;
         }
 
         decimal? close = await database.PriceBars.Where(b => b.Asset.Symbol == asset).OrderByDescending(b => b.Date).Select(b => (decimal?)b.Close).FirstOrDefaultAsync(cancellationToken);

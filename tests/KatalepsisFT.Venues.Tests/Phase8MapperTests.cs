@@ -53,6 +53,17 @@ public class Phase8MapperTests
     }
 
     [Fact]
+    public void Kraken_CurrenciesQuotedPerDollar_ArePricedTheOtherWayRound_AndFeeCreditsAreLeftOut()
+    {
+        JsonElement balances = Json("""{"ZJPY":"150000","CHF":"800","KFEE":"1234.5"}""");
+        JsonElement tickers = Json("""{"ZUSDZJPY":{"c":["150.0","1"]},"USDCHF":{"c":["0.8","1"]}}""");
+
+        VenueSnapshot snapshot = KrakenMapper.Map(Now, balances, tickers);
+
+        snapshot.Positions.Select(p => (p.Asset, Value: Math.Round(p.Quantity * p.MarkPrice, 6))).Should().BeEquivalentTo([("JPY", 1_000m), ("CHF", 1_000m)]);
+    }
+
+    [Fact]
     public void Kraken_HoldingWithoutAPrice_FailsTheSnapshot()
     {
         FluentActions.Invoking(() => KrakenMapper.Map(Now, Json("""{"ODD":"5"}"""), Json("{}"))).Should().Throw<VenueException>().WithMessage("Kraken holds ODD but lists no USD price for it.");

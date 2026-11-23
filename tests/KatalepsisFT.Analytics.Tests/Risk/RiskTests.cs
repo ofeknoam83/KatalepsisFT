@@ -121,6 +121,19 @@ public class RiskStatisticsTests
     }
 
     [Fact]
+    public void VarianceShares_StillAddUpToOne_WhenAPartStartedLater()
+    {
+        // The second part joins half way: before that the whole is the first part alone.
+        int half = Returns.Length / 2;
+        double[] late = Returns.Skip(half).Select(r => 0.5 * r + 0.001).ToArray();
+        double[] whole = Returns.Select((r, i) => i < half ? 0.6 * r : 0.6 * r + 0.4 * late[i - half]).ToArray();
+
+        double?[] shares = RiskStatistics.VarianceShares([0.6, 0.4], [Returns, late], whole);
+
+        (shares[0]!.Value + shares[1]!.Value).ShouldBe(1.0, 1e-9);
+    }
+
+    [Fact]
     public void VarianceShares_OfAFlatWhole_AreUndefined()
     {
         RiskStatistics.VarianceShares([1.0], [Returns], new double[Returns.Length]).ShouldBe([null]);

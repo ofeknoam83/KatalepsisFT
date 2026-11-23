@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
-import { toObservable, toSignal } from '@angular/core/rxjs-interop';
-import { catchError, combineLatest, of, switchMap } from 'rxjs';
+import { toObservable } from '@angular/core/rxjs-interop';
 import { LiveService } from '../core/live.service';
 import { FORMAT_PIPES } from '../shared/format';
+import { keptData } from '../shared/page-data';
 import { RiaChartComponent, RiaChartSeries } from '../shared/ria-chart.component';
 import { FundsApi } from './funds.api';
 
@@ -30,10 +30,12 @@ export class IntradayPanel {
 
   readonly fundId = input.required<number>();
 
-  protected readonly data = toSignal(
-    combineLatest([toObservable(this.fundId), toObservable(inject(LiveService).tick)]).pipe(switchMap(([fundId]) => this.api.intraday(fundId, 24).pipe(catchError(() => of(null))))),
-    { initialValue: null },
-  );
+  protected readonly data = keptData(
+    toObservable(this.fundId),
+    toObservable(inject(LiveService).tick),
+    (fundId) => this.api.intraday(fundId, 24),
+    (fundId) => fundId,
+  ).data;
   /** "14:35"; the date is added where the day changes, so a line crossing midnight stays readable. */
   protected readonly labels = computed(() =>
     (this.data()?.times ?? []).map((iso, index, all) => {

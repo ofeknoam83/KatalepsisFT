@@ -47,9 +47,10 @@ public sealed class BitgetAdapter(HttpClient http, TimeProvider clock) : IVenueA
             accounts = await GetAsync(credentials, "/api/v2/mix/account/accounts", Futures, cancellationToken);
             positions = await GetAsync(credentials, "/api/v2/mix/position/all-position", Futures + "&marginCoin=USDT", cancellationToken);
         }
-        catch (VenueException e)
+        catch (VenueException e) when (e.Refused)
         {
-            // The spot call above proved the key is good, so this is a futures account that is missing or closed to the key.
+            // The venue said no, and the spot call above proved the key is good: a futures account that is missing or
+            // closed to the key. A venue that merely failed to answer is not caught here and fails the whole read.
             notes.Add($"The futures account was not read: {e.Message}");
             accounts = null;
             positions = null;
@@ -91,7 +92,10 @@ public sealed class BitgetAdapter(HttpClient http, TimeProvider clock) : IVenueA
         // 40006 invalid key, 40009 bad signature, 40012 wrong passphrase, 40014 no permission, 40018 address not allowed, 40037 key does not exist.
         bool rejected = status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden || code is "40006" or "40009" or "40011" or "40012" or "40014" or "40018" or "40037";
         string message = body is JsonElement described ? RestVenue.Text(described, "msg") : string.Empty;
-        throw new VenueException(rejected ? VenueFailure.Rejected : VenueFailure.Unavailable, $"{(message.Length > 0 ? RestVenue.Short(message) : "HTTP " + (int)status)}{(code.Length > 0 ? $" (code {code})" : string.Empty)} on {path}.");
+        throw new VenueException(rejected ? VenueFailure.Rejected : VenueFailure.Unavailable, $"{(message.Length > 0 ? RestVenue.Short(message) : "HTTP " + (int)status)}{(code.Length > 0 ? $" (code {code})" : string.Empty)} on {path}.")
+        {
+            Refused = rejected || (body is not null && VenueException.IsRefusal(status)),
+        };
     }
 }
 

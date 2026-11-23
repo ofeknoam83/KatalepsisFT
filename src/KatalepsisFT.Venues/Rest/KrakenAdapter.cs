@@ -44,7 +44,7 @@ public sealed class KrakenAdapter(HttpClient http, TimeProvider clock) : IVenueA
     public async Task<IReadOnlyList<VenueTransfer>> GetTransfersAsync(VenueCredentials credentials, DateTimeOffset since, CancellationToken cancellationToken)
     {
         List<VenueTransfer> transfers = [];
-        foreach (string type in new[] { "deposit", "withdrawal" })
+        foreach (string type in new[] { "deposit", "withdrawal", "transfer" })
         {
             JsonElement page = await PrivateAsync(credentials, "/0/private/Ledgers", [("type", type), ("start", since.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture))], cancellationToken);
             transfers.AddRange(KrakenMapper.Transfers(page));
@@ -83,7 +83,9 @@ public sealed class KrakenAdapter(HttpClient http, TimeProvider clock) : IVenueA
         {
             string message = string.Join("; ", errors.EnumerateArray().Select(e => e.GetString()));
             bool rateLimit = message.Contains("Rate limit", StringComparison.OrdinalIgnoreCase);
-            bool aboutKey = !rateLimit && (message.Contains("EAPI:", StringComparison.Ordinal) || message.Contains("Permission denied", StringComparison.OrdinalIgnoreCase) || message.Contains("Invalid", StringComparison.OrdinalIgnoreCase));
+            // A nonce out of order is about timing (the same key in use elsewhere), not about the key being wrong, and passes on a later try.
+            bool nonce = message.Contains("nonce", StringComparison.OrdinalIgnoreCase);
+            bool aboutKey = !rateLimit && !nonce && (message.Contains("EAPI:", StringComparison.Ordinal) || message.Contains("Permission denied", StringComparison.OrdinalIgnoreCase) || message.Contains("Invalid key", StringComparison.OrdinalIgnoreCase) || message.Contains("Invalid signature", StringComparison.OrdinalIgnoreCase));
             throw new VenueException(aboutKey ? VenueFailure.Rejected : VenueFailure.Unavailable, $"{RestVenue.Short(message)} on {what}.");
         }
 
@@ -106,6 +108,12 @@ public static class KrakenMapper
         Dictionary<string, decimal> holdings = new(StringComparer.OrdinalIgnoreCase);
         foreach (JsonProperty balance in balances.EnumerateObject())
         {
+            // Fee credits buy nothing but lower fees and have no price; they are not part of the account's value.
+            if (balance.Name.Equals("KFEE", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
             RestVenue.Add(holdings, Asset(balance.Name), decimal.Parse(balance.Value.GetString()!, NumberStyles.Float, CultureInfo.InvariantCulture));
         }
 
@@ -123,7 +131,10 @@ public static class KrakenMapper
         foreach (JsonProperty entry in ledger.EnumerateObject())
         {
             string type = RestVenue.Text(entry.Value, "type");
-            if (type is not ("deposit" or "withdrawal"))
+            // Kraken Futures is not read, so money sent there has left the book and money coming back has arrived.
+            // Other transfers (staking, airdrops) stay inside what is read.
+            bool futures = type == "transfer" && RestVenue.Text(entry.Value, "subtype") is "spottofutures" or "spotfromfutures";
+            if (type is not ("deposit" or "withdrawal") && !futures)
             {
                 continue;
             }
@@ -176,6 +187,16 @@ public static class KrakenMapper
             if (tickers.TryGetProperty(pair, out JsonElement ticker) && ticker.TryGetProperty("c", out JsonElement last) && last.ValueKind == JsonValueKind.Array && last.GetArrayLength() > 0)
             {
                 return decimal.Parse(last[0].GetString()!, NumberStyles.Float, CultureInfo.InvariantCulture);
+            }
+        }
+
+        // Kraken quotes some currencies the other way round: yen, Canadian dollars and Swiss francs per US dollar.
+        foreach (string pair in new[] { $"ZUSDZ{kraken}", $"USD{kraken}" })
+        {
+            if (tickers.TryGetProperty(pair, out JsonElement ticker) && ticker.TryGetProperty("c", out JsonElement last) && last.ValueKind == JsonValueKind.Array && last.GetArrayLength() > 0)
+            {
+                decimal perDollar = decimal.Parse(last[0].GetString()!, NumberStyles.Float, CultureInfo.InvariantCulture);
+                return perDollar > 0m ? 1m / perDollar : null;
             }
         }
 

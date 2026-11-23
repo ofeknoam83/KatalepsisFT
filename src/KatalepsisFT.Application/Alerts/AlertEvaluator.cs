@@ -14,6 +14,8 @@ public sealed class AlertEvaluator(IFtDbContext database, RiskService risk, Time
 {
     public const string RuleSwitchedOff = "The rule was switched off.";
 
+    private const decimal MaxStoredValue = 9_999_999_999m;
+
     public async Task<EvaluationResultDto> EvaluateAsync(int fundId, CancellationToken cancellationToken)
     {
         await SyncMandateRulesAsync(fundId, cancellationToken);
@@ -26,6 +28,13 @@ public sealed class AlertEvaluator(IFtDbContext database, RiskService risk, Time
         foreach (AlertRule rule in rules)
         {
             Alert? latest = rule.Alerts.OrderByDescending(a => a.RaisedAt).ThenByDescending(a => a.Id).FirstOrDefault();
+            // Two checks running at once can each raise the same alert. Only the newest is followed from here on, so
+            // any older one still open is closed now rather than left open for good.
+            foreach (Alert twin in rule.Alerts.Where(a => a.IsActive && a != latest).ToList())
+            {
+                Close(twin, now, "Raised twice; the newer alert carries on.");
+            }
+
             if (!rule.IsEnabled)
             {
                 if (latest is { IsActive: true })
@@ -39,6 +48,12 @@ public sealed class AlertEvaluator(IFtDbContext database, RiskService risk, Time
 
             ScopeMetrics? scope = metrics?.Scopes.FirstOrDefault(s => s.Kind.ToString() == rule.ScopeKind.ToString() && s.Id == rule.ScopeId);
             (decimal Value, string? Subject)? figure = scope is null ? null : Figure(rule.Metric, scope);
+            if (figure is { } read)
+            {
+                // The column holds ten digits before the point; a figure beyond that (days to sell with next to no volume) is capped, not allowed to stop every alert from saving.
+                figure = (Math.Clamp(read.Value, -MaxStoredValue, MaxStoredValue), read.Subject);
+            }
+
             if (figure is null)
             {
                 // No figure, no verdict: an alert is neither raised nor closed on missing data.

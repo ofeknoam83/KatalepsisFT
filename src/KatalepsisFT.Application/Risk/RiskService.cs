@@ -247,8 +247,11 @@ public sealed class RiskService(IFtDbContext database)
     // ---------------------------------------------------------------- market history
 
     /// <summary>Daily returns and recent volume per asset on a shared calendar ending at the as-of day.</summary>
-    private sealed class Market(List<DateOnly> dates, Dictionary<string, double[]> returns, Dictionary<string, decimal?> volumes)
+    private sealed class Market(List<DateOnly> dates, Dictionary<string, double[]> returns, Dictionary<string, bool[]> traded, Dictionary<string, decimal?> volumes)
     {
+        /// <summary>For each return, whether the asset had a price of its own that day.</summary>
+        public bool[]? Traded(string asset) => traded.GetValueOrDefault(asset);
+
         public List<DateOnly> Dates => dates;
 
         public decimal? Volume(string asset) => volumes.GetValueOrDefault(asset);
@@ -276,14 +279,17 @@ public sealed class RiskService(IFtDbContext database)
         }
 
         Dictionary<string, double[]> returns = [];
+        Dictionary<string, bool[]> traded = [];
         Dictionary<string, decimal?> volumes = [];
         foreach ((string symbol, var series) in bySymbol)
         {
             double[] r = new double[dates.Count - 1];
+            bool[] had = new bool[dates.Count - 1];
             decimal? previous = series.TryGetValue(dates[0], out var first) ? first.Close : null;
             for (int t = 1; t < dates.Count; t++)
             {
                 decimal? current = series.TryGetValue(dates[t], out var bar) ? bar.Close : null;
+                had[t - 1] = current is > 0m;
                 // A day without a price is a day without a move, and the next price is compared with the last one seen.
                 if (previous is > 0m && current is > 0m)
                 {
@@ -294,12 +300,16 @@ public sealed class RiskService(IFtDbContext database)
             }
 
             returns[symbol] = r;
+            traded[symbol] = had;
             List<decimal> recent = series.Where(b => b.Key > asOf.AddDays(-VolumeWindowDays)).Select(b => b.Value.VolumeUsd).ToList();
             volumes[symbol] = recent.Count > 0 ? Math.Round(recent.Average(), 2) : null;
         }
 
-        return new Market(dates, returns, volumes);
+        return new Market(dates, returns, traded, volumes);
     }
+
+    /// <summary>Fewer of the asset's own trading days than this and its beta is not estimated.</summary>
+    private const int MinBetaDays = 20;
 
     /// <summary>Beta to the reference asset over the last half year; 1 is assumed when it cannot be estimated.</summary>
     private static (double Beta, bool Assumed) Beta(Market market, string asset)
@@ -315,8 +325,34 @@ public sealed class RiskService(IFtDbContext database)
             return (1.0, true);
         }
 
+        // Only days on which the asset itself traded are compared, each with the reference's move since the asset's
+        // previous price. Taking every calendar day would set a share's weekend, or the months before a coin was
+        // listed, as "no move" against a moving reference, and pull the beta towards zero.
         int n = Math.Min(BetaWindowDays, Math.Min(own.Length, reference.Length));
-        double? beta = RiskStatistics.Beta(own[^n..], reference[^n..]);
+        bool[] had = market.Traded(asset)!;
+        List<double> ownMoves = [],
+            referenceMoves = [];
+        double since = 1.0;
+        bool open = false;
+        for (int i = own.Length - n, j = reference.Length - n; i < own.Length; i++, j++)
+        {
+            since *= 1.0 + reference[j];
+            if (!had[i])
+            {
+                continue;
+            }
+
+            if (open)
+            {
+                ownMoves.Add(own[i]);
+                referenceMoves.Add(since - 1.0);
+            }
+
+            open = true;
+            since = 1.0;
+        }
+
+        double? beta = ownMoves.Count < MinBetaDays ? null : RiskStatistics.Beta(ownMoves, referenceMoves);
         return beta is null ? (1.0, true) : (Math.Round(beta.Value, 4), false);
     }
 

@@ -18,6 +18,8 @@ public class FtDbContext(DbContextOptions<FtDbContext> options)
         IDataProtectionKeyContext,
         IFtDbContext
 {
+    public void DiscardChanges() => ChangeTracker.Clear();
+
     /// <summary>Keys that protect sign-in cookies. Stored here so every web instance can read a session another instance issued.</summary>
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
 

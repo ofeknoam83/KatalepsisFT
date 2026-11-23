@@ -102,3 +102,5 @@ databases:
     databaseName: katalepsis_ft
     user: katalepsis_ft
     postgresMajorVersion: "17"
+    # No address outside Render may connect: the services reach the database over the private network.
+    ipAllowList: []

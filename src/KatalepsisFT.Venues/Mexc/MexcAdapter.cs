@@ -45,6 +45,12 @@ public sealed class MexcAdapter(TimeProvider clock) : IVenueAdapter
         WebCallResult<MexcFuturesBalance[]> futuresBalances = await client.FuturesApi.Account.GetBalancesAsync(cancellationToken);
         if (!futuresBalances.Success || futuresBalances.Data is null)
         {
+            if (!(VenueException.IsRefusal(futuresBalances.ResponseStatusCode) || (futuresBalances.ResponseStatusCode == System.Net.HttpStatusCode.OK && futuresBalances.Error?.Code is not null)))
+            {
+                // No answer, a busy venue or a server error: fail the read rather than drop the futures account from the book.
+                Data(futuresBalances, "futures account");
+            }
+
             // The spot call above proved the key is good. MEXC opens its futures API to few accounts.
             return MexcMapper.Map(clock.GetUtcNow(), spot.Balances, prices, [], [], new Dictionary<string, decimal>(), new Dictionary<string, decimal>()) with
             {

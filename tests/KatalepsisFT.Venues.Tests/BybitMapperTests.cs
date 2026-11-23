@@ -80,9 +80,10 @@ public class BybitMapperTests
     public void Option_PremiumAndDelta_ArePerUnit()
     {
         // Short 2 BTC of calls worth 6,400 USD in all; position delta −0.7.
-        BybitPosition position = new() { Symbol = "BTC-25DEC26-90000-C-USDT", Side = PositionSide.Sell, Quantity = 2m, MarkPrice = 80_000m, AveragePrice = 4_000m, PositionValue = 6_400m, Delta = -0.7m };
+        BybitPosition position = new() { Symbol = "BTC-25DEC26-90000-C-USDT", Side = PositionSide.Sell, Quantity = 2m, MarkPrice = 3_200m, AveragePrice = 4_000m, PositionValue = 6_400m, Delta = -0.7m };
 
-        VenuePosition mapped = BybitMapper.Map(Now, Balance(), [(Category.Option, position)]).Positions.Single();
+        // The position's own mark is the option's; the coin's price comes from the spot market.
+        VenuePosition mapped = BybitMapper.Map(Now, Balance(), [(Category.Option, position)], new Dictionary<string, decimal> { ["BTC"] = 80_000m }).Positions.Single();
 
         mapped.Should().Be(new VenuePosition(InstrumentType.Option, "BTC", -2m, 3_200m, 4_000m, null, new DateOnly(2026, 12, 25), 90_000m, OptionRight.Call, 80_000m, 0.35m));
     }
