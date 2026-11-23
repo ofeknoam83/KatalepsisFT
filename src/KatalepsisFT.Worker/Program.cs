@@ -99,6 +99,9 @@ if (hasPostgres && group.ToLowerInvariant() is WorkerGroups.Exec)
     builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.GateSpotBookStream>();
     builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.GatePerpBookStream>();
     builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.MexcPerpBookStream>();
+    builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.CoinbaseSpotBookStream>();
+    builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.KrakenSpotBookStream>();
+    builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.DeribitPerpBookStream>();
     builder.Services.AddHostedService<MarketDataWorker>();
     // Real orders. The gateway and the opened trading keys exist only in this service.
     builder.Services.AddSingleton<OpenedTradingKeys>();

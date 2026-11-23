@@ -129,7 +129,7 @@ public sealed record OrderDto(
     IReadOnlyList<OrderEventDto> Events
 );
 
-public sealed record BookVenueDto(Venue Venue, string VenueName, decimal? BestBid, decimal? BestAsk, decimal? BidSize, decimal? AskSize, double AgeMs, IReadOnlyList<BookLevel> Bids, IReadOnlyList<BookLevel> Asks);
+public sealed record BookVenueDto(Venue Venue, string VenueName, decimal? BestBid, decimal? BestAsk, decimal? BidSize, decimal? AskSize, double AgeMs, IReadOnlyList<BookLevel> Bids, IReadOnlyList<BookLevel> Asks, string Quote = "USDT");
 
 public sealed record BookDto(string Asset, InstrumentType Type, decimal? BestBid, Venue? BestBidVenue, decimal? BestAsk, Venue? BestAskVenue, decimal? Mid, decimal? SpreadBps, IReadOnlyList<BookVenueDto> Venues);
 
@@ -189,7 +189,7 @@ public sealed record TradingChange<T>(T? Value, string? Error, bool NotFound = f
 public sealed class TradingService(IFtDbContext database, IBookFeed books, IExecutionSignal signal, ITradingVault vault, VenueAdapterRegistry adapters, TimeProvider clock)
 {
     /// <summary>The venues orders can go to in this version.</summary>
-    public static readonly IReadOnlyList<Venue> Venues = [Venue.Binance, Venue.Bybit, Venue.Okx, Venue.Hyperliquid, Venue.Kucoin, Venue.Bitget, Venue.Gate, Venue.Mexc];
+    public static readonly IReadOnlyList<Venue> Venues = [Venue.Binance, Venue.Bybit, Venue.Okx, Venue.Hyperliquid, Venue.Kucoin, Venue.Bitget, Venue.Gate, Venue.Mexc, Venue.CoinbaseExchange, Venue.Kraken, Venue.Deribit];
 
     public const string DemoIsFixed = "The example fund cannot trade.";
     public const int MaxOrdersListed = 300;
@@ -308,9 +308,17 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
     {
         IReadOnlyList<VenueBook> venues = await books.ReadAsync(asset, type, cancellationToken);
         DateTimeOffset now = clock.GetUtcNow();
-        VenueBook? bid = venues.Where(v => v.BestBid is not null).OrderByDescending(v => v.BestBid).FirstOrDefault();
-        VenueBook? ask = venues.Where(v => v.BestAsk is not null).OrderBy(v => v.BestAsk).FirstOrDefault();
-        decimal? mid = ConsolidatedBook.Mid(venues.ToList());
+        // The best prices are taken among venues that quote in the same thing. A dollar and a USDT are not quite the
+        // same money, and a venue must not look best only because it counts in the dearer one.
+        List<VenueBook> alike = venues.Where(v => v.Quote == "USDT").ToList();
+        if (alike.Count == 0)
+        {
+            alike = venues.Where(v => v.Quote == venues[0].Quote).ToList();
+        }
+
+        VenueBook? bid = alike.Where(v => v.BestBid is not null).OrderByDescending(v => v.BestBid).FirstOrDefault();
+        VenueBook? ask = alike.Where(v => v.BestAsk is not null).OrderBy(v => v.BestAsk).FirstOrDefault();
+        decimal? mid = ConsolidatedBook.Mid(alike);
         return new BookDto(
             asset.ToUpperInvariant(),
             type,
@@ -320,7 +328,7 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
             ask?.Venue,
             mid,
             bid?.BestBid is decimal b && ask?.BestAsk is decimal a && mid is > 0m ? Math.Round((a - b) / mid.Value * 10_000m, 2) : null,
-            venues.Select(v => new BookVenueDto(v.Venue, VenueExposureService.NameOf(v.Venue), v.BestBid, v.BestAsk, v.Bids.Count > 0 ? v.Bids[0].Quantity : null, v.Asks.Count > 0 ? v.Asks[0].Quantity : null, (now - v.At).TotalMilliseconds, v.Bids.Take(10).ToList(), v.Asks.Take(10).ToList())).ToList()
+            venues.Select(v => new BookVenueDto(v.Venue, VenueExposureService.NameOf(v.Venue), v.BestBid, v.BestAsk, v.Bids.Count > 0 ? v.Bids[0].Quantity : null, v.Asks.Count > 0 ? v.Asks[0].Quantity : null, (now - v.At).TotalMilliseconds, v.Bids.Take(10).ToList(), v.Asks.Take(10).ToList(), v.Quote)).ToList()
         );
     }
 

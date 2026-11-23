@@ -8,7 +8,8 @@ namespace KatalepsisFT.Application.Execution;
 public readonly record struct BookLevel(decimal Price, decimal Quantity);
 
 /// <summary>One venue's book for one instrument at a moment: bids from the highest down, asks from the lowest up.</summary>
-public sealed record VenueBook(Venue Venue, string Asset, InstrumentType Type, IReadOnlyList<BookLevel> Bids, IReadOnlyList<BookLevel> Asks, DateTimeOffset At)
+/// <param name="Quote">What prices are in. Most venues here quote against USDT; some against the dollar itself or USDC, which trade a few hundredths of a percent away from it.</param>
+public sealed record VenueBook(Venue Venue, string Asset, InstrumentType Type, IReadOnlyList<BookLevel> Bids, IReadOnlyList<BookLevel> Asks, DateTimeOffset At, string Quote = "USDT")
 {
     public decimal? BestBid => Bids.Count > 0 ? Bids[0].Price : null;
 
@@ -150,6 +151,9 @@ public static class VenueFees
             (Venue.Gate, InstrumentType.Perp) => (0.0002m, 0.0005m),
             (Venue.Mexc, InstrumentType.Perp) => (0.0001m, 0.0004m),
             (Venue.Okx, InstrumentType.Spot) => (0.0008m, 0.001m),
+            (Venue.CoinbaseExchange, InstrumentType.Spot) => (0.004m, 0.006m),
+            (Venue.Kraken, InstrumentType.Spot) => (0.0025m, 0.004m),
+            (Venue.Deribit, InstrumentType.Perp) => (0m, 0.0005m),
             (Venue.Hyperliquid, _) => (0.0004m, 0.0007m),
             _ => (0.001m, 0.001m),
         };

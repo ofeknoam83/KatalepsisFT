@@ -26,6 +26,9 @@ public abstract class BookStream
     /// <summary>What kind of instrument this stream's books are for.</summary>
     public virtual InstrumentType Type => InstrumentType.Perp;
 
+    /// <summary>What this stream's prices are in.</summary>
+    public virtual string Quote => "USDT";
+
     /// <summary>A request whose round trip is timed, as a measure of how long an order would take to reach the venue and be answered.</summary>
     public abstract HttpRequestMessage TimingRequest();
 
@@ -571,7 +574,7 @@ public sealed class BookStreamRunner(BookStream stream, ConsolidatedBook books, 
 
                 if (read is not null)
                 {
-                    VenueBook book = new(stream.Venue, read.Asset, stream.Type, read.Bids, read.Asks, now);
+                    VenueBook book = new(stream.Venue, read.Asset, stream.Type, read.Bids, read.Asks, now, stream.Quote);
                     latest[read.Asset] = book;
                     books.Update(book);
                 }

@@ -209,6 +209,60 @@ public class MarketStreamTests
     }
 
     [Fact]
+    public void Coinbase_KeepsTheBookFromItsFirstCopy_AndAppliesEachBatchOfChanges()
+    {
+        CoinbaseSpotBookStream stream = new();
+
+        StreamedBook? early = stream.Read("""{"type":"l2update","product_id":"BTC-USD","changes":[["buy","60951.01","1"]]}""");
+        StreamedBook whole = stream.Read("""{"type":"snapshot","product_id":"BTC-USD","asks":[["60977.28","0.5"],["60978.19","0.2"]],"bids":[["60977.27","0.13"],["60975.99","0.4"]]}""")!;
+        StreamedBook changed = stream.Read("""{"type":"l2update","product_id":"BTC-USD","changes":[["buy","60977.27","0.00000000"],["buy","60976.50","0.7"],["sell","60977.28","0.9"]],"time":"2026-11-23T19:40:35Z"}""")!;
+
+        early.Should().BeNull();
+        stream.Quote.Should().Be("USD");
+        whole.Bids.Should().Equal(new BookLevel(60977.27m, 0.13m), new BookLevel(60975.99m, 0.4m));
+        changed.Asset.Should().Be("BTC");
+        changed.Bids.Should().Equal(new BookLevel(60976.5m, 0.7m), new BookLevel(60975.99m, 0.4m));
+        changed.Asks.Should().Equal(new BookLevel(60977.28m, 0.9m), new BookLevel(60978.19m, 0.2m));
+        stream.Read("""{"type":"heartbeat","sequence":1,"product_id":"BTC-USD","time":"2026-11-23T19:40:35Z"}""").Should().BeNull();
+        stream.Reset();
+        stream.Read("""{"type":"l2update","product_id":"BTC-USD","changes":[["buy","60951.01","1"]]}""").Should().BeNull();
+    }
+
+    [Fact]
+    public void Kraken_KeepsOnlyTheBestPrices_AsABetterOneComesIn()
+    {
+        KrakenSpotBookStream stream = new();
+        string bids = string.Join(",", Enumerable.Range(0, 25).Select(i => $$"""{"price":{{100 - i}}.0,"qty":1.5}"""));
+
+        StreamedBook whole = stream.Read($$"""{"channel":"book","type":"snapshot","data":[{"symbol":"DOGE/USD","bids":[{{bids}}],"asks":[{"price":101.0,"qty":2.0}],"checksum":1}]}""")!;
+        StreamedBook better = stream.Read("""{"channel":"book","type":"update","data":[{"symbol":"DOGE/USD","bids":[{"price":100.5,"qty":3.0},{"price":99.0,"qty":0}],"asks":[],"checksum":2,"timestamp":"2026-11-23T19:40:35.517308Z"}]}""")!;
+
+        whole.Asset.Should().Be("DOGE");
+        whole.Bids.Should().HaveCount(20);
+        better.Bids[0].Should().Be(new BookLevel(100.5m, 3m));
+        better.Bids.Select(b => b.Price).Should().NotContain(99m);
+        better.Asks.Should().Equal(new BookLevel(101m, 2m));
+        stream.Read("""{"channel":"heartbeat"}""").Should().BeNull();
+        stream.Read("""{"channel":"status","type":"update","data":[{"system":"online"}]}""").Should().BeNull();
+        stream.Subscriptions(["btc", "DOGE"]).Single().Should().Contain("BTC/USD").And.Contain("DOGE/USD").And.Contain("\"depth\":25");
+    }
+
+    [Fact]
+    public void Deribit_FollowsItsUsdcPerpetuals_SizedInUnitsOfTheAsset()
+    {
+        DeribitPerpBookStream stream = new();
+        stream.UseListed(DeribitPerpBookStream.ReadListed("""{"jsonrpc":"2.0","result":[{"instrument_name":"BTC_USDC-PERPETUAL","instrument_type":"linear","is_active":true},{"instrument_name":"SOL_USDC-PERPETUAL","instrument_type":"linear","is_active":true},{"instrument_name":"BTC_USDC-27DEC26","instrument_type":"linear","is_active":true}]}"""));
+
+        StreamedBook book = stream.Read("""{"jsonrpc":"2.0","method":"subscription","params":{"channel":"book.BTC_USDC-PERPETUAL.none.20.100ms","data":{"timestamp":1,"change_id":2,"instrument_name":"BTC_USDC-PERPETUAL","bids":[[60982.4,2.3759],[60982.0,0.1552]],"asks":[[60982.5,0.5]]}}}""")!;
+
+        book.Should().BeEquivalentTo(new StreamedBook("BTC", [new BookLevel(60982.4m, 2.3759m), new BookLevel(60982m, 0.1552m)], [new BookLevel(60982.5m, 0.5m)]));
+        stream.Quote.Should().Be("USDC");
+        stream.Read("""{"jsonrpc":"2.0","id":9,"result":{"version":"1.2.26"}}""").Should().BeNull();
+        // An asset Deribit has no such perpetual for is not asked for.
+        stream.Subscriptions(["BTC", "BNB", "SOL"]).Single().Should().Contain("book.BTC_USDC-PERPETUAL.none.20.100ms").And.Contain("SOL_USDC").And.NotContain("BNB");
+    }
+
+    [Fact]
     public void ConsolidatedBook_DropsAVenueWhoseStreamFell_AndOneThatHasGoneQuiet()
     {
         SetClock clock = new() { Now = new DateTimeOffset(2026, 11, 23, 12, 0, 0, TimeSpan.Zero) };

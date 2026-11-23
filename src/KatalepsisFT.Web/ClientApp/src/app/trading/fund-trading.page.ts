@@ -223,7 +223,11 @@ interface Depth {
                     <tbody>
                       @for (v of b.venues; track v.venue) {
                         <tr>
-                          <td>{{ v.venueName }}</td>
+                          <td>{{ v.venueName }}
+                            @if (v.quote !== 'USDT') {
+                              <span class="hint" [title]="'Quoted in ' + v.quote + ', not USDT. The two differ by a few hundredths of a percent, so this venue is left out of the best bid and ask above.'">in {{ v.quote }}</span>
+                            }
+                          </td>
                           <td class="num">{{ v.bidSize ?? 0 | dynamicDecimal }}</td>
                           <td class="num" [class.best]="v.venue === b.bestBidVenue" style="color:#389e0d">{{ v.bestBid ?? 0 | dynamicDecimal }}</td>
                           <td class="num" [class.best]="v.venue === b.bestAskVenue" style="color:#cf1322">{{ v.bestAsk ?? 0 | dynamicDecimal }}</td>
@@ -765,7 +769,7 @@ export class FundTradingPage {
     const side = (pick: 'bids' | 'asks'): Depth[] => {
       let total = 0;
       return venues
-        .flatMap((v) => v[pick].map((l) => ({ venue: v.venueName, price: l.price, quantity: l.quantity })))
+        .flatMap((v) => v[pick].map((l) => ({ venue: v.quote === 'USDT' ? v.venueName : `${v.venueName} (${v.quote})`, price: l.price, quantity: l.quantity })))
         .sort((a, b) => (pick === 'bids' ? b.price - a.price : a.price - b.price))
         .slice(0, 10)
         .map((l) => ({ ...l, total: (total += l.quantity) }));

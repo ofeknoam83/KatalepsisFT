@@ -1,4 +1,4 @@
-export type TradingVenue = 'Binance' | 'Bybit' | 'Okx' | 'Hyperliquid' | 'Kucoin' | 'Bitget' | 'Gate' | 'Mexc';
+export type TradingVenue = 'Binance' | 'Bybit' | 'Okx' | 'Hyperliquid' | 'Kucoin' | 'Bitget' | 'Gate' | 'Mexc' | 'CoinbaseExchange' | 'Kraken' | 'Deribit';
 export type TradedType = 'Spot' | 'Perp';
 
 export interface LiveInstrument {
@@ -164,6 +164,8 @@ export interface BookVenue {
   bidSize: number | null;
   askSize: number | null;
   ageMs: number;
+  /** What this venue's prices are in: USDT for most, USD or USDC for some. */
+  quote: string;
   bids: BookLevel[];
   asks: BookLevel[];
 }
