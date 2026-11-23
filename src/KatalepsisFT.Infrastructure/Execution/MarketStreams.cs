@@ -101,7 +101,7 @@ public sealed class BinanceBookStream : BookStream
 /// Bybit USDT perpetuals. The first message for a book is all of it; every later one is only what changed, so the book
 /// is kept here and the changes applied to it. A size of zero means the price is gone.
 /// </summary>
-public sealed class BybitBookStream : BookStream
+public class BybitBookStream : BookStream
 {
     private readonly Dictionary<string, (SortedDictionary<decimal, decimal> Bids, SortedDictionary<decimal, decimal> Asks)> _books = [];
 

@@ -146,6 +146,10 @@ public static class VenueFees
             (Venue.Okx, InstrumentType.Perp) => (0.0002m, 0.0005m),
             (Venue.Hyperliquid, InstrumentType.Perp) => (0.00015m, 0.00045m),
             (Venue.Kucoin, InstrumentType.Perp) => (0.0002m, 0.0006m),
+            (Venue.Bitget, InstrumentType.Perp) => (0.0002m, 0.0006m),
+            (Venue.Gate, InstrumentType.Perp) => (0.0002m, 0.0005m),
+            (Venue.Mexc, InstrumentType.Perp) => (0.0001m, 0.0004m),
+            (Venue.Okx, InstrumentType.Spot) => (0.0008m, 0.001m),
             (Venue.Hyperliquid, _) => (0.0004m, 0.0007m),
             _ => (0.001m, 0.001m),
         };

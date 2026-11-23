@@ -91,6 +91,14 @@ if (hasPostgres && group.ToLowerInvariant() is WorkerGroups.Exec)
     builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.HyperliquidBookStream>();
     builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.KucoinSpotBookStream>();
     builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.KucoinPerpBookStream>();
+    builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.BinanceSpotBookStream>();
+    builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.BybitSpotBookStream>();
+    builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.OkxSpotBookStream>();
+    builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream>(new KatalepsisFT.Infrastructure.Execution.BitgetBookStream(KatalepsisFT.Domain.Instruments.InstrumentType.Spot));
+    builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream>(new KatalepsisFT.Infrastructure.Execution.BitgetBookStream(KatalepsisFT.Domain.Instruments.InstrumentType.Perp));
+    builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.GateSpotBookStream>();
+    builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.GatePerpBookStream>();
+    builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.MexcPerpBookStream>();
     builder.Services.AddHostedService<MarketDataWorker>();
     // Real orders. The gateway and the opened trading keys exist only in this service.
     builder.Services.AddSingleton<OpenedTradingKeys>();

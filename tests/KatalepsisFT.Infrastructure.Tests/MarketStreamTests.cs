@@ -113,6 +113,102 @@ public class MarketStreamTests
     }
 
     [Fact]
+    public void BinanceSpot_TakesTheAssetFromTheStreamsName()
+    {
+        BinanceSpotBookStream stream = new();
+
+        StreamedBook book = stream.Read("""{"stream":"ethusdt@depth20@100ms","data":{"lastUpdateId":160,"bids":[["1761.28","0.5"],["1761.20","0.00000000"]],"asks":[["1761.29","2.26"]]}}""")!;
+
+        book.Asset.Should().Be("ETH");
+        stream.Type.Should().Be(InstrumentType.Spot);
+        book.Bids.Should().Equal(new BookLevel(1761.28m, 0.5m));
+        book.Asks.Should().Equal(new BookLevel(1761.29m, 2.26m));
+        stream.Address(["BTC", "eth"]).AbsoluteUri.Should().Be("wss://stream.binance.com:9443/stream?streams=btcusdt@depth20@100ms/ethusdt@depth20@100ms");
+        stream.Read("""{"result":null,"id":1}""").Should().BeNull();
+    }
+
+    [Fact]
+    public void BybitSpot_IsTheSameStreamOnTheSpotAddress_WithItsOwnBooks()
+    {
+        BybitSpotBookStream spot = new();
+        BybitBookStream perp = new();
+
+        StreamedBook book = spot.Read("""{"topic":"orderbook.50.BTCUSDT","ts":1,"type":"snapshot","data":{"s":"BTCUSDT","b":[["61670.1","0.606931"]],"a":[["61670.5","0.1"]],"u":1,"seq":1}}""")!;
+
+        spot.Type.Should().Be(InstrumentType.Spot);
+        spot.Address(["BTC"]).AbsoluteUri.Should().Be("wss://stream.bybit.com/v5/public/spot");
+        perp.Address(["BTC"]).AbsoluteUri.Should().Be("wss://stream.bybit.com/v5/public/linear");
+        book.Bids.Should().Equal(new BookLevel(61670.1m, 0.606931m));
+        // The perpetual stream has not seen that book: a change for it there is still a change to nothing.
+        perp.Read("""{"topic":"orderbook.50.BTCUSDT","type":"delta","data":{"s":"BTCUSDT","b":[["1","1"]],"a":[]}}""").Should().BeNull();
+    }
+
+    [Fact]
+    public void OkxSpot_ReadsSizesAsTheyAre_AndIgnoresSwaps()
+    {
+        OkxSpotBookStream stream = new();
+
+        StreamedBook book = stream.Read("""{"arg":{"channel":"books5","instId":"SOL-USDT"},"data":[{"asks":[["65.14","250.5","0","4"]],"bids":[["65.13","1200","0","9"]],"instId":"SOL-USDT","ts":"1"}]}""")!;
+
+        book.Asset.Should().Be("SOL");
+        book.Bids.Should().Equal(new BookLevel(65.13m, 1200m));
+        book.Asks.Should().Equal(new BookLevel(65.14m, 250.5m));
+        stream.Read("""{"arg":{"channel":"books5","instId":"SOL-USDT-SWAP"},"data":[{"asks":[["65.14","250","0","4"]],"bids":[]}]}""").Should().BeNull();
+        stream.Read("pong").Should().BeNull();
+        stream.Subscriptions(["sol"]).Single().Should().Contain("\"instId\":\"SOL-USDT\"");
+    }
+
+    [Fact]
+    public void Bitget_KeepsSpotAndPerpetualsApart_ThoughBothComeOverTheSameAddress()
+    {
+        BitgetBookStream spot = new(InstrumentType.Spot);
+        BitgetBookStream perp = new(InstrumentType.Perp);
+        const string spotMessage = """{"action":"snapshot","arg":{"instType":"SPOT","channel":"books15","instId":"BTCUSDT"},"data":[{"asks":[["61670","0.049987"],["61670.75","0.0001"]],"bids":[["61669.99","0.5"]],"checksum":0,"ts":"1"}],"ts":1}""";
+        const string perpMessage = """{"action":"snapshot","arg":{"instType":"USDT-FUTURES","channel":"books15","instId":"DOGEUSDT"},"data":[{"asks":[["0.05717","108418"]],"bids":[["0.05716","666269"]]}]}""";
+
+        spot.Read(spotMessage)!.Should().BeEquivalentTo(new StreamedBook("BTC", [new BookLevel(61669.99m, 0.5m)], [new BookLevel(61670m, 0.049987m), new BookLevel(61670.75m, 0.0001m)]));
+        perp.Read(perpMessage)!.Should().BeEquivalentTo(new StreamedBook("DOGE", [new BookLevel(0.05716m, 666_269m)], [new BookLevel(0.05717m, 108_418m)]));
+        spot.Read(perpMessage).Should().BeNull();
+        perp.Read(spotMessage).Should().BeNull();
+        spot.Read("pong").Should().BeNull();
+        spot.Read("""{"event":"subscribe","arg":{"instType":"SPOT","channel":"books15","instId":"BTCUSDT"}}""").Should().BeNull();
+        perp.Subscriptions(["doge"]).Single().Should().Contain("USDT-FUTURES").And.Contain("DOGEUSDT");
+    }
+
+    [Fact]
+    public void Gate_ReadsSpotAsItIs_AndTurnsPerpetualContractsIntoUnitsOfTheAsset()
+    {
+        GateSpotBookStream spot = new();
+        GatePerpBookStream perp = new();
+        perp.UseContractSizes(perp.ReadContractSizes("""[{"name":"BTC_USDT","quanto_multiplier":"0.0001","in_delisting":false,"status":"trading"},{"name":"DOGE_USDT","quanto_multiplier":"10","in_delisting":false,"status":"trading"},{"name":"OLD_USDT","quanto_multiplier":"1","in_delisting":true,"status":"trading"}]"""));
+
+        StreamedBook spotBook = spot.Read("""{"time":1,"time_ms":1,"channel":"spot.order_book","event":"update","result":{"t":1,"lastUpdateId":4,"s":"BTC_USDT","l":"20","bids":[["61666.5","0.579459"]],"asks":[["61666.6","0.1"]]}}""")!;
+        StreamedBook perpBook = perp.Read("""{"time":1,"channel":"futures.order_book","event":"all","result":{"t":1,"id":4,"contract":"DOGE_USDT","asks":[{"p":"0.05717","s":41684}],"bids":[{"p":"0.05716","s":2306}]}}""")!;
+
+        spotBook.Should().BeEquivalentTo(new StreamedBook("BTC", [new BookLevel(61666.5m, 0.579459m)], [new BookLevel(61666.6m, 0.1m)]));
+        perpBook.Should().BeEquivalentTo(new StreamedBook("DOGE", [new BookLevel(0.05716m, 23_060m)], [new BookLevel(0.05717m, 416_840m)]));
+        spot.Read("""{"time":1,"channel":"spot.order_book","event":"subscribe","payload":["BTC_USDT","20","100ms"],"result":{"status":"success"}}""").Should().BeNull();
+        spot.Read("""{"time":1,"channel":"spot.pong","event":"","result":null}""").Should().BeNull();
+        // A contract that is being delisted is not followed, nor one the venue does not have.
+        perp.Subscriptions(["BTC", "OLD", "NOSUCH", "DOGE"]).Should().HaveCount(2);
+        spot.Subscriptions(["BTC", "ETH"]).Should().HaveCount(2).And.OnlyContain(m => m.Contains("\"event\":\"subscribe\""));
+    }
+
+    [Fact]
+    public void Mexc_TurnsPerpetualContractsIntoUnitsOfTheAsset()
+    {
+        MexcPerpBookStream stream = new();
+        stream.UseContractSizes(stream.ReadContractSizes("""{"success":true,"code":0,"data":[{"symbol":"BTC_USDT","contractSize":0.0001,"state":0,"quoteCoin":"USDT","settleCoin":"USDT"},{"symbol":"DOGE_USDT","contractSize":100,"state":0,"quoteCoin":"USDT","settleCoin":"USDT"},{"symbol":"HALT_USDT","contractSize":1,"state":2,"quoteCoin":"USDT","settleCoin":"USDT"},{"symbol":"BTC_USD","contractSize":100,"state":0,"quoteCoin":"USD","settleCoin":"BTC"}]}"""));
+
+        StreamedBook book = stream.Read("""{"symbol":"DOGE_USDT","data":{"cts":1,"asks":[[0.057170,5860,1],[0.057180,12478,1]],"bids":[[0.057160,300,2]],"version":7},"channel":"push.depth.full","ts":1}""")!;
+
+        book.Should().BeEquivalentTo(new StreamedBook("DOGE", [new BookLevel(0.05716m, 30_000m)], [new BookLevel(0.05717m, 586_000m), new BookLevel(0.05718m, 1_247_800m)]));
+        stream.Read("""{"channel":"rs.sub.depth.full","data":"success","ts":1}""").Should().BeNull();
+        stream.Read("""{"channel":"pong","data":1,"ts":1}""").Should().BeNull();
+        stream.Subscriptions(["BTC", "HALT", "DOGE"]).Should().HaveCount(2);
+    }
+
+    [Fact]
     public void ConsolidatedBook_DropsAVenueWhoseStreamFell_AndOneThatHasGoneQuiet()
     {
         SetClock clock = new() { Now = new DateTimeOffset(2026, 11, 23, 12, 0, 0, TimeSpan.Zero) };

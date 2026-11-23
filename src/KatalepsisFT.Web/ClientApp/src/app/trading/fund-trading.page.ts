@@ -37,7 +37,7 @@ interface Depth {
 
 /**
  * Trading for one fund or separately managed account: its trading accounts and positions, the order ticket, the
- * consolidated book of the four venues, the orders with everything that happened to each, the kill switches, and
+ * consolidated book of the venues, the orders with everything that happened to each, the kill switches, and
  * the requests waiting for a second person.
  */
 @Component({
@@ -257,7 +257,7 @@ interface Depth {
           <h3>Start trading on paper</h3>
           <ol>
             <li><b>Add a trading account</b> for one of this fund's managers on a venue. It starts with a paper balance.</li>
-            <li><b>Place an order</b> in the order ticket that then appears here, next to the live prices of the four venues.</li>
+            <li><b>Place an order</b> in the order ticket that then appears here, next to the live prices of the venues.</li>
             <li><b>Watch it fill</b> in the list of orders, and the position appear under the account.</li>
           </ol>
           @if (d.managers.length === 0) {

@@ -189,7 +189,7 @@ public sealed record TradingChange<T>(T? Value, string? Error, bool NotFound = f
 public sealed class TradingService(IFtDbContext database, IBookFeed books, IExecutionSignal signal, ITradingVault vault, VenueAdapterRegistry adapters, TimeProvider clock)
 {
     /// <summary>The venues orders can go to in this version.</summary>
-    public static readonly IReadOnlyList<Venue> Venues = [Venue.Binance, Venue.Bybit, Venue.Okx, Venue.Hyperliquid, Venue.Kucoin];
+    public static readonly IReadOnlyList<Venue> Venues = [Venue.Binance, Venue.Bybit, Venue.Okx, Venue.Hyperliquid, Venue.Kucoin, Venue.Bitget, Venue.Gate, Venue.Mexc];
 
     public const string DemoIsFixed = "The example fund cannot trade.";
     public const int MaxOrdersListed = 300;

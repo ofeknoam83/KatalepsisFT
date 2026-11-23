@@ -1,4 +1,4 @@
-export type TradingVenue = 'Binance' | 'Bybit' | 'Okx' | 'Hyperliquid' | 'Kucoin';
+export type TradingVenue = 'Binance' | 'Bybit' | 'Okx' | 'Hyperliquid' | 'Kucoin' | 'Bitget' | 'Gate' | 'Mexc';
 export type TradedType = 'Spot' | 'Perp';
 
 export interface LiveInstrument {
