@@ -255,13 +255,13 @@ public class LiveExecutionTests(TestDatabase database) : IClassFixture<TestDatab
         int fundId = (await (await _admin.PostAsJsonAsync("/api/funds", request, Json)).Content.ReadFromJsonAsync<FundCreatedDto>(Json))!.Id;
         int managerId = (await _admin.GetFromJsonAsync<StructureDto>($"/api/funds/{fundId}/structure", Json))!.Sleeves[0].Managers[0].Id;
         int kucoin = (await (await _admin.PostAsJsonAsync("/api/trading-accounts", new SaveTradingAccountRequest(managerId, Venue.Kucoin, "Main", 3m, MarginMode.Cross, 1_000m, 5_000m, 100, 0m), Json)).Content.ReadFromJsonAsync<Answer<int>>(Json))!.Value;
-        int binance = (await (await _admin.PostAsJsonAsync("/api/trading-accounts", new SaveTradingAccountRequest(managerId, Venue.Binance, "Main", 3m, MarginMode.Cross, 1_000m, 5_000m, 100, 0m), Json)).Content.ReadFromJsonAsync<Answer<int>>(Json))!.Value;
+        int paperOnly = (await (await _admin.PostAsJsonAsync("/api/trading-accounts", new SaveTradingAccountRequest(managerId, Venue.Hyperliquid, "Main", 3m, MarginMode.Cross, 1_000m, 5_000m, 100, 0m), Json)).Content.ReadFromJsonAsync<Answer<int>>(Json))!.Value;
 
         HttpResponseMessage noKey = await _admin.PostAsync($"/api/trading-accounts/{kucoin}/go-live", null);
-        HttpResponseMessage noVenue = await _admin.PostAsync($"/api/trading-accounts/{binance}/go-live", null);
+        HttpResponseMessage noVenue = await _admin.PostAsync($"/api/trading-accounts/{paperOnly}/go-live", null);
 
         (await noKey.Content.ReadFromJsonAsync<ErrorResponse>(Json))!.Message.Should().Contain("trading key first");
-        (await noVenue.Content.ReadFromJsonAsync<ErrorResponse>(Json))!.Message.Should().Contain("cannot be sent to Binance yet");
+        (await noVenue.Content.ReadFromJsonAsync<ErrorResponse>(Json))!.Message.Should().Contain("Real orders cannot be sent to").And.Contain("yet");
     }
 
     [Fact]
