@@ -29,7 +29,9 @@ public class ExecutionApiTests(TestDatabase database) : IClassFixture<TestDataba
 {
     private const string ExecMasterKey = "an-execution-master-key-that-is-long-enough-123";
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
-    private static readonly ConsolidatedBook Books = new(TimeProvider.System);
+    // The books here do not age: a test that runs slowly must not see its market go stale half way through.
+    private static readonly StoppedClock BookClock = new();
+    private static readonly ConsolidatedBook Books = new(BookClock);
     private static readonly FakeVenue Binance = new(Venue.Binance);
 
     // One app for the whole class: every test makes its own fund, so they do not get in each other's way.
@@ -71,7 +73,7 @@ public class ExecutionApiTests(TestDatabase database) : IClassFixture<TestDataba
 
     /// <summary>A venue's book: ten BTC a level, three levels a side, one dollar apart beyond the best.</summary>
     private static void Quote(Venue venue, string asset, decimal bid, decimal ask, decimal size = 10m) =>
-        Books.Update(new VenueBook(venue, asset, InstrumentType.Perp, [new(bid, size), new(bid - 1m, size), new(bid - 2m, size)], [new(ask, size), new(ask + 1m, size), new(ask + 2m, size)], DateTimeOffset.UtcNow));
+        Books.Update(new VenueBook(venue, asset, InstrumentType.Perp, [new(bid, size), new(bid - 1m, size), new(bid - 2m, size)], [new(ask, size), new(ask + 1m, size), new(ask + 2m, size)], BookClock.GetUtcNow()));
 
     private async Task RunEngineAsync()
     {
@@ -144,7 +146,7 @@ public class ExecutionApiTests(TestDatabase database) : IClassFixture<TestDataba
 
         OrderDto resting = await TradeAsync(Buy(accountId, 4m, 59_980m));
         // Only three are offered at or below the limit; the next offer is above it.
-        Books.Update(new VenueBook(Venue.Binance, "BTC", InstrumentType.Perp, [new(59_960m, 3m)], [new(59_975m, 3m), new(59_990m, 3m)], DateTimeOffset.UtcNow));
+        Books.Update(new VenueBook(Venue.Binance, "BTC", InstrumentType.Perp, [new(59_960m, 3m)], [new(59_975m, 3m), new(59_990m, 3m)], BookClock.GetUtcNow()));
         await RunEngineAsync();
         OrderDto partly = (await _admin.GetFromJsonAsync<OrderDto>($"/api/orders/{resting.Id}", Json))!;
         await RunEngineAsync();
@@ -405,11 +407,18 @@ public class ExecutionApiTests(TestDatabase database) : IClassFixture<TestDataba
     public async Task VenueWhoseBookHasGoneQuiet_IsNotTradedOn()
     {
         (_, _, int accountId) = await NewAccountAsync(Venue.Okx);
-        Books.Update(new VenueBook(Venue.Okx, "ETH", InstrumentType.Perp, [new(2_999m, 5m)], [new(3_001m, 5m)], DateTimeOffset.UtcNow.AddSeconds(-30)));
+        Books.Update(new VenueBook(Venue.Okx, "ETH", InstrumentType.Perp, [new(2_999m, 5m)], [new(3_001m, 5m)], BookClock.GetUtcNow().AddSeconds(-30)));
 
         OrderDto order = await TradeAsync(Buy(accountId, 1m) with { Asset = "ETH" });
 
         order.Status.Should().Be(OrderStatus.Rejected);
         order.RejectReason.Should().Contain("no live market");
+    }
+
+    private sealed class StoppedClock : TimeProvider
+    {
+        private readonly DateTimeOffset _now = DateTimeOffset.UtcNow;
+
+        public override DateTimeOffset GetUtcNow() => _now;
     }
 }
