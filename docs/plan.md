@@ -275,7 +275,12 @@ Each phase ends deployed on Render and checked in the browser. Each is split int
   - [ ] MEXC and both Coinbase venues do not say what a key may do, so their keys are stored as "permissions unverified": create them read-only at the venue
   - [ ] All four are tested on hand-written answers and on the real venues' refusal of a bad key; no real account has been read
 - [ ] **Phase 8 — New CeFi venues**: Bitget, Gate, Kraken.
-- [ ] **Phase 9 — DeFi venues**: Hyperliquid, dYdX, GMX, then Uniswap and Aerodrome pool positions.
+- [ ] **Phase 9 — DeFi venues**
+  - [x] Connections by wallet address: no secret, nothing can be traded through them; read by the DeFi worker
+  - [x] Hyperliquid: perp account, spot balances, deposits, withdrawals and transfers. Checked against two real public accounts with 177 open positions each: the value computed from the positions equals the value Hyperliquid states
+  - [ ] Hyperliquid: money placed in vaults and staked HYPE are not read; contracts quoted per thousand coins (kPEPE) keep their own name
+  - [ ] An asset first seen through a connection has no price history until the daily job loads it (and none at all if Binance does not list it), so its beta is assumed and its volume unknown until then
+  - [ ] dYdX (its API refuses address lookups from the build environment), GMX, Uniswap and Aerodrome pool positions, plain token balances of an EVM address
 - [ ] **Phase 10 — Traditional positions**: manual entry screen and CSV/XLSX upload per manager, with cash flows; validation.
 
 Phases 0–5 run on the demo fund, so the full drill-down, performance, risk and alert experience is usable before the first live venue is connected. Phases 6–10 each add venues without changing the screens.

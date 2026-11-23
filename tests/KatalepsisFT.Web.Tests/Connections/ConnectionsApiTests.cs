@@ -25,7 +25,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace KatalepsisFT.Web.Tests.Connections;
 
 /// <summary>A venue that answers whatever the test tells it to.</summary>
-internal sealed class FakeVenue(Venue venue, bool needsPassphrase = false) : IVenueAdapter
+internal sealed class FakeVenue(Venue venue, bool needsPassphrase = false, bool usesAddress = false) : IVenueAdapter
 {
     public CredentialCheck Check { get; set; } = new(false, false);
     public VenueException? Failure { get; set; }
@@ -36,6 +36,8 @@ internal sealed class FakeVenue(Venue venue, bool needsPassphrase = false) : IVe
     public string DisplayName => venue.ToString();
 
     public bool NeedsPassphrase => needsPassphrase;
+
+    public bool UsesAddress => usesAddress;
 
     public string WorkerGroup => "cefi";
 
@@ -65,6 +67,7 @@ public class ConnectionsApiTests(TestDatabase database) : IClassFixture<TestData
 
     private static readonly FakeVenue Deribit = new(Venue.Deribit);
     private static readonly FakeVenue Okx = new(Venue.Okx, needsPassphrase: true);
+    private static readonly FakeVenue Wallet = new(Venue.Hyperliquid, usesAddress: true);
     private static WebApplicationFactory<Program>? _app;
 
     private HttpClient _admin = null!;
@@ -80,6 +83,7 @@ public class ConnectionsApiTests(TestDatabase database) : IClassFixture<TestData
 
             services.AddSingleton<IVenueAdapter>(Deribit);
             services.AddSingleton<IVenueAdapter>(Okx);
+            services.AddSingleton<IVenueAdapter>(Wallet);
         });
         Deribit.Check = new CredentialCheck(false, false);
         Deribit.Failure = null;
@@ -124,7 +128,8 @@ public class ConnectionsApiTests(TestDatabase database) : IClassFixture<TestData
 
         (await Get<List<FundListItemDto>>("/api/funds")).Should().Contain(f => f.Id == fundId);
         connections.CanAddKeys.Should().BeTrue();
-        connections.Venues.Select(v => v.Venue).Should().Equal(Venue.Okx, Venue.Deribit);
+        connections.Venues.Select(v => v.Venue).Should().Equal(Venue.Okx, Venue.Deribit, Venue.Hyperliquid);
+        connections.Venues.Single(v => v.Venue == Venue.Hyperliquid).UsesAddress.Should().BeTrue();
         connections.Managers.Should().ContainSingle(m => m.Id == managerId && m.Name == "Alpha Desk" && m.Sleeve == "Directional");
         connections.Connections.Should().BeEmpty();
         overview.Fund.IsDemo.Should().BeFalse();
@@ -450,6 +455,26 @@ public class ConnectionsApiTests(TestDatabase database) : IClassFixture<TestData
         HttpResponseMessage response = await TestDatabase.CreateClient(_app!).PostAsync("/hubs/live/negotiate?negotiateVersion=1", null);
 
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task WalletAddress_IsAddedWithoutASecret_ButAKeyVenueStillNeedsOne()
+    {
+        (int fundId, int managerId) = await NewFundAsync();
+        const string address = "0x00000000000000000000000000000000000000aa";
+        Wallet.SnapshotsByKey[address] = Book;
+
+        HttpResponseMessage wallet = await _admin.PostAsJsonAsync("/api/connections", new AddConnectionRequest(managerId, Venue.Hyperliquid, "Main wallet", address, null, null), Json);
+        HttpResponseMessage keyWithoutSecret = await _admin.PostAsJsonAsync("/api/connections", new AddConnectionRequest(managerId, Venue.Deribit, "x", "key-no-secret", " ", null), Json);
+        ConnectionDto connection = (await wallet.Content.ReadFromJsonAsync<ConnectionDto>(Json))!;
+
+        wallet.StatusCode.Should().Be(HttpStatusCode.OK);
+        connection.State.Should().Be(ConnectionState.Live);
+        connection.KeyHint.Should().Be("00aa");
+        connection.PermissionsVerified.Should().BeTrue();
+        (await Get<FundOverviewDto>($"/api/funds/{fundId}/overview")).Totals.NavUsd.Should().Be(101_250m);
+        keyWithoutSecret.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await keyWithoutSecret.Content.ReadFromJsonAsync<ErrorResponse>(Json))!.Message.Should().Be("Deribit keys come with a secret.");
     }
 
     [Fact]

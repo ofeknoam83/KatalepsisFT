@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace KatalepsisFT.Application.Connections;
 
-public sealed record VenueOptionDto(Venue Venue, string Name, bool NeedsPassphrase);
+public sealed record VenueOptionDto(Venue Venue, string Name, bool NeedsPassphrase, bool UsesAddress);
 
 /// <param name="KeyHint">The last four characters of the API key. The key itself is never sent back.</param>
 /// <param name="ComputedNavUsd">What this connection adds to the manager's NAV, from its positions.</param>
@@ -36,7 +36,9 @@ public sealed record ConnectionManagerDto(int Id, string Name, string Sleeve);
 /// <param name="CanAddKeys">False when the master key is not configured.</param>
 public sealed record ConnectionsDto(bool CanAddKeys, IReadOnlyList<VenueOptionDto> Venues, IReadOnlyList<ConnectionManagerDto> Managers, IReadOnlyList<ConnectionDto> Connections);
 
-public sealed record AddConnectionRequest(int ManagerId, Venue Venue, string Label, string ApiKey, string ApiSecret, string? Passphrase);
+/// <param name="ApiKey">The API key, or the wallet address for venues that are read by address.</param>
+/// <param name="ApiSecret">Empty for venues that are read by address.</param>
+public sealed record AddConnectionRequest(int ManagerId, Venue Venue, string Label, string ApiKey, string? ApiSecret, string? Passphrase);
 
 public sealed class AddConnectionRequestValidator : AbstractValidator<AddConnectionRequest>
 {
@@ -45,7 +47,7 @@ public sealed class AddConnectionRequestValidator : AbstractValidator<AddConnect
         RuleFor(x => x.Venue).IsInEnum();
         RuleFor(x => x.Label).NotEmpty().MaximumLength(100);
         RuleFor(x => x.ApiKey).NotEmpty().MaximumLength(512);
-        RuleFor(x => x.ApiSecret).NotEmpty().MaximumLength(4096);
+        RuleFor(x => x.ApiSecret).MaximumLength(4096);
         RuleFor(x => x.Passphrase).MaximumLength(512);
     }
 }
@@ -80,7 +82,7 @@ public sealed class ConnectionService(IFtDbContext database, VenueAdapterRegistr
             .ToListAsync(cancellationToken);
         return new ConnectionsDto(
             vault.IsAvailable,
-            adapters.All.OrderBy(a => a.Venue).Select(a => new VenueOptionDto(a.Venue, a.DisplayName, a.NeedsPassphrase)).ToList(),
+            adapters.All.OrderBy(a => a.Venue).Select(a => new VenueOptionDto(a.Venue, a.DisplayName, a.NeedsPassphrase, a.UsesAddress)).ToList(),
             managers,
             connections.Select(Dto).ToList()
         );
@@ -111,7 +113,15 @@ public sealed class ConnectionService(IFtDbContext database, VenueAdapterRegistr
             return new ConnectionChange(null, $"{request.Venue} is not supported yet.");
         }
 
-        VenueCredentials credentials = new(request.ApiKey.Trim(), request.ApiSecret.Trim(), string.IsNullOrWhiteSpace(request.Passphrase) ? null : request.Passphrase.Trim());
+        if (!adapter.UsesAddress && string.IsNullOrWhiteSpace(request.ApiSecret))
+        {
+            return new ConnectionChange(null, $"{adapter.DisplayName} keys come with a secret.");
+        }
+
+        // A wallet address has no secret; whatever was typed there is not kept.
+        VenueCredentials credentials = adapter.UsesAddress
+            ? new VenueCredentials(request.ApiKey.Trim(), string.Empty)
+            : new VenueCredentials(request.ApiKey.Trim(), request.ApiSecret!.Trim(), string.IsNullOrWhiteSpace(request.Passphrase) ? null : request.Passphrase.Trim());
         if (adapter.NeedsPassphrase && credentials.Passphrase is null)
         {
             return new ConnectionChange(null, $"{adapter.DisplayName} keys come with a passphrase.");
@@ -124,7 +134,7 @@ public sealed class ConnectionService(IFtDbContext database, VenueAdapterRegistr
         }
         catch (VenueException e)
         {
-            return new ConnectionChange(null, e.Failure == VenueFailure.Rejected ? $"{adapter.DisplayName} refused the key: {e.Message}" : $"{adapter.DisplayName} could not be reached: {e.Message}");
+            return new ConnectionChange(null, e.Failure == VenueFailure.Rejected ? $"{adapter.DisplayName} refused the {(adapter.UsesAddress ? "address" : "key")}: {e.Message}" : $"{adapter.DisplayName} could not be reached: {e.Message}");
         }
 
         if (!check.IsReadOnly)

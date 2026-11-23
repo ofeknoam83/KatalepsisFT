@@ -12,6 +12,7 @@ public enum Venue
     CoinbasePrime = 6,
     Kucoin = 7,
     Mexc = 8,
+    Hyperliquid = 9,
 }
 
 public enum ConnectionState

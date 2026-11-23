@@ -74,6 +74,12 @@ public interface IVenueAdapter
 
     bool NeedsPassphrase { get; }
 
+    /// <summary>
+    /// True for venues whose accounts are public on a chain: the connection is a wallet address, there is no secret,
+    /// and nothing can be traded or withdrawn through it.
+    /// </summary>
+    bool UsesAddress => false;
+
     /// <summary>Which worker group reads this venue.</summary>
     string WorkerGroup { get; }
 

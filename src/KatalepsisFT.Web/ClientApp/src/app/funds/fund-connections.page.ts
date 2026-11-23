@@ -54,11 +54,11 @@ const STATE_COLOR = { Live: 'green', Failed: 'red', Pending: 'blue', Disabled: '
           <h3>
             Connections
             <span class="hint">Positions are read about once a minute, deposits and withdrawals every ten. A key that can trade or withdraw is refused.</span>
-            <button nz-button nzType="primary" nzSize="small" style="margin-left:12px" [disabled]="!c.canAddKeys || c.managers.length === 0" (click)="open()" data-testid="add-key">Add a key</button>
+            <button nz-button nzType="primary" nzSize="small" style="margin-left:12px" [disabled]="!c.canAddKeys || c.managers.length === 0" (click)="open()" data-testid="add-key">Add a key or wallet</button>
           </h3>
           <nz-table [nzData]="c.connections" nzTemplateMode [nzShowPagination]="false" nzSize="small" data-testid="connections-table">
             <thead>
-              <tr><th>Manager</th><th>Venue</th><th>Label</th><th>Key</th><th>State</th><th>Last read</th><th class="num">Positions</th><th class="num">Value from positions</th><th class="num">Value the venue states</th><th></th></tr>
+              <tr><th>Manager</th><th>Venue</th><th>Label</th><th>Key or address</th><th>State</th><th>Last read</th><th class="num">Positions</th><th class="num">Value from positions</th><th class="num">Value the venue states</th><th></th></tr>
             </thead>
             <tbody>
               @for (row of c.connections; track row.id) {
@@ -95,14 +95,14 @@ const STATE_COLOR = { Live: 'green', Failed: 'red', Pending: 'blue', Disabled: '
                 </tr>
               }
               @if (c.connections.length === 0) {
-                <tr><td colspan="10" style="text-align:center;color:#8c8c8c;padding:28px">No keys yet.</td></tr>
+                <tr><td colspan="10" style="text-align:center;color:#8c8c8c;padding:28px">No keys or wallets yet.</td></tr>
               }
             </tbody>
           </nz-table>
           <p style="color:#8c8c8c;font-size:12px;margin:10px 0 0">The two values should be close. A red figure means they differ by more than 1%, so part of the account is not being read.</p>
         </div>
 
-        <nz-modal [nzVisible]="adding()" nzTitle="Add a read-only key" nzOkText="Check and save" [nzOkLoading]="saving()" [nzOkDisabled]="form.invalid" (nzOnOk)="submit()" (nzOnCancel)="adding.set(false)">
+        <nz-modal [nzVisible]="adding()" nzTitle="Add a read-only key or a wallet address" nzOkText="Check and save" [nzOkLoading]="saving()" [nzOkDisabled]="form.invalid || incomplete()" (nzOnOk)="submit()" (nzOnCancel)="adding.set(false)">
           <ng-container *nzModalContent>
             <form nz-form nzLayout="vertical" [formGroup]="form" autocomplete="off">
               @if (formError(); as message) {
@@ -127,12 +127,17 @@ const STATE_COLOR = { Live: 'green', Failed: 'red', Pending: 'blue', Disabled: '
                 </nz-form-item>
               </div>
               <nz-form-item><nz-form-label>Label</nz-form-label><input nz-input formControlName="label" placeholder="Main account" maxlength="100" /></nz-form-item>
-              <nz-form-item><nz-form-label>API key</nz-form-label><input nz-input formControlName="apiKey" autocomplete="off" data-testid="key-api-key" /></nz-form-item>
-              <nz-form-item><nz-form-label>API secret</nz-form-label><input nz-input type="password" formControlName="apiSecret" autocomplete="new-password" data-testid="key-api-secret" /></nz-form-item>
-              @if (needsPassphrase()) {
-                <nz-form-item><nz-form-label>Passphrase</nz-form-label><input nz-input type="password" formControlName="passphrase" autocomplete="new-password" /></nz-form-item>
+              @if (usesAddress()) {
+                <nz-form-item><nz-form-label>Wallet address</nz-form-label><input nz-input formControlName="apiKey" autocomplete="off" placeholder="0x…" data-testid="key-api-key" /></nz-form-item>
+                <p style="color:#8c8c8c;font-size:12px;margin:0">This venue's accounts are public. Only the address is needed, and nothing can be traded or withdrawn through it.</p>
+              } @else {
+                <nz-form-item><nz-form-label>API key</nz-form-label><input nz-input formControlName="apiKey" autocomplete="off" data-testid="key-api-key" /></nz-form-item>
+                <nz-form-item><nz-form-label>API secret</nz-form-label><input nz-input type="password" formControlName="apiSecret" autocomplete="new-password" data-testid="key-api-secret" /></nz-form-item>
+                @if (needsPassphrase()) {
+                  <nz-form-item><nz-form-label>Passphrase</nz-form-label><input nz-input type="password" formControlName="passphrase" autocomplete="new-password" /></nz-form-item>
+                }
+                <p style="color:#8c8c8c;font-size:12px;margin:0">The key is checked with the venue before it is saved, stored encrypted, and never shown again.</p>
               }
-              <p style="color:#8c8c8c;font-size:12px;margin:0">The key is checked with the venue before it is saved, stored encrypted, and never shown again.</p>
             </form>
           </ng-container>
         </nz-modal>
@@ -163,10 +168,14 @@ export class FundConnectionsPage {
     venue: new FormControl<Venue | null>(null, { validators: [Validators.required] }),
     label: new FormControl('Main account', { nonNullable: true, validators: [Validators.required] }),
     apiKey: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
-    apiSecret: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
+    apiSecret: new FormControl('', { nonNullable: true }),
     passphrase: new FormControl('', { nonNullable: true }),
   });
   private readonly venue = toSignal(this.form.controls.venue.valueChanges, { initialValue: null });
+  protected readonly usesAddress = computed(() => this.data()?.venues.find((v) => v.venue === this.venue())?.usesAddress ?? false);
+  private readonly secret = toSignal(this.form.controls.apiSecret.valueChanges, { initialValue: '' });
+  /** A key needs its secret; a wallet address has none. */
+  protected readonly incomplete = computed(() => !this.usesAddress() && this.secret().trim() === '');
   protected readonly needsPassphrase = computed(() => this.data()?.venues.find((v) => v.venue === this.venue())?.needsPassphrase ?? false);
 
   protected open(): void {
@@ -181,7 +190,7 @@ export class FundConnectionsPage {
     this.saving.set(true);
     this.formError.set(null);
     this.api
-      .add({ managerId: value.managerId!, venue: value.venue!, label: value.label, apiKey: value.apiKey, apiSecret: value.apiSecret, passphrase: value.passphrase || null })
+      .add({ managerId: value.managerId!, venue: value.venue!, label: value.label, apiKey: value.apiKey, apiSecret: this.usesAddress() ? null : value.apiSecret, passphrase: this.usesAddress() ? null : value.passphrase || null })
       .subscribe({
         next: () => {
           this.saving.set(false);

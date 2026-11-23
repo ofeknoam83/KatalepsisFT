@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
-export type Venue = 'Binance' | 'Bybit' | 'Okx' | 'Deribit' | 'CoinbaseExchange' | 'CoinbasePrime' | 'Kucoin' | 'Mexc';
+export type Venue = 'Binance' | 'Bybit' | 'Okx' | 'Deribit' | 'CoinbaseExchange' | 'CoinbasePrime' | 'Kucoin' | 'Mexc' | 'Hyperliquid';
 export type ConnectionState = 'Pending' | 'Live' | 'Failed' | 'Disabled';
 export type MandateType = 'Beta' | 'MarketNeutral' | 'Directional' | 'Other';
 
@@ -29,7 +29,7 @@ export interface Connection {
 
 export interface Connections {
   canAddKeys: boolean;
-  venues: { venue: Venue; name: string; needsPassphrase: boolean }[];
+  venues: { venue: Venue; name: string; needsPassphrase: boolean; usesAddress: boolean }[];
   managers: { id: number; name: string; sleeve: string }[];
   connections: Connection[];
 }
@@ -39,7 +39,7 @@ export interface AddConnection {
   venue: Venue;
   label: string;
   apiKey: string;
-  apiSecret: string;
+  apiSecret: string | null;
   passphrase: string | null;
 }
 
