@@ -239,6 +239,24 @@ interface Depth {
         </div>
       }
 
+      @if (d.accounts.length === 0 && !d.isDemo) {
+        <div class="panel start" data-testid="start-trading">
+          <h3>Start trading on paper</h3>
+          <ol>
+            <li><b>Add a trading account</b> for one of this fund's managers on a venue. It starts with a paper balance.</li>
+            <li><b>Place an order</b> in the order ticket that then appears here, next to the live prices of the four venues.</li>
+            <li><b>Watch it fill</b> in the list of orders, and the position appear under the account.</li>
+          </ol>
+          @if (d.managers.length === 0) {
+            <p class="note">This fund has no manager yet. Add one on the Structure tab first.</p>
+          } @else if (d.canAdmin) {
+            <button nz-button nzType="primary" (click)="startAdd(d)" data-testid="start-add-account">Add a trading account</button>
+          } @else {
+            <p class="note">Adding an account needs an administrator.</p>
+          }
+        </div>
+      }
+
       <div class="panel" data-testid="accounts">
         <h3>
           Trading accounts <span class="hint">One per manager and venue</span>
@@ -546,6 +564,13 @@ interface Depth {
     .buy[disabled],
     .sell[disabled] {
       opacity: 0.45;
+    }
+
+    .start ol {
+      margin: 0 0 14px;
+      padding-left: 20px;
+      color: #595959;
+      line-height: 1.9;
     }
 
     .note {
