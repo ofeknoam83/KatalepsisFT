@@ -111,7 +111,14 @@ WebApplication app = builder.Build();
 app.UseForwardedHeaders();
 // The Angular app: files are public, the data behind them is not.
 app.UseDefaultFiles();
-app.UseStaticFiles();
+// Script and style files carry a hash of their content in their name, so they can be kept for good. The page that
+// names them must be asked for every time, or a browser would keep loading a version whose files a release has removed.
+StaticFileOptions appFiles = new()
+{
+    OnPrepareResponse = context =>
+        context.Context.Response.Headers.CacheControl = context.File.Name.Equals("index.html", StringComparison.OrdinalIgnoreCase) ? "no-cache" : "public, max-age=31536000, immutable",
+};
+app.UseStaticFiles(appFiles);
 app.UseAuthentication();
 app.UseApiGuards();
 app.UseAuthorization();
@@ -135,7 +142,7 @@ app.MapHub<LiveHub>(LiveHub.Path);
 
 // Unknown API paths are a 404; any other unknown path is a page inside the Angular app.
 app.MapFallback("/api/{**rest}", () => Results.NotFound()).AllowAnonymous();
-app.MapFallbackToFile("index.html").AllowAnonymous();
+app.MapFallbackToFile("index.html", appFiles).AllowAnonymous();
 
 app.Run();
 
