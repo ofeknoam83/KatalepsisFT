@@ -6,6 +6,7 @@ import { NzAlertModule } from 'ng-zorro-antd/alert';
 import { NzSpinModule } from 'ng-zorro-antd/spin';
 import { NzTableModule } from 'ng-zorro-antd/table';
 import { NzTagModule } from 'ng-zorro-antd/tag';
+import { LiveService } from '../core/live.service';
 import { catchError, combineLatest, of, switchMap, tap } from 'rxjs';
 import { PerformanceScope } from '../performance/models';
 import { FORMAT_PIPES, pct } from '../shared/format';
@@ -201,7 +202,7 @@ export class RiskPanel {
 
   protected readonly failed = signal(false);
   protected readonly data = toSignal(
-    combineLatest([toObservable(this.scope), toObservable(this.scopeId)]).pipe(
+    combineLatest([toObservable(this.scope), toObservable(this.scopeId), toObservable(inject(LiveService).tick)]).pipe(
       switchMap(([scope, id]) =>
         this.api.risk(scope, id).pipe(
           tap(() => this.failed.set(false)),

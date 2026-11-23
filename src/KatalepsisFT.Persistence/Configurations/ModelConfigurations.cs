@@ -140,6 +140,20 @@ internal sealed class CashFlowConfiguration : IEntityTypeConfiguration<CashFlow>
     }
 }
 
+internal sealed class NavSampleConfiguration : IEntityTypeConfiguration<NavSample>
+{
+    public void Configure(EntityTypeBuilder<NavSample> sample)
+    {
+        sample.ToTable("nav_samples");
+        sample.Property(x => x.NavUsd).Usd();
+        sample.Property(x => x.GrossUsd).Usd();
+        sample.Property(x => x.NetUsd).Usd();
+        sample.HasIndex(x => new { x.ManagerAccountId, x.At });
+        sample.HasIndex(x => x.At);
+        sample.HasOne(x => x.ManagerAccount).WithMany().HasForeignKey(x => x.ManagerAccountId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
 internal sealed class PriceBarConfiguration : IEntityTypeConfiguration<PriceBar>
 {
     public void Configure(EntityTypeBuilder<PriceBar> bar)

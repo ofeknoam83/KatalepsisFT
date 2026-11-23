@@ -56,6 +56,7 @@ services.AddScoped<PriceBackfillService>();
 services.AddScoped<DemoFundSeeder>();
 services.AddScoped<RiskService>();
 services.AddScoped<AlertEvaluator>();
+services.AddScoped<KatalepsisFT.Application.Live.IntradayService>();
 services.AddSingleton(TimeProvider.System);
 await using ServiceProvider provider = services.BuildServiceProvider();
 await using AsyncServiceScope scope = provider.CreateAsyncScope();
@@ -106,6 +107,12 @@ static async Task RunDemoAsync(IServiceProvider services)
     Console.WriteLine(demo.WaitingFor is not null
         ? $"Demo fund: waiting for {demo.WaitingFor}."
         : $"Demo fund: {(demo.FundCreated ? "created, " : string.Empty)}{demo.DaysAdded} day(s) and {demo.PositionRowsAdded} position rows added.");
+    int pruned = await services.GetRequiredService<KatalepsisFT.Application.Live.IntradayService>().PruneAsync(CancellationToken.None);
+    if (pruned > 0)
+    {
+        Console.WriteLine($"Intraday samples: {pruned} older than 90 days removed.");
+    }
+
     if (demo.WaitingFor is null)
     {
         FtDbContext db = services.GetRequiredService<FtDbContext>();

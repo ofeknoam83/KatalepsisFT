@@ -12,6 +12,7 @@ public static class DependencyInjection
         services.AddScoped<Risk.RiskService>();
         services.AddScoped<Connections.VenueAdapterRegistry>();
         services.AddScoped<Connections.ManagerBookWriter>();
+        services.AddScoped<Live.IntradayService>();
         services.AddScoped<Connections.ConnectionSyncService>();
         services.AddScoped<Connections.ConnectionService>();
         services.AddScoped<Structure.StructureService>();

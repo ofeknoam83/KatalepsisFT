@@ -14,6 +14,7 @@ import { NzSelectModule } from 'ng-zorro-antd/select';
 import { NzSpinModule } from 'ng-zorro-antd/spin';
 import { NzTableModule } from 'ng-zorro-antd/table';
 import { NzTagModule } from 'ng-zorro-antd/tag';
+import { LiveService } from '../core/live.service';
 import { Observable, catchError, combineLatest, of, switchMap, tap } from 'rxjs';
 import { SessionState } from '../core/session.state';
 import { ViewState } from '../funds/view.state';
@@ -224,7 +225,7 @@ export class AlertsInbox {
   private readonly version = signal(0);
 
   protected readonly data = toSignal(
-    combineLatest([toObservable(this.fundId), toObservable(this.state), toObservable(this.sleeveId), toObservable(this.version)]).pipe(
+    combineLatest([toObservable(this.fundId), toObservable(this.state), toObservable(this.sleeveId), toObservable(this.version), toObservable(inject(LiveService).tick)]).pipe(
       switchMap(([fundId, state, sleeveId]) =>
         this.api.list(fundId, state, sleeveId).pipe(
           tap(() => this.failed.set(false)),

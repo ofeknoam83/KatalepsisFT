@@ -715,6 +715,50 @@ namespace KatalepsisFT.Persistence.Migrations
                     b.ToTable("cash_flows", (string)null);
                 });
 
+            modelBuilder.Entity("KatalepsisFT.Domain.Positions.NavSample", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("at");
+
+                    b.Property<decimal>("GrossUsd")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("gross_usd");
+
+                    b.Property<int>("ManagerAccountId")
+                        .HasColumnType("integer")
+                        .HasColumnName("manager_account_id");
+
+                    b.Property<decimal>("NavUsd")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("nav_usd");
+
+                    b.Property<decimal>("NetUsd")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("net_usd");
+
+                    b.HasKey("Id")
+                        .HasName("pk_nav_samples");
+
+                    b.HasIndex("At")
+                        .HasDatabaseName("ix_nav_samples_at");
+
+                    b.HasIndex("ManagerAccountId", "At")
+                        .HasDatabaseName("ix_nav_samples_manager_account_id_at");
+
+                    b.ToTable("nav_samples", (string)null);
+                });
+
             modelBuilder.Entity("KatalepsisFT.Domain.Positions.NavSnapshot", b =>
                 {
                     b.Property<long>("Id")
@@ -1272,6 +1316,18 @@ namespace KatalepsisFT.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_cash_flows_manager_accounts_manager_account_id");
+
+                    b.Navigation("ManagerAccount");
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Positions.NavSample", b =>
+                {
+                    b.HasOne("KatalepsisFT.Domain.Funds.ManagerAccount", "ManagerAccount")
+                        .WithMany()
+                        .HasForeignKey("ManagerAccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_nav_samples_manager_accounts_manager_account_id");
 
                     b.Navigation("ManagerAccount");
                 });

@@ -15,7 +15,8 @@ public sealed class ManagerBookWriter(IFtDbContext database)
 {
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    public async Task WriteAsync(int managerAccountId, DateOnly day, CancellationToken cancellationToken)
+    /// <returns>The book's NAV and its gross and net exposure.</returns>
+    public async Task<(decimal NavUsd, decimal GrossUsd, decimal NetUsd)> WriteAsync(int managerAccountId, DateOnly day, CancellationToken cancellationToken)
     {
         List<string> snapshots = await database
             .VenueConnections.Where(c => c.ManagerAccountId == managerAccountId && c.State != ConnectionState.Disabled && c.LastSnapshotJson != null)
@@ -47,7 +48,9 @@ public sealed class ManagerBookWriter(IFtDbContext database)
             .ToList();
 
         database.PositionSnapshots.RemoveRange(await database.PositionSnapshots.Where(p => p.ManagerAccountId == managerAccountId && p.Date == day).ToListAsync(cancellationToken));
-        decimal nav = 0m;
+        decimal nav = 0m,
+            gross = 0m,
+            net = 0m;
         foreach (var line in lines)
         {
             Instrument instrument = await EnsureInstrumentAsync(line.Key.Type, line.Key.Asset, line.Key.Expiry, line.Key.Strike, line.Key.OptionRight, cancellationToken);
@@ -55,6 +58,8 @@ public sealed class ManagerBookWriter(IFtDbContext database)
             // What a perp or future adds to NAV is whatever the venue has not yet paid into the cash balance.
             decimal marketValue = instrument.Type is InstrumentType.Perp or InstrumentType.Future && line.Unsettled is decimal unsettled ? Math.Round(unsettled, 2) : value.MarketValueUsd;
             nav += marketValue;
+            gross += Math.Abs(value.ExposureUsd);
+            net += value.ExposureUsd;
             database.PositionSnapshots.Add(
                 new PositionSnapshot
                 {
@@ -84,6 +89,7 @@ public sealed class ManagerBookWriter(IFtDbContext database)
         }
 
         await database.SaveChangesAsync(cancellationToken);
+        return (nav, gross, net);
     }
 
     /// <summary>What one snapshot adds to NAV, by the same rules as the book.</summary>

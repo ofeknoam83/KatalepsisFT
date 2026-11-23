@@ -3,7 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Store } from '@ngxs/store';
 import { Observable, tap } from 'rxjs';
 import { SetFundSleeves } from './view.state';
-import { AssetDetail, FundHoldings, FundListItem, FundOverview, InstrumentFilter, ManagerDetail, SleeveDetail } from './models';
+import { AssetDetail, Intraday, FundHoldings, FundListItem, FundOverview, InstrumentFilter, ManagerDetail, SleeveDetail } from './models';
 
 @Injectable({ providedIn: 'root' })
 export class FundsApi {
@@ -19,6 +19,11 @@ export class FundsApi {
     return this.http
       .get<FundOverview>(`/api/funds/${fundId}/overview`, { params: { filter } })
       .pipe(tap((d) => this.store.dispatch(new SetFundSleeves(d.fund.id, d.sleeves.map((s) => s.sleeve)))));
+  }
+
+  /** NAV and exposure on a five-minute grid; empty for funds that are not read from venues. */
+  intraday(fundId: number, hours: number): Observable<Intraday> {
+    return this.http.get<Intraday>(`/api/funds/${fundId}/intraday`, { params: { hours } });
   }
 
   holdings(fundId: number, filter: InstrumentFilter): Observable<FundHoldings> {

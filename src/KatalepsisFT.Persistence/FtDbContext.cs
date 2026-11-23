@@ -30,6 +30,7 @@ public class FtDbContext(DbContextOptions<FtDbContext> options)
     public DbSet<PositionSnapshot> PositionSnapshots => Set<PositionSnapshot>();
     public DbSet<NavSnapshot> NavSnapshots => Set<NavSnapshot>();
     public DbSet<CashFlow> CashFlows => Set<CashFlow>();
+    public DbSet<NavSample> NavSamples => Set<NavSample>();
     public DbSet<PriceBar> PriceBars => Set<PriceBar>();
     public DbSet<Benchmark> Benchmarks => Set<Benchmark>();
     public DbSet<BenchmarkConstituent> BenchmarkConstituents => Set<BenchmarkConstituent>();

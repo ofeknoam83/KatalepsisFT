@@ -38,6 +38,8 @@ if (hasPostgres && group.ToLowerInvariant() is WorkerGroups.Cefi or WorkerGroups
     builder.Services.AddScoped<ManagerBookWriter>();
     builder.Services.AddScoped<KatalepsisFT.Application.Risk.RiskService>();
     builder.Services.AddScoped<KatalepsisFT.Application.Alerts.AlertEvaluator>();
+    builder.Services.AddScoped<KatalepsisFT.Application.Live.IntradayService>();
+    builder.Services.AddSingleton<KatalepsisFT.Application.Live.IFundChangeNotifier, KatalepsisFT.Infrastructure.KeyValue.KeyValueFundChangeNotifier>();
     builder.Services.AddScoped<ConnectionSyncService>();
     builder.Services.AddHostedService<ConnectionSyncWorker>();
 }

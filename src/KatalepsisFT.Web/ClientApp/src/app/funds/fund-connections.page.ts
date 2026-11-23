@@ -11,6 +11,7 @@ import { NzPopconfirmModule } from 'ng-zorro-antd/popconfirm';
 import { NzSelectModule } from 'ng-zorro-antd/select';
 import { NzTableModule } from 'ng-zorro-antd/table';
 import { NzTagModule } from 'ng-zorro-antd/tag';
+import { LiveService } from '../core/live.service';
 import { Observable, catchError, combineLatest, of, switchMap } from 'rxjs';
 import { toObservable } from '@angular/core/rxjs-interop';
 import { ConnectionsApi, Venue } from '../connections/connections.api';
@@ -150,7 +151,7 @@ export class FundConnectionsPage {
   private readonly fundId = computed(() => this.page.data()?.fund.id ?? null);
 
   protected readonly data = toSignal(
-    combineLatest([toObservable(this.fundId), toObservable(this.version)]).pipe(switchMap(([fundId]) => (fundId === null ? of(null) : this.api.list(fundId).pipe(catchError(() => of(null)))))),
+    combineLatest([toObservable(this.fundId), toObservable(this.version), toObservable(inject(LiveService).tick)]).pipe(switchMap(([fundId]) => (fundId === null ? of(null) : this.api.list(fundId).pipe(catchError(() => of(null)))))),
     { initialValue: null },
   );
 

@@ -9,11 +9,12 @@ import { AlertStrip } from '../alerts/alert-strip';
 import { PageHead } from '../shared/page-head';
 import { FundTabs } from './fund-tabs';
 import { FundsApi } from './funds.api';
+import { IntradayPanel } from './intraday-panel';
 import { SLEEVE_COLORS } from './models';
 
 @Component({
   selector: 'app-fund-overview-page',
-  imports: [RouterLink, NzAlertModule, NzTableModule, ExposureBar, PageHead, FundTabs, ...FORMAT_PIPES, AlertStrip],
+  imports: [RouterLink, NzAlertModule, NzTableModule, ExposureBar, PageHead, FundTabs, ...FORMAT_PIPES, AlertStrip, IntradayPanel],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (page.failed()) {
@@ -37,6 +38,8 @@ import { SLEEVE_COLORS } from './models';
         <div class="tile"><div class="k">Gross exposure</div><div class="v">{{ d.totals.grossUsd | share: d.totals.navUsd : 0 }}</div><div class="d">{{ d.totals.grossUsd | usd }}</div></div>
         <div class="tile"><div class="k">Net exposure</div><div class="v">{{ d.totals.netUsd / d.totals.navUsd | pct: 0 : false }}</div><div class="d">{{ d.totals.netUsd | usd }}</div></div>
       </div>
+
+      <app-intraday-panel [fundId]="d.fund.id" />
 
       <div class="panel">
         <h3>Sleeves <span class="hint">Click a sleeve to drill down</span></h3>

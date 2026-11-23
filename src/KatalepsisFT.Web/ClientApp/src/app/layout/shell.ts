@@ -1,10 +1,11 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { Store } from '@ngxs/store';
 import { NzAvatarModule } from 'ng-zorro-antd/avatar';
 import { NzDropDownModule } from 'ng-zorro-antd/dropdown';
 import { NzLayoutModule } from 'ng-zorro-antd/layout';
 import { NzMenuModule } from 'ng-zorro-antd/menu';
+import { LiveService } from '../core/live.service';
 import { Logout, SessionState } from '../core/session.state';
 import { LoadFunds, ViewState } from '../funds/view.state';
 
@@ -43,6 +44,23 @@ import { LoadFunds, ViewState } from '../funds/view.state';
       gap: 10px;
       cursor: pointer;
     }
+    .live {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-right: 22px;
+      font-size: 12px;
+      color: #8c8c8c;
+    }
+    .live i {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #bfbfbf;
+    }
+    .live.on i {
+      background: #52c41a;
+    }
     nz-content {
       padding: 20px;
     }
@@ -51,6 +69,10 @@ import { LoadFunds, ViewState } from '../funds/view.state';
     <nz-layout class="outer">
       <nz-header>
         <a class="brand" routerLink="/"><span class="mark">K</span>Katalepsis <small>FT</small></a>
+        <span style="flex:1"></span>
+        <span class="live" [class.on]="live.connected()" [title]="live.connected() ? 'Figures update as they change' : 'No live connection: pages refresh every minute'" data-testid="live-state">
+          <i></i>{{ live.connected() ? 'Live' : 'Refreshing every minute' }}
+        </span>
         <span class="who" nz-dropdown [nzDropdownMenu]="menu" nzTrigger="click" nzPlacement="bottomRight" data-testid="user-menu">
           <span>{{ session()?.displayName || session()?.email }}</span>
           <nz-avatar [nzText]="initials()" style="background:#e6f0ff;color:#1677ff" />
@@ -96,6 +118,7 @@ import { LoadFunds, ViewState } from '../funds/view.state';
 export class Shell {
   private readonly store = inject(Store);
   private readonly router = inject(Router);
+  protected readonly live = inject(LiveService);
 
   protected readonly session = this.store.selectSignal(SessionState.session);
   protected readonly isAdmin = this.store.selectSignal(SessionState.isAdmin);
@@ -114,9 +137,17 @@ export class Shell {
 
   constructor() {
     this.store.dispatch(new LoadFunds());
+    // The live connection follows whichever fund is open.
+    effect(() => {
+      const fundId = this.fundId();
+      if (fundId !== null) {
+        this.live.watch(fundId);
+      }
+    });
   }
 
   protected signOut(): void {
+    this.live.stop();
     this.store.dispatch(new Logout()).subscribe(() => void this.router.navigate(['/login']));
   }
 }

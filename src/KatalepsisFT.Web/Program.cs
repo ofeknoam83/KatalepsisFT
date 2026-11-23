@@ -4,6 +4,9 @@ using KatalepsisFT.Application;
 using KatalepsisFT.Application.Alerts;
 using KatalepsisFT.Application.Auth;
 using KatalepsisFT.Application.Connections;
+using KatalepsisFT.Application.Live;
+using KatalepsisFT.Infrastructure.KeyValue;
+using KatalepsisFT.Web.Live;
 using KatalepsisFT.Application.Structure;
 using KatalepsisFT.Venues;
 using KatalepsisFT.Infrastructure;
@@ -80,6 +83,19 @@ builder.Services.AddScoped<IValidator<SaveManagerRequest>, SaveManagerRequestVal
 builder.Services.AddCredentialVault(builder.Configuration);
 builder.Services.AddVenueAdapters();
 builder.Services.AddApplication();
+
+// Live updates: with Key Value, workers and both web instances announce changes over it; without, this instance tells its own browsers.
+builder.Services.AddSignalR();
+if (hasKeyValue)
+{
+    builder.Services.AddSingleton<IFundChangeNotifier, KeyValueFundChangeNotifier>();
+    builder.Services.AddHostedService<FundChangeRelay>();
+}
+else
+{
+    builder.Services.AddSingleton<IFundChangeNotifier, DirectFundChangeNotifier>();
+}
+
 builder.Services.AddControllers().AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
 // Render terminates HTTPS in front of the service; trust its forwarded scheme so the app knows the request was secure.
@@ -115,6 +131,7 @@ app.MapGet(
     .AllowAnonymous();
 
 app.MapControllers();
+app.MapHub<LiveHub>(LiveHub.Path);
 
 // Unknown API paths are a 404; any other unknown path is a page inside the Angular app.
 app.MapFallback("/api/{**rest}", () => Results.NotFound()).AllowAnonymous();

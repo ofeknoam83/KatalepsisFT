@@ -7,6 +7,7 @@ using KatalepsisFT.Application.Alerts;
 using KatalepsisFT.Application.Auth;
 using KatalepsisFT.Application.Connections;
 using KatalepsisFT.Application.Holdings;
+using KatalepsisFT.Application.Live;
 using KatalepsisFT.Application.Structure;
 using KatalepsisFT.Domain.Access;
 using KatalepsisFT.Domain.Alerts;
@@ -15,7 +16,9 @@ using KatalepsisFT.Domain.Funds;
 using KatalepsisFT.Domain.Instruments;
 using KatalepsisFT.Domain.Positions;
 using KatalepsisFT.Persistence;
+using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -342,6 +345,111 @@ public class ConnectionsApiTests(TestDatabase database) : IClassFixture<TestData
         {
             Deribit.TransfersFailure = null;
         }
+    }
+
+    [Fact]
+    public async Task EachRead_KeepsAnIntradaySample_ButNotMoreThanOnePerStep()
+    {
+        (int fundId, int managerId) = await NewFundAsync();
+        ConnectionDto connection = (await (await AddAsync(managerId, "key-with-samples")).Content.ReadFromJsonAsync<ConnectionDto>(Json))!;
+        await _admin.PostAsJsonAsync($"/api/connections/{connection.Id}/sync", new { });
+
+        IntradayDto intraday = await Get<IntradayDto>($"/api/funds/{fundId}/intraday");
+
+        using IServiceScope scope = _app!.Services.CreateScope();
+        FtDbContext db = scope.ServiceProvider.GetRequiredService<FtDbContext>();
+        (await db.NavSamples.CountAsync(s => s.ManagerAccountId == managerId)).Should().Be(1);
+        intraday.Times.Should().NotBeEmpty();
+        intraday.NavUsd.Should().OnlyContain(v => v == 101_250m);
+        intraday.GrossUsd.Should().OnlyContain(v => v == 130_000m);
+        intraday.NetUsd.Should().OnlyContain(v => v == 70_000m);
+        intraday.Times.Should().OnlyContain(t => t.Minute % 5 == 0 && t.Second == 0);
+    }
+
+    [Fact]
+    public async Task Intraday_AddsManagersUp_CarryingEachOnesLatestSampleForward()
+    {
+        (int fundId, int managerId) = await NewFundAsync();
+        int sleeveId;
+        using (IServiceScope scope = _app!.Services.CreateScope())
+        {
+            FtDbContext db = scope.ServiceProvider.GetRequiredService<FtDbContext>();
+            sleeveId = await db.ManagerAccounts.Where(m => m.Id == managerId).Select(m => m.SleeveId).SingleAsync();
+            ManagerAccount second = new() { SleeveId = sleeveId, Name = "Second", DataSource = ManagerDataSource.Venue };
+            db.ManagerAccounts.Add(second);
+            await db.SaveChangesAsync();
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            db.NavSamples.AddRange(
+                new NavSample { ManagerAccountId = managerId, At = now.AddMinutes(-62), NavUsd = 100m, GrossUsd = 50m, NetUsd = 50m },
+                new NavSample { ManagerAccountId = second.Id, At = now.AddMinutes(-31), NavUsd = 40m, GrossUsd = 40m, NetUsd = -40m },
+                new NavSample { ManagerAccountId = managerId, At = now.AddMinutes(-12), NavUsd = 110m, GrossUsd = 60m, NetUsd = 60m }
+            );
+            await db.SaveChangesAsync();
+        }
+
+        IntradayDto intraday = await Get<IntradayDto>($"/api/funds/{fundId}/intraday?hours=2");
+
+        intraday.NavUsd[0].Should().Be(100m);
+        intraday.NavUsd.Should().ContainInOrder(100m, 140m, 150m);
+        intraday.NavUsd[^1].Should().Be(150m);
+        intraday.NetUsd[^1].Should().Be(20m);
+        intraday.Times.Should().BeInAscendingOrder().And.OnlyHaveUniqueItems();
+        intraday.Times.Zip(intraday.Times.Skip(1), (a, b) => b - a).Should().OnlyContain(gap => gap == TimeSpan.FromMinutes(5));
+    }
+
+    [Fact]
+    public async Task Intraday_OfAFundNeverRead_IsEmpty_AndHoursAreChecked()
+    {
+        (int fundId, _) = await NewFundAsync();
+
+        (await Get<IntradayDto>($"/api/funds/{fundId}/intraday")).Times.Should().BeEmpty();
+        (await _admin.GetAsync($"/api/funds/{fundId}/intraday?hours=0")).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await _admin.GetAsync($"/api/funds/{fundId}/intraday?hours=9999")).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await _admin.GetAsync("/api/funds/999999/intraday")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task BrowserWatchingAFund_IsToldWhenItChanges_AndOnlyThatFund()
+    {
+        (int fundId, int managerId) = await NewFundAsync();
+        (_, int otherManagerId) = await NewFundAsync();
+        string email = await database.AddUserAsync(_app!, Roles.Viewer);
+        HttpClient http = TestDatabase.CreateClient(_app!);
+        HttpResponseMessage login = await http.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, TestDatabase.Password, false));
+        string cookie = login.Headers.GetValues("Set-Cookie").First().Split(';')[0];
+        List<int> heard = [];
+        await using HubConnection live = new HubConnectionBuilder()
+            .WithUrl(
+                "https://localhost/hubs/live",
+                options =>
+                {
+                    // The test server has no real sockets; the browser uses WebSockets only.
+                    options.Transports = HttpTransportType.LongPolling;
+                    options.HttpMessageHandlerFactory = _ => _app!.Server.CreateHandler();
+                    options.Headers["Cookie"] = cookie;
+                }
+            )
+            .Build();
+        live.On<int>("fundChanged", heard.Add);
+        await live.StartAsync();
+        await live.InvokeAsync("WatchFund", fundId);
+
+        await AddAsync(otherManagerId, "key-of-another-fund");
+        await AddAsync(managerId, "key-of-the-watched-fund");
+        for (int i = 0; i < 50 && heard.Count == 0; i++)
+        {
+            await Task.Delay(100);
+        }
+
+        heard.Should().Equal(fundId);
+    }
+
+    [Fact]
+    public async Task LiveSocket_NeedsASignedInUser()
+    {
+        HttpResponseMessage response = await TestDatabase.CreateClient(_app!).PostAsync("/hubs/live/negotiate?negotiateVersion=1", null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
     [Fact]

@@ -20,6 +20,7 @@ public interface IFtDbContext
     DbSet<PositionSnapshot> PositionSnapshots { get; }
     DbSet<NavSnapshot> NavSnapshots { get; }
     DbSet<CashFlow> CashFlows { get; }
+    DbSet<NavSample> NavSamples { get; }
     DbSet<PriceBar> PriceBars { get; }
     DbSet<Benchmark> Benchmarks { get; }
     DbSet<BenchmarkConstituent> BenchmarkConstituents { get; }

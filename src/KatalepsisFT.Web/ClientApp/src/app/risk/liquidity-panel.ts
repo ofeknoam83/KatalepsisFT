@@ -7,6 +7,7 @@ import { NzAlertModule } from 'ng-zorro-antd/alert';
 import { NzSegmentedModule } from 'ng-zorro-antd/segmented';
 import { NzSpinModule } from 'ng-zorro-antd/spin';
 import { NzTableModule } from 'ng-zorro-antd/table';
+import { LiveService } from '../core/live.service';
 import { catchError, combineLatest, of, switchMap, tap } from 'rxjs';
 import { PerformanceScope } from '../performance/models';
 import { FORMAT_PIPES } from '../shared/format';
@@ -169,7 +170,7 @@ export class LiquidityPanel {
   protected readonly participation = signal(0.1);
   protected readonly failed = signal(false);
   protected readonly data = toSignal(
-    combineLatest([toObservable(this.scope), toObservable(this.scopeId), toObservable(this.participation)]).pipe(
+    combineLatest([toObservable(this.scope), toObservable(this.scopeId), toObservable(this.participation), toObservable(inject(LiveService).tick)]).pipe(
       switchMap(([scope, id, participation]) =>
         this.api.liquidity(scope, id, participation).pipe(
           tap(() => this.failed.set(false)),

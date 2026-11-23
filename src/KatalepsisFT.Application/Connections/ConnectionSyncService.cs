@@ -1,5 +1,6 @@
 using System.Text.Json;
 using KatalepsisFT.Application.Alerts;
+using KatalepsisFT.Application.Live;
 using KatalepsisFT.Domain.Connections;
 using KatalepsisFT.Domain.Instruments;
 using KatalepsisFT.Domain.Positions;
@@ -9,7 +10,7 @@ using Microsoft.Extensions.Logging;
 namespace KatalepsisFT.Application.Connections;
 
 /// <summary>Reads one connection from its venue and, on a complete answer, rewrites the manager's book for today.</summary>
-public sealed class ConnectionSyncService(IFtDbContext database, VenueAdapterRegistry adapters, ICredentialVault vault, ManagerBookWriter writer, AlertEvaluator alerts, TimeProvider clock, ILogger<ConnectionSyncService> logger)
+public sealed class ConnectionSyncService(IFtDbContext database, VenueAdapterRegistry adapters, ICredentialVault vault, ManagerBookWriter writer, AlertEvaluator alerts, IntradayService intraday, IFundChangeNotifier notifier, TimeProvider clock, ILogger<ConnectionSyncService> logger)
 {
     /// <summary>Longest wait between attempts on a connection that keeps failing.</summary>
     public static readonly TimeSpan MaxBackoff = TimeSpan.FromMinutes(15);
@@ -53,10 +54,12 @@ public sealed class ConnectionSyncService(IFtDbContext database, VenueAdapterReg
             connection.ConsecutiveFailures = 0;
             await database.SaveChangesAsync(cancellationToken);
             await ReadTransfersAsync(connection, adapter, credentials, snapshot, previousSuccess, now, cancellationToken);
-            await writer.WriteAsync(connection.ManagerAccountId, DateOnly.FromDateTime(now.UtcDateTime), cancellationToken);
+            (decimal nav, decimal gross, decimal net) = await writer.WriteAsync(connection.ManagerAccountId, DateOnly.FromDateTime(now.UtcDateTime), cancellationToken);
+            await intraday.RecordAsync(connection.ManagerAccountId, nav, gross, net, cancellationToken);
             // The book just changed, so the fund's rules are checked against it straight away.
             int fundId = await database.ManagerAccounts.Where(m => m.Id == connection.ManagerAccountId).Select(m => m.Sleeve.FundId).SingleAsync(cancellationToken);
             await alerts.EvaluateAsync(fundId, cancellationToken);
+            await notifier.NotifyAsync(fundId, cancellationToken);
         }
         catch (VenueException e)
         {

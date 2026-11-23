@@ -6,6 +6,7 @@ import { Store } from '@ngxs/store';
 import { NzAlertModule } from 'ng-zorro-antd/alert';
 import { NzSpinModule } from 'ng-zorro-antd/spin';
 import { NzTableModule } from 'ng-zorro-antd/table';
+import { LiveService } from '../core/live.service';
 import { catchError, combineLatest, of, switchMap, tap } from 'rxjs';
 import { ViewState } from '../funds/view.state';
 import { FORMAT_PIPES } from '../shared/format';
@@ -191,7 +192,7 @@ export class PerformancePanel {
 
   protected readonly failed = signal(false);
   protected readonly data = toSignal(
-    combineLatest([toObservable(this.scope), toObservable(this.scopeId), this.store.select(ViewState.benchmarkId), this.store.select(ViewState.period)]).pipe(
+    combineLatest([toObservable(this.scope), toObservable(this.scopeId), this.store.select(ViewState.benchmarkId), this.store.select(ViewState.period), toObservable(inject(LiveService).tick)]).pipe(
       switchMap(([scope, id, benchmarkId, period]) =>
         this.api.get(scope, id, benchmarkId, period).pipe(
           tap(() => this.failed.set(false)),

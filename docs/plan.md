@@ -258,7 +258,9 @@ Each phase ends deployed on Render and checked in the browser. Each is split int
   - [x] Binance (spot wallet incl. flexible savings, USDⓈ-M futures balances and positions) and Bybit (unified account: balances, linear and inverse perps and futures, options)
   - [ ] Binance and Bybit have never been called for real: both block the build environment, so even the refusal of a bad key is untested until tried from Render
   - [ ] Binance: coin-margined futures, margin and options accounts, funding wallet; a holding with no USD pair fails the read. Bybit: funding account, classic accounts
-  - [ ] Streams instead of polling, live book in Key Value, live push to the browser (SignalR), 5-minute samples
+  - [x] Live push to the browser: after every read the worker announces "fund changed" over Key Value, each web instance tells its own browsers over one WebSocket, and open pages reload their figures. Without a socket, pages refresh every minute and the header says so
+  - [x] Five-minute samples of each manager's NAV and exposure, kept 90 days; the fund's last 24 hours are charted on its overview
+  - [ ] Venue streams instead of one-minute polling, and the live book in Key Value (figures are read from Postgres today)
   - [x] Deposits, withdrawals and transfers read from all four venues every ten minutes and recorded as cash flows, so they are not counted as performance; a venue that will not show them is flagged on the connection
   - [ ] Transfer readings are tested on hand-written answers only. Known limits: transfers before the connection was added are ignored; OKX and Bybit show seven days back; a Deribit key needs the wallet:read scope
   - [x] Alert rules are checked after every read of a connection
