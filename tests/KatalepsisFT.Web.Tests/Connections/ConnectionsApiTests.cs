@@ -338,6 +338,21 @@ public class ConnectionsApiTests(TestDatabase database) : IClassFixture<TestData
     }
 
     [Fact]
+    public async Task ReadsOfOneManagerAtTheSameMoment_AllSucceed()
+    {
+        (int fundId, int managerId) = await NewFundAsync();
+        ConnectionDto first = (await (await AddAsync(managerId, "key-racing-one")).Content.ReadFromJsonAsync<ConnectionDto>(Json))!;
+        VenueSnapshot other = new(DateTimeOffset.UtcNow, [new VenuePosition(InstrumentType.Spot, "BTC", 1m, 50_000m)]);
+        ConnectionDto second = (await (await AddAsync(managerId, "key-racing-two", Venue.Okx, "passphrase", other)).Content.ReadFromJsonAsync<ConnectionDto>(Json))!;
+
+        HttpResponseMessage[] answers = await Task.WhenAll(Enumerable.Range(0, 12).Select(i => _admin.PostAsJsonAsync($"/api/connections/{(i % 2 == 0 ? first.Id : second.Id)}/sync", new { })));
+
+        answers.Should().OnlyContain(r => r.StatusCode == HttpStatusCode.OK);
+        (await Get<ConnectionsDto>($"/api/funds/{fundId}/connections")).Connections.Should().OnlyContain(c => c.State == ConnectionState.Live);
+        (await Get<FundOverviewDto>($"/api/funds/{fundId}/overview")).Totals.NavUsd.Should().Be(151_250m);
+    }
+
+    [Fact]
     public async Task SameKeyTwice_IsRefused()
     {
         (_, int managerId) = await NewFundAsync();

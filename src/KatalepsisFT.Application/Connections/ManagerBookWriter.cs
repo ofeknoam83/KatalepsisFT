@@ -18,6 +18,25 @@ public sealed class ManagerBookWriter(IFtDbContext database)
     /// <returns>The book's NAV and its gross and net exposure.</returns>
     public async Task<(decimal NavUsd, decimal GrossUsd, decimal NetUsd)> WriteAsync(int managerAccountId, DateOnly day, CancellationToken cancellationToken)
     {
+        // Two services can write one manager's book in the same instant: an exchange read and a wallet read, or a
+        // read and an edit in the browser. The one that loses starts again from what is stored now; with reads
+        // every couple of seconds this would otherwise show up as a failed connection several times an hour.
+        for (int attempt = 0; ; attempt++)
+        {
+            try
+            {
+                return await WriteOnceAsync(managerAccountId, day, cancellationToken);
+            }
+            catch (DbUpdateException) when (attempt < 3)
+            {
+                database.DiscardChanges();
+                await Task.Delay(TimeSpan.FromMilliseconds(50 * (attempt + 1) + Random.Shared.Next(100)), cancellationToken);
+            }
+        }
+    }
+
+    private async Task<(decimal NavUsd, decimal GrossUsd, decimal NetUsd)> WriteOnceAsync(int managerAccountId, DateOnly day, CancellationToken cancellationToken)
+    {
         List<string> snapshots = await database
             .VenueConnections.Where(c => c.ManagerAccountId == managerAccountId && c.State != ConnectionState.Disabled && c.LastSnapshotJson != null)
             .Select(c => c.LastSnapshotJson!)
