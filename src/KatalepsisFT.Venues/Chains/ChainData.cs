@@ -3,6 +3,9 @@ namespace KatalepsisFT.Venues.Chains;
 /// <param name="Asset">What the token counts as in the book: wrapped and bridged forms count as the coin itself.</param>
 public sealed record ChainToken(string Contract, string Asset, int Decimals);
 
+/// <param name="ByTickSpacing">Aerodrome's concentrated pools are found by tick spacing where Uniswap's are found by fee.</param>
+public sealed record PositionManager(string Chain, string Protocol, string Contract, bool ByTickSpacing);
+
 /// <param name="Native">The coin fees are paid in.</param>
 public sealed record EvmChain(string Name, string RpcUrl, string Native, IReadOnlyList<ChainToken> Tokens);
 
@@ -76,6 +79,21 @@ public static class ChainData
             new("0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7", "AVAX", 18), // WAVAX
             new("0x49D5c2BdFfac6CE2BFdB6640F4F80f226bc10bAB", "ETH", 18), // WETH.e
         ]),
+    ];
+
+    /// <summary>
+    /// Contracts that hold liquidity-pool positions as tokens owned by the wallet. Each was checked on its chain: it
+    /// names its factory, and a position read from it has the expected twelve fields.
+    /// </summary>
+    public static readonly IReadOnlyList<PositionManager> PositionManagers =
+    [
+        new("Ethereum", "Uniswap v3", "0xC36442b4a4522E871399CD717aBDD847Ab11FE88", false),
+        new("Arbitrum", "Uniswap v3", "0xC36442b4a4522E871399CD717aBDD847Ab11FE88", false),
+        new("Optimism", "Uniswap v3", "0xC36442b4a4522E871399CD717aBDD847Ab11FE88", false),
+        new("Polygon", "Uniswap v3", "0xC36442b4a4522E871399CD717aBDD847Ab11FE88", false),
+        new("Base", "Uniswap v3", "0x03a520b32C04BF3bEEf7BEb72E919cf822Ed34f1", false),
+        new("BNB Chain", "Uniswap v3", "0x7b8A01B39D58278b5DE7e48c8449c9f4F5170613", false),
+        new("Base", "Aerodrome", "0x827922686190790b37229fd06084350E74485b72", true),
     ];
 
     public const string SolanaRpcUrl = "https://api.mainnet-beta.solana.com";

@@ -169,6 +169,17 @@ public sealed class EvmWalletAdapter(HttpClient http, TimeProvider clock) : Wall
             {
                 // One chain's node being down should not hide the wallet on the other six, but it must be said.
                 notes.Add($"{chain.Name} was not read: {e.Message}");
+                continue;
+            }
+
+            try
+            {
+                await ReadPoolsAsync(chain, address, holdings, notes, cancellationToken);
+            }
+            catch (VenueException e)
+            {
+                // The wallet's own balances above stand; what is missing is whatever sits in pools on this chain.
+                notes.Add($"Pool positions on {chain.Name} were not read: {e.Message}");
             }
         }
 
@@ -178,6 +189,98 @@ public sealed class EvmWalletAdapter(HttpClient http, TimeProvider clock) : Wall
         }
 
         return (holdings, notes);
+    }
+
+    /// <summary>
+    /// Adds what the address holds in Uniswap v3 and Aerodrome concentrated pools on one chain, as the tokens inside
+    /// each position at the pool's current price.
+    /// </summary>
+    private async Task ReadPoolsAsync(EvmChain chain, string address, Dictionary<string, decimal> holdings, List<string> notes, CancellationToken cancellationToken)
+    {
+        List<PositionManager> managers = ChainData.PositionManagers.Where(m => m.Chain == chain.Name).ToList();
+        if (managers.Count == 0)
+        {
+            return;
+        }
+
+        async Task<string[]> CallAsync(List<(string To, string Data)> calls, string what) =>
+            calls.Count == 0 ? [] : PoolPositions.Results(await PostJsonAsync(chain.RpcUrl, calls.Select((c, i) => PoolPositions.EthCall(i, c.To, c.Data)).ToList(), chain.Name, cancellationToken), calls.Count, what);
+
+        string[] counts = await CallAsync(managers.Select(m => (m.Contract, PoolPositions.CountCall(address))).ToList(), "position counts");
+        List<(PositionManager Manager, int Index)> slots = [];
+        for (int m = 0; m < managers.Count; m++)
+        {
+            int count = (int)System.Numerics.BigInteger.Min(PoolPositions.Number(counts[m]), 100_000);
+            if (count > PoolPositions.MaxPerManager)
+            {
+                notes.Add($"This address has {count} {managers[m].Protocol} positions on {chain.Name}; only the first {PoolPositions.MaxPerManager} are read.");
+            }
+
+            slots.AddRange(Enumerable.Range(0, Math.Min(count, PoolPositions.MaxPerManager)).Select(i => (managers[m], i)));
+        }
+
+        if (slots.Count == 0)
+        {
+            return;
+        }
+
+        string[] ids = await CallAsync(slots.Select(s => (s.Manager.Contract, PoolPositions.TokenIdCall(address, s.Index))).ToList(), "position numbers");
+        string[] raw = await CallAsync(slots.Select((s, i) => (s.Manager.Contract, PoolPositions.PositionCall(PoolPositions.Number(ids[i])))).ToList(), "positions");
+        string[] factories = await CallAsync(managers.Select(m => (m.Contract, PoolPositions.FactoryCall)).ToList(), "factories");
+
+        Dictionary<string, ChainToken> known = chain.Tokens.ToDictionary(t => t.Contract.ToLowerInvariant());
+        List<(PositionManager Manager, PoolPosition Position)> open = [];
+        Dictionary<string, int> uncounted = [];
+        for (int i = 0; i < slots.Count; i++)
+        {
+            PoolPosition position = PoolPositions.ParsePosition(raw[i]);
+            if (position.Liquidity.IsZero && position.Owed0.IsZero && position.Owed1.IsZero)
+            {
+                continue;
+            }
+
+            // A token outside the checked list has no trusted price, and anyone can name a worthless token "USDC".
+            if (known.ContainsKey(position.Token0.ToLowerInvariant()) && known.ContainsKey(position.Token1.ToLowerInvariant()))
+            {
+                open.Add((slots[i].Manager, position));
+            }
+            else
+            {
+                uncounted[slots[i].Manager.Protocol] = uncounted.GetValueOrDefault(slots[i].Manager.Protocol) + 1;
+            }
+        }
+
+        foreach ((string protocol, int count) in uncounted)
+        {
+            notes.Add($"{count} {protocol} position(s) on {chain.Name} hold a token outside the list of main tokens and are not counted.");
+        }
+
+        if (open.Count == 0)
+        {
+            return;
+        }
+
+        string[] pools = await CallAsync(open.Select(o => (PoolPositions.AddressOf(factories[managers.IndexOf(o.Manager)]), PoolPositions.PoolCall(o.Manager, o.Position))).ToList(), "pools");
+        string[] prices = await CallAsync(pools.Select(p => (PoolPositions.AddressOf(p), PoolPositions.PriceCall)).ToList(), "pool prices");
+        for (int i = 0; i < open.Count; i++)
+        {
+            PoolPosition position = open[i].Position;
+            (double amount0, double amount1) = PoolPositions.Amounts(position.Liquidity, PoolPositions.ParseSqrtPrice(prices[i]), position.TickLower, position.TickUpper);
+            foreach ((string token, double amount, System.Numerics.BigInteger owed) in new[] { (position.Token0, amount0, position.Owed0), (position.Token1, amount1, position.Owed1) })
+            {
+                ChainToken info = known[token.ToLowerInvariant()];
+                decimal quantity = (decimal)((amount + (double)owed) / Math.Pow(10, info.Decimals));
+                if (quantity != 0m)
+                {
+                    holdings[info.Asset] = holdings.GetValueOrDefault(info.Asset) + Math.Round(quantity, 8);
+                }
+            }
+        }
+
+        foreach (IGrouping<string, (PositionManager Manager, PoolPosition Position)> group in open.GroupBy(o => o.Manager.Protocol))
+        {
+            notes.Add($"{group.Count()} {group.Key} position(s) on {chain.Name} are counted as the tokens inside them; fees earned but not collected are not included.");
+        }
     }
 }
 

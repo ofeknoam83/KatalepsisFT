@@ -292,7 +292,9 @@ Each phase ends deployed on Render and checked in the browser. Each is split int
   - [ ] Only each chain's native coin and its main tokens are read (36 contracts on the EVM chains, 5 on Solana, USDT on Tron). Finding every token of an address, staked coins and positions inside protocols need an indexing provider
   - [ ] Transfers in and out of an on-chain wallet are not read (the same provider would supply them), so they show as profit or loss; the connection says so
   - [ ] Solana is read from its free public endpoint, which limits how often it answers; a paid endpoint would be steadier
-  - [ ] dYdX (its API refuses address lookups from the build environment), GMX, Uniswap and Aerodrome pool positions
+  - [x] Uniswap v3 pool positions on Ethereum, Arbitrum, Optimism, Polygon, Base and BNB Chain, and Aerodrome concentrated-pool positions on Base, read with the EVM wallet and counted as the tokens inside them. The arithmetic was checked against what the Uniswap contract itself returns for a real position
+  - [ ] Pool positions: only those held directly by the wallet and made of the listed main tokens. Not read: Aerodrome positions staked in a gauge (which is where most of them are), Aerodrome's basic pools, Uniswap v2 and v4, and fees earned but not collected
+  - [ ] dYdX (its API refuses address lookups from the build environment), GMX
 - [ ] **Phase 10 — Traditional positions**
   - [x] Positions entered by hand on any manager of a real fund (equity, spot, perp, future, option, cash), added to whatever its keys and wallets bring in
   - [x] CSV upload that replaces the manager's manual book; any faulty line refuses the whole file and is named, so a half-loaded book is never valued; downloadable template
