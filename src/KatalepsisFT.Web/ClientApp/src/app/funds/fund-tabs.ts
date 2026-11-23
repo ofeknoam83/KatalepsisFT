@@ -35,6 +35,7 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
       <a [routerLink]="['/funds', fundId(), 'liquidity']" routerLinkActive="on">Liquidity</a>
       <a [routerLink]="['/funds', fundId(), 'alerts']" routerLinkActive="on">Alerts</a>
       @if (isAdmin()) {
+        <a [routerLink]="['/funds', fundId(), 'structure']" routerLinkActive="on">Structure</a>
         <a [routerLink]="['/funds', fundId(), 'connections']" routerLinkActive="on">Connections</a>
       }
     </nav>

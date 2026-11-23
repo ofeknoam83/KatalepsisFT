@@ -262,7 +262,8 @@ Each phase ends deployed on Render and checked in the browser. Each is split int
   - [x] Deposits, withdrawals and transfers read from all four venues every ten minutes and recorded as cash flows, so they are not counted as performance; a venue that will not show them is flagged on the connection
   - [ ] Transfer readings are tested on hand-written answers only. Known limits: transfers before the connection was added are ignored; OKX and Bybit show seven days back; a Deribit key needs the wallet:read scope
   - [x] Alert rules are checked after every read of a connection
-  - [ ] OKX funding account; editing a fund's structure after creation
+  - [x] Structure tab: rename a fund and set its benchmark; add, rename and remove sleeves; set each sleeve's mandate limits; add, change and remove managers. A manager with history or venue keys cannot be removed; the example fund is read-only
+  - [ ] OKX funding account
 - [ ] **Phase 7 — Remaining copied CeFi venues**: Coinbase (Prime + Exchange), KuCoin, MEXC.
 - [ ] **Phase 8 — New CeFi venues**: Bitget, Gate, Kraken.
 - [ ] **Phase 9 — DeFi venues**: Hyperliquid, dYdX, GMX, then Uniswap and Aerodrome pool positions.

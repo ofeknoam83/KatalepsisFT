@@ -20,6 +20,7 @@ export const routes: Routes = [
       { path: 'funds/:fundId/risk', loadComponent: () => import('./funds/fund-risk.page').then((m) => m.FundRiskPage) },
       { path: 'funds/:fundId/liquidity', loadComponent: () => import('./funds/fund-liquidity.page').then((m) => m.FundLiquidityPage) },
       { path: 'funds/:fundId/alerts', loadComponent: () => import('./funds/fund-alerts.page').then((m) => m.FundAlertsPage) },
+      { path: 'funds/:fundId/structure', canActivate: [adminOnly], loadComponent: () => import('./funds/fund-structure.page').then((m) => m.FundStructurePage) },
       { path: 'funds/:fundId/connections', canActivate: [adminOnly], loadComponent: () => import('./funds/fund-connections.page').then((m) => m.FundConnectionsPage) },
       { path: 'funds/:fundId/assets/:symbol', loadComponent: () => import('./funds/asset.page').then((m) => m.AssetPage) },
       { path: 'sleeves/:sleeveId', loadComponent: () => import('./funds/sleeve.page').then((m) => m.SleevePage) },

@@ -48,6 +48,34 @@ export interface NewFund {
   sleeves: { name: string; mandateType: MandateType; managers: { name: string; allocatedCapitalUsd: number }[] }[];
 }
 
+export type LimitKind = 'GrossExposureMax' | 'NetExposureMin' | 'NetExposureMax' | 'SingleAssetMax' | 'ManagerDrawdownMin' | 'DaysToLiquidateMax';
+
+export interface StructureManager {
+  id: number;
+  name: string;
+  allocatedCapitalUsd: number;
+  dataSource: string;
+  hasHistory: boolean;
+  connections: number;
+}
+
+export interface StructureSleeve {
+  id: number;
+  name: string;
+  mandateType: MandateType;
+  limits: { kind: LimitKind; value: number }[];
+  managers: StructureManager[];
+}
+
+export interface Structure {
+  id: number;
+  name: string;
+  benchmarkId: number | null;
+  canEdit: boolean;
+  benchmarks: { id: number; name: string }[];
+  sleeves: StructureSleeve[];
+}
+
 @Injectable({ providedIn: 'root' })
 export class ConnectionsApi {
   private readonly http = inject(HttpClient);
@@ -70,6 +98,38 @@ export class ConnectionsApi {
 
   remove(id: number): Observable<void> {
     return this.http.delete<void>(`/api/connections/${id}`);
+  }
+
+  structure(fundId: number): Observable<Structure> {
+    return this.http.get<Structure>(`/api/funds/${fundId}/structure`);
+  }
+
+  saveFund(fundId: number, name: string, benchmarkId: number | null): Observable<void> {
+    return this.http.put<void>(`/api/funds/${fundId}`, { name, benchmarkId });
+  }
+
+  addSleeve(fundId: number, name: string, mandateType: MandateType): Observable<void> {
+    return this.http.post<void>(`/api/funds/${fundId}/sleeves`, { name, mandateType, limits: null });
+  }
+
+  saveSleeve(sleeveId: number, name: string, mandateType: MandateType, limits: { kind: LimitKind; value: number }[]): Observable<void> {
+    return this.http.put<void>(`/api/sleeves/${sleeveId}`, { name, mandateType, limits });
+  }
+
+  removeSleeve(sleeveId: number): Observable<void> {
+    return this.http.delete<void>(`/api/sleeves/${sleeveId}`);
+  }
+
+  addManager(sleeveId: number, name: string, allocatedCapitalUsd: number): Observable<void> {
+    return this.http.post<void>(`/api/sleeves/${sleeveId}/managers`, { name, allocatedCapitalUsd });
+  }
+
+  saveManager(managerId: number, name: string, allocatedCapitalUsd: number): Observable<void> {
+    return this.http.put<void>(`/api/managers/${managerId}`, { name, allocatedCapitalUsd });
+  }
+
+  removeManager(managerId: number): Observable<void> {
+    return this.http.delete<void>(`/api/managers/${managerId}`);
   }
 
   createFund(request: NewFund): Observable<{ id: number; name: string }> {
