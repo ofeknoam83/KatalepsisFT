@@ -77,13 +77,13 @@ const STATE_COLOR = { Live: 'green', Failed: 'red', Pending: 'blue', Disabled: '
                   <td>
                     <nz-tag [nzColor]="stateColor[row.state]">{{ row.state }}</nz-tag>
                     @if (row.lastError) {
-                      <div style="color:#cf1322;font-size:12px;max-width:320px">{{ row.lastError }}</div>
+                      <div style="color:#cf1322;font-size:12px;max-width:260px">{{ row.lastError }}</div>
                     }
                     @for (note of row.notes; track note) {
-                      <div style="color:#ad6800;font-size:12px;max-width:320px">{{ note }}</div>
+                      <div style="color:#ad6800;font-size:12px;max-width:260px">{{ note }}</div>
                     }
                     @if (row.transfersError) {
-                      <div style="color:#ad6800;font-size:12px;max-width:320px">Deposits and withdrawals are not being read: {{ row.transfersError }}</div>
+                      <div style="color:#ad6800;font-size:12px;max-width:260px">Deposits and withdrawals are not being read: {{ row.transfersError }}</div>
                     }
                   </td>
                   <td class="nowrap">{{ row.lastSuccessAt ? (row.lastSuccessAt | date: 'MM-dd-yyyy HH:mm' : 'UTC') : 'Never' }}</td>

@@ -64,6 +64,30 @@ import { LoadFunds, ViewState } from '../funds/view.state';
     nz-content {
       padding: 20px;
     }
+
+    /* Smaller laptops: the menu gives up some of its width to the figures. */
+    @media (max-width: 1500px) {
+      nz-sider {
+        flex: 0 0 184px !important;
+        max-width: 184px !important;
+        min-width: 184px !important;
+        width: 184px !important;
+      }
+
+      nz-content {
+        padding: 14px;
+      }
+
+      nz-sider li[nz-menu-item] {
+        padding-left: 14px !important;
+        padding-right: 8px !important;
+        font-size: 13px;
+      }
+
+      .group {
+        padding: 12px 14px 4px;
+      }
+    }
   `,
   template: `
     <nz-layout class="outer">
@@ -91,7 +115,7 @@ import { LoadFunds, ViewState } from '../funds/view.state';
           <div class="group">Funds</div>
           <ul nz-menu nzMode="inline" style="border-inline-end:0">
             @for (fund of funds() ?? []; track fund.id) {
-              <li nz-menu-item [routerLink]="['/funds', fund.id]" [class.ant-menu-item-selected]="fund.id === fundId()">{{ fund.name }}@if (fund.isDemo) {<span style="color:#8c8c8c;font-size:11px;margin-left:6px">DEMO</span>}</li>
+              <li nz-menu-item [routerLink]="['/funds', fund.id]" [class.ant-menu-item-selected]="fund.id === fundId()" [title]="fund.name">{{ fund.name }}@if (fund.isDemo) {<span style="color:#8c8c8c;font-size:11px;margin-left:6px">DEMO</span>}</li>
             }
           </ul>
           @if (sleeves().length > 0) {

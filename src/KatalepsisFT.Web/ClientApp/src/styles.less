@@ -233,3 +233,59 @@ body {
 .nowrap {
   white-space: nowrap;
 }
+
+/*
+ * Smaller laptops. A 13-inch screen shows about 1280 points across, and with the side menu that left tables of
+ * full-length amounts some 100 to 170 points short. Below 1500 the page gives its width to the figures: a
+ * narrower menu, less padding around panels and cells, and slightly smaller type in tables and tiles. Nothing is
+ * hidden or shortened; a table that still does not fit scrolls inside its own panel.
+ */
+@media (max-width: 1500px) {
+  .page-head {
+    flex-wrap: wrap;
+    row-gap: 6px;
+    margin-bottom: 10px;
+
+    h1 {
+      font-size: 18px;
+    }
+  }
+
+  .tiles {
+    grid-template-columns: repeat(auto-fit, minmax(198px, 1fr));
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .tile {
+    padding: 10px 12px;
+
+    .v {
+      font-size: 19px;
+    }
+  }
+
+  .panel {
+    padding: 12px;
+    margin-bottom: 10px;
+  }
+
+  .cols {
+    // Two tables of full-length amounts do not fit side by side here; they go one under the other.
+    grid-template-columns: repeat(auto-fit, minmax(640px, 1fr));
+    gap: 10px;
+  }
+
+  .ant-table.ant-table-small {
+    font-size: 13px;
+
+    .ant-table-thead > tr > th,
+    .ant-table-tbody > tr > td {
+      padding: 7px 5px;
+    }
+  }
+
+  .matrix {
+    font-size: 11px;
+  }
+}
