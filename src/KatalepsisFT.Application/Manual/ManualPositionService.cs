@@ -250,11 +250,12 @@ public sealed class ManualPositionService(IFtDbContext database, ManagerBookServ
 
     private async Task<ManualChange?> RefusalAsync(int managerId, CancellationToken cancellationToken)
     {
-        bool? isDemo = await database.ManagerAccounts.Where(m => m.Id == managerId).Select(m => (bool?)m.Sleeve.Fund.IsDemo).FirstOrDefaultAsync(cancellationToken);
-        return isDemo switch
+        var manager = await database.ManagerAccounts.Where(m => m.Id == managerId).Select(m => new { m.Sleeve.Fund.IsDemo, m.IsActive }).FirstOrDefaultAsync(cancellationToken);
+        return manager switch
         {
             null => ManualChange.Missing,
-            true => ManualChange.Refused(DemoIsFixed),
+            { IsDemo: true } => ManualChange.Refused(DemoIsFixed),
+            { IsActive: false } => ManualChange.Refused(Connections.ConnectionService.RetiredManager),
             _ => null,
         };
     }

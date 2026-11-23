@@ -31,7 +31,7 @@ import { FundsApi } from './funds.api';
         [crumbs]="[{ label: d.fund.name, link: ['/funds', d.fund.id] }, { label: d.sleeve.name, link: ['/sleeves', d.sleeve.id] }, { label: d.manager.name }]"
         [title]="d.manager.name"
         [demo]="d.fund.isDemo"
-        [sub]="'Manager · ' + d.sleeve.name + ' sleeve · since ' + (d.inceptionDate | date: 'd MMM y' : 'UTC')"
+        [sub]="'Manager · ' + d.sleeve.name + ' sleeve · since ' + (d.inceptionDate | date: 'd MMM y' : 'UTC') + (d.manager.retiredOn ? ' · retired ' + (d.manager.retiredOn | date: 'd MMM y' : 'UTC') : '')"
         [asOf]="d.asOf"
       />
 
@@ -124,7 +124,7 @@ import { FundsApi } from './funds.api';
             <app-liquidity-panel scope="Manager" [scopeId]="d.manager.id" />
           </ng-template>
         </nz-tab>
-        @if (isAdmin() && !d.fund.isDemo) {
+        @if (isAdmin() && !d.fund.isDemo && !d.manager.retiredOn) {
           <nz-tab nzTitle="Keys and wallets">
             <ng-template nz-tab>
               <kft-manager-connections [fundId]="d.fund.id" [managerId]="d.manager.id" />

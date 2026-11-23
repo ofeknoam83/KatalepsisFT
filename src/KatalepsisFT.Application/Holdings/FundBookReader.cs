@@ -12,7 +12,7 @@ public sealed record FundBook(Fund Fund, DateOnly AsOf, IReadOnlyList<Sleeve> Sl
 
     public static SleeveRefDto Ref(Sleeve sleeve) => new(sleeve.Id, sleeve.Name, sleeve.MandateType);
 
-    public static ManagerRefDto Ref(ManagerAccount manager) => new(manager.Id, manager.Name, manager.SleeveId);
+    public static ManagerRefDto Ref(ManagerAccount manager) => new(manager.Id, manager.Name, manager.SleeveId, manager.RetiredOn);
 
     /// <summary>The rows that count towards exposure under a filter. Cash rows always pass, so NAV stays whole.</summary>
     public static IEnumerable<HoldingRow> Apply(IEnumerable<HoldingRow> rows, InstrumentFilter filter) =>

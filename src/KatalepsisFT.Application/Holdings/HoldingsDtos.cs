@@ -23,7 +23,8 @@ public sealed record FundRefDto(int Id, string Name, bool IsDemo, string? Benchm
 
 public sealed record SleeveRefDto(int Id, string Name, MandateType MandateType);
 
-public sealed record ManagerRefDto(int Id, string Name, int SleeveId);
+/// <param name="RetiredOn">The day the manager was retired; null while it is active.</param>
+public sealed record ManagerRefDto(int Id, string Name, int SleeveId, DateOnly? RetiredOn = null);
 
 public sealed record FundListItemDto(int Id, string Name, bool IsDemo, decimal NavUsd, DateOnly? AsOf, int Sleeves, int Managers);
 

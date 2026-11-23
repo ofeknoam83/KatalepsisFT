@@ -50,6 +50,7 @@ public sealed class ManagerBookService(IFtDbContext database, ManagerBookWriter 
         await database
             .ManualPositions.Select(p => p.ManagerAccountId)
             .Distinct()
+            .Where(id => database.ManagerAccounts.Any(m => m.Id == id && m.IsActive))
             .Where(id => !database.VenueConnections.Any(c => c.ManagerAccountId == id && c.State != Domain.Connections.ConnectionState.Disabled))
             .ToListAsync(cancellationToken);
 }

@@ -22,5 +22,9 @@ public class ManagerAccount
     public DateOnly InceptionDate { get; set; }
     public decimal AllocatedCapitalUsd { get; set; }
     public ManagerDataSource DataSource { get; set; }
+    /// <summary>False once the manager has been retired: its history stays, its book is empty and nothing reads it any more.</summary>
     public bool IsActive { get; set; } = true;
+
+    /// <summary>The day the manager was retired; null while it is active.</summary>
+    public DateOnly? RetiredOn { get; set; }
 }

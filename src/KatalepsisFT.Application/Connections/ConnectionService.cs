@@ -98,6 +98,11 @@ public sealed class ConnectionService(IFtDbContext database, VenueAdapterRegistr
             return new ConnectionChange(null, null);
         }
 
+        if (!manager.IsActive)
+        {
+            return new ConnectionChange(null, RetiredManager);
+        }
+
         if (manager.DataSource != ManagerDataSource.Venue)
         {
             return new ConnectionChange(null, "This manager's positions do not come from venues.");
@@ -173,6 +178,8 @@ public sealed class ConnectionService(IFtDbContext database, VenueAdapterRegistr
         return new ConnectionChange(Dto(connection), null);
     }
 
+    public const string RetiredManager = "This manager is retired. Reinstate it on the fund's Structure page first.";
+
     public async Task<ConnectionChange> SyncNowAsync(int connectionId, CancellationToken cancellationToken)
     {
         if (!await sync.SyncAsync(connectionId, cancellationToken))
@@ -195,6 +202,11 @@ public sealed class ConnectionService(IFtDbContext database, VenueAdapterRegistr
 
         if (enabled && connection.State == ConnectionState.Disabled)
         {
+            if (!await database.ManagerAccounts.Where(m => m.Id == connection.ManagerAccountId).Select(m => m.IsActive).SingleAsync(cancellationToken))
+            {
+                return new ConnectionChange(null, RetiredManager);
+            }
+
             connection.State = ConnectionState.Pending;
             connection.ConsecutiveFailures = 0;
             // What it last read may be months old and must not go back into the book; the first fresh read brings

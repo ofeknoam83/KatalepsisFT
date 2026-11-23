@@ -444,6 +444,10 @@ namespace KatalepsisFT.Persistence.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("name");
 
+                    b.Property<DateOnly?>("RetiredOn")
+                        .HasColumnType("date")
+                        .HasColumnName("retired_on");
+
                     b.Property<int>("SleeveId")
                         .HasColumnType("integer")
                         .HasColumnName("sleeve_id");

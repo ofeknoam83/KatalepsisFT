@@ -421,7 +421,8 @@ public sealed class RiskService(IFtDbContext database)
         IReadOnlyList<AssetExposure> assets = HoldingsAggregator.ByAsset(rows);
         AssetExposure? largest = assets.FirstOrDefault();
         (string Name, double Drawdown)? worst = book
-            .Managers.Where(m => managerIds.Contains(m.Id) && history.Valued([m.Id]).Length == 1)
+            // A retired manager's drawdown is history, not a risk the fund still runs.
+            .Managers.Where(m => m.IsActive && managerIds.Contains(m.Id) && history.Valued([m.Id]).Length == 1)
             .Select(m => (m.Name, Drawdown: CurrentDrawdown(history.Series([m.Id], book.AsOf).Returns())))
             .OrderBy(m => m.Drawdown)
             .Select(m => ((string Name, double Drawdown)?)m)

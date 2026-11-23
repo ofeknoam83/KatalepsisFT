@@ -79,6 +79,16 @@ public sealed class ConnectionsController(
     public async Task<IActionResult> SaveManagerAsync(int managerId, SaveManagerRequest request, CancellationToken cancellationToken) =>
         await InvalidAsync(managerValidator, request, cancellationToken) ?? Result(await structure.SaveManagerAsync(managerId, request, cancellationToken));
 
+    [HttpPost("managers/{managerId:int}/move")]
+    public async Task<IActionResult> MoveManagerAsync(int managerId, MoveManagerRequest request, CancellationToken cancellationToken) =>
+        Result(await structure.MoveManagerAsync(managerId, request.SleeveId, cancellationToken));
+
+    [HttpPost("managers/{managerId:int}/retire")]
+    public async Task<IActionResult> RetireManagerAsync(int managerId, CancellationToken cancellationToken) => Result(await structure.RetireManagerAsync(managerId, cancellationToken));
+
+    [HttpPost("managers/{managerId:int}/reinstate")]
+    public async Task<IActionResult> ReinstateManagerAsync(int managerId, CancellationToken cancellationToken) => Result(await structure.ReinstateManagerAsync(managerId, cancellationToken));
+
     [HttpDelete("managers/{managerId:int}")]
     public async Task<IActionResult> DeleteManagerAsync(int managerId, CancellationToken cancellationToken) => Result(await structure.DeleteManagerAsync(managerId, cancellationToken));
 

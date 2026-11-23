@@ -42,6 +42,7 @@ interface ManagerDraft {
   saved: { name: string; capital: number | null };
   hasHistory: boolean;
   connections: number;
+  retiredOn: string | null;
 }
 
 interface SleeveDraft {
@@ -86,10 +87,16 @@ interface SleeveDraft {
     }
     .manager {
       display: grid;
-      grid-template-columns: 1fr 170px auto;
+      grid-template-columns: minmax(160px, 1fr) 170px;
       gap: 8px;
       align-items: center;
-      margin-bottom: 6px;
+      margin-bottom: 10px;
+    }
+    /* What can be done with a manager sits on its own line under its name and capital, so the name keeps its width. */
+    .manager .row {
+      grid-column: 1 / -1;
+      justify-content: flex-end;
+      flex-wrap: wrap;
     }
     .row {
       display: flex;
@@ -168,10 +175,40 @@ interface SleeveDraft {
                     <input nz-input [(ngModel)]="manager.name" [disabled]="!s.canEdit" maxlength="200" />
                     <nz-input-number [(ngModel)]="manager.capital" [nzMin]="0" [nzStep]="1000000" [nzDisabled]="!s.canEdit" style="width:100%" />
                     <span class="row">
+                      @if (manager.retiredOn) {
+                        <nz-tag nzColor="default" [attr.data-testid]="'retired-' + manager.name">Retired {{ manager.retiredOn }}</nz-tag>
+                      }
                       @if (s.canEdit) {
                         <a (click)="saveManager(manager)">Save</a>
-                        @if (manager.hasHistory || manager.connections > 0) {
-                          <nz-tag [title]="'A manager with history or venue keys stays in the fund'">{{ manager.connections > 0 ? manager.connections + (manager.connections === 1 ? ' key' : ' keys') : 'Has history' }}</nz-tag>
+                        @if (drafts().length > 1) {
+                          <nz-select
+                            [ngModel]="null"
+                            (ngModelChange)="move(manager, $event)"
+                            nzPlaceHolder="Move to…"
+                            nzSize="small"
+                            style="width:150px"
+                            [attr.data-testid]="'move-' + manager.name"
+                            title="Its whole record moves with it: both sleeves' figures are then those of the managers they have now"
+                          >
+                            @for (other of drafts(); track other.id) {
+                              @if (other.id !== sleeve.id) {
+                                <nz-option [nzValue]="other.id" [nzLabel]="other.saved.name" />
+                              }
+                            }
+                          </nz-select>
+                        }
+                        @if (manager.retiredOn) {
+                          <a (click)="run(api.reinstateManager(manager.id), manager.saved.name + ' is active again. Switch its keys and wallets back on to read them.', true)" [attr.data-testid]="'reinstate-' + manager.name">Reinstate</a>
+                        } @else if (manager.hasHistory || manager.connections > 0) {
+                          <a
+                            style="color:#cf1322"
+                            nz-popconfirm
+                            nzPopconfirmTitle="Retire this manager? Its history stays. From today its book is empty, its keys and wallets are switched off, and what it was worth leaves the fund as money going out, not as a loss."
+                            nzOkText="Retire"
+                            (nzOnConfirm)="run(api.retireManager(manager.id), manager.saved.name + ' has been retired.', true)"
+                            [attr.data-testid]="'retire-' + manager.name"
+                            >Retire</a
+                          >
                         } @else {
                           <a style="color:#cf1322" nz-popconfirm nzPopconfirmTitle="Remove this manager?" nzOkText="Remove" (nzOnConfirm)="run(api.removeManager(manager.id), 'Manager removed.')">Remove</a>
                         }
@@ -295,6 +332,7 @@ export class FundStructurePage {
           manager.saved = freshManager.saved;
           manager.hasHistory = freshManager.hasHistory;
           manager.connections = freshManager.connections;
+          manager.retiredOn = freshManager.retiredOn;
           return manager;
         });
         return draft;
@@ -322,6 +360,7 @@ export class FundStructurePage {
         saved: { name: m.name, capital: m.allocatedCapitalUsd },
         hasHistory: m.hasHistory,
         connections: m.connections,
+        retiredOn: m.retiredOn,
       })),
       newManager: '',
     };
@@ -388,6 +427,13 @@ export class FundStructurePage {
    * Runs one change, then reloads the structure; names shown in the navigation are reloaded too when they may have
    * changed. A change the server refuses leaves the page exactly as it was typed.
    */
+  protected move(manager: ManagerDraft, sleeveId: number | null): void {
+    const target = this.drafts().find((d) => d.id === sleeveId);
+    if (target) {
+      this.run(this.api.moveManager(manager.id, target.id), `${manager.saved.name} is now in ${target.saved.name}.`, true);
+    }
+  }
+
   protected run(request: Observable<unknown>, message: string, namesChanged = false, done?: () => void): void {
     this.error.set(null);
     this.saved.set(null);

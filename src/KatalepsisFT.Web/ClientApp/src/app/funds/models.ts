@@ -27,6 +27,8 @@ export interface ManagerRef {
   id: number;
   name: string;
   sleeveId: number;
+  /** The day the manager was retired; null while it is active. */
+  retiredOn: string | null;
 }
 
 export interface FundListItem {

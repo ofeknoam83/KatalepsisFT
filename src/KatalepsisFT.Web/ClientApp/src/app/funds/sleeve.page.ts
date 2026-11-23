@@ -79,7 +79,12 @@ function heat(value: number, max: number): Record<string, string> {
               <tbody>
                 @for (row of managers.data; track row.manager.id) {
                   <tr>
-                    <td><a [routerLink]="['/managers', row.manager.id]"><b>{{ row.manager.name }}</b></a></td>
+                    <td>
+                      <a [routerLink]="['/managers', row.manager.id]"><b>{{ row.manager.name }}</b></a>
+                      @if (row.manager.retiredOn) {
+                        <nz-tag style="margin-left:8px">Retired {{ row.manager.retiredOn }}</nz-tag>
+                      }
+                    </td>
                     <td><nz-tag>{{ row.dataSource }}</nz-tag></td>
                     <td class="num">{{ row.totals.navUsd | usd }}</td>
                     <td class="num">{{ row.totals.navUsd | share: d.totals.navUsd : 0 }}</td>

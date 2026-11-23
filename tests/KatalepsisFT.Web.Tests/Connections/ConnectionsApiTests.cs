@@ -353,6 +353,61 @@ public class ConnectionsApiTests(TestDatabase database) : IClassFixture<TestData
     }
 
     [Fact]
+    public async Task RetiredManager_KeepsItsHistory_HoldsNothing_AndItsValueLeavesAsMoneyNotAsALoss()
+    {
+        (int fundId, int managerId) = await NewFundAsync();
+        ConnectionDto connection = (await (await AddAsync(managerId, "key-of-the-retired")).Content.ReadFromJsonAsync<ConnectionDto>(Json))!;
+
+        (await _admin.PostAsync($"/api/managers/{managerId}/retire", null)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        (await Get<FundOverviewDto>($"/api/funds/{fundId}/overview")).Totals.NavUsd.Should().Be(0m);
+        (await Get<ManagerDetailDto>($"/api/managers/{managerId}")).Positions.Should().BeEmpty();
+        StructureManagerDto retired = (await Get<StructureDto>($"/api/funds/{fundId}/structure")).Sleeves.Single().Managers.Single();
+        retired.RetiredOn.Should().Be(DateOnly.FromDateTime(DateTime.UtcNow));
+        (await Get<ConnectionsDto>($"/api/funds/{fundId}/connections")).Connections.Single().State.Should().Be(ConnectionState.Disabled);
+        // Nothing reads or changes it while it is retired.
+        HttpResponseMessage on = await _admin.PostAsJsonAsync($"/api/connections/{connection.Id}/enabled", new { enabled = true });
+        on.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await on.Content.ReadFromJsonAsync<ErrorResponse>(Json))!.Message.Should().Be(ConnectionService.RetiredManager);
+        (await AddAsync(managerId, "key-for-nobody")).StatusCode.Should().Be(HttpStatusCode.Conflict);
+        using (IServiceScope scope = _app!.Services.CreateScope())
+        {
+            FtDbContext db = scope.ServiceProvider.GetRequiredService<FtDbContext>();
+            (await db.CashFlows.Where(f => f.ManagerAccountId == managerId).OrderBy(f => f.Id).Select(f => f.AmountUsd).ToListAsync()).Should().Equal(101_250m, -101_250m);
+            (await db.NavSnapshots.Where(n => n.ManagerAccountId == managerId).Select(n => n.NavUsd).SingleAsync()).Should().Be(0m);
+        }
+
+        // Back again: the manager is open, and its account returns when its key is switched on, as money arriving.
+        (await _admin.PostAsync($"/api/managers/{managerId}/reinstate", null)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await _admin.PostAsJsonAsync($"/api/connections/{connection.Id}/enabled", new { enabled = true })).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await Get<FundOverviewDto>($"/api/funds/{fundId}/overview")).Totals.NavUsd.Should().Be(101_250m);
+        using IServiceScope after = _app!.Services.CreateScope();
+        (await after.ServiceProvider.GetRequiredService<FtDbContext>().CashFlows.Where(f => f.ManagerAccountId == managerId).OrderBy(f => f.Id).Select(f => f.AmountUsd).ToListAsync()).Should().Equal(101_250m, -101_250m, 101_250m);
+    }
+
+    [Fact]
+    public async Task Manager_CanMoveToAnotherSleeveOfItsFund_ButNotElsewhere()
+    {
+        NewFundRequest request = new($"Fund {Guid.NewGuid():N}", null, [new NewSleeveRequest("Directional", MandateType.Directional, [new NewManagerRequest("Alpha Desk", 1m)]), new NewSleeveRequest("Beta", MandateType.Beta, [new NewManagerRequest("Index Desk", 1m)])]);
+        int fundId = (await (await _admin.PostAsJsonAsync("/api/funds", request, Json)).Content.ReadFromJsonAsync<FundCreatedDto>(Json))!.Id;
+        StructureDto before = await Get<StructureDto>($"/api/funds/{fundId}/structure");
+        int alpha = before.Sleeves[0].Managers.Single().Id;
+        int beta = before.Sleeves[1].Id;
+        await AddAsync(alpha, "key-that-moves");
+        (int _, int stranger) = await NewFundAsync();
+        int otherFundSleeve = (await Get<ManagerDetailDto>($"/api/managers/{stranger}")).Sleeve.Id;
+
+        (await _admin.PostAsJsonAsync($"/api/managers/{alpha}/move", new MoveManagerRequest(otherFundSleeve), Json)).StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await _admin.PostAsJsonAsync($"/api/managers/{alpha}/move", new MoveManagerRequest(beta), Json)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        FundOverviewDto overview = await Get<FundOverviewDto>($"/api/funds/{fundId}/overview");
+        overview.Totals.NavUsd.Should().Be(101_250m);
+        overview.Sleeves.Single(s => s.Sleeve.Id == beta).Totals.NavUsd.Should().Be(101_250m);
+        overview.Sleeves.Single(s => s.Sleeve.Id != beta).Totals.NavUsd.Should().Be(0m);
+        (await Get<StructureDto>($"/api/funds/{fundId}/structure")).Sleeves[1].Managers.Select(m => m.Name).Should().BeEquivalentTo(["Index Desk", "Alpha Desk"]);
+    }
+
+    [Fact]
     public async Task SameKeyTwice_IsRefused()
     {
         (_, int managerId) = await NewFundAsync();

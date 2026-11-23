@@ -37,6 +37,12 @@ public sealed class ManagerBookWriter(IFtDbContext database)
 
     private async Task<(decimal NavUsd, decimal GrossUsd, decimal NetUsd)> WriteOnceAsync(int managerAccountId, DateOnly day, CancellationToken cancellationToken)
     {
+        // A retired manager keeps its history and holds nothing: whatever is still stored for it stays out of the book.
+        if (!await database.ManagerAccounts.Where(m => m.Id == managerAccountId).Select(m => m.IsActive).FirstOrDefaultAsync(cancellationToken))
+        {
+            return (0m, 0m, 0m);
+        }
+
         List<string> snapshots = await database
             .VenueConnections.Where(c => c.ManagerAccountId == managerAccountId && c.State != ConnectionState.Disabled && c.LastSnapshotJson != null)
             .Select(c => c.LastSnapshotJson!)

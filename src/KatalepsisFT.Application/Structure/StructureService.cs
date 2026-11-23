@@ -1,5 +1,7 @@
 using FluentValidation;
 using KatalepsisFT.Application.Alerts;
+using KatalepsisFT.Application.Connections;
+using KatalepsisFT.Domain.Connections;
 using KatalepsisFT.Domain.Funds;
 using Microsoft.EntityFrameworkCore;
 
@@ -15,7 +17,10 @@ public sealed record FundCreatedDto(int Id, string Name);
 
 public sealed record LimitDto(MandateLimitKind Kind, decimal Value);
 
-public sealed record StructureManagerDto(int Id, string Name, decimal AllocatedCapitalUsd, ManagerDataSource DataSource, bool HasHistory, int Connections);
+/// <param name="RetiredOn">The day the manager was retired; null while it is active.</param>
+public sealed record StructureManagerDto(int Id, string Name, decimal AllocatedCapitalUsd, ManagerDataSource DataSource, bool HasHistory, int Connections, DateOnly? RetiredOn = null);
+
+public sealed record MoveManagerRequest(int SleeveId);
 
 public sealed record StructureSleeveDto(int Id, string Name, MandateType MandateType, IReadOnlyList<LimitDto> Limits, IReadOnlyList<StructureManagerDto> Managers);
 
@@ -141,7 +146,7 @@ public sealed class StructureService(IFtDbContext database, AlertEvaluator alert
                     s.Name,
                     s.MandateType,
                     s.Limits.OrderBy(l => l.Kind).Select(l => new LimitDto(l.Kind, l.Value)).ToList(),
-                    s.Managers.OrderBy(m => m.Id).Select(m => new StructureManagerDto(m.Id, m.Name, m.AllocatedCapitalUsd, m.DataSource, valued.Contains(m.Id), connections.GetValueOrDefault(m.Id))).ToList()
+                    s.Managers.OrderBy(m => m.Id).Select(m => new StructureManagerDto(m.Id, m.Name, m.AllocatedCapitalUsd, m.DataSource, valued.Contains(m.Id), connections.GetValueOrDefault(m.Id), m.RetiredOn)).ToList()
                 ))
                 .ToList()
         );
@@ -331,6 +336,134 @@ public sealed class StructureService(IFtDbContext database, AlertEvaluator alert
         manager.Name = request.Name.Trim();
         manager.AllocatedCapitalUsd = request.AllocatedCapitalUsd;
         await database.SaveChangesAsync(cancellationToken);
+        return StructureChange.Ok;
+    }
+
+    /// <summary>
+    /// Puts a manager in another sleeve of the same fund. Its whole record goes with it: sleeve figures are always
+    /// those of the managers a sleeve has now, so the old sleeve's past no longer includes it and the new one's does.
+    /// </summary>
+    public async Task<StructureChange> MoveManagerAsync(int managerId, int sleeveId, CancellationToken cancellationToken)
+    {
+        ManagerAccount? manager = await database.ManagerAccounts.Include(m => m.Sleeve).ThenInclude(s => s.Fund).FirstOrDefaultAsync(m => m.Id == managerId, cancellationToken);
+        Sleeve? target = await database.Sleeves.FirstOrDefaultAsync(s => s.Id == sleeveId, cancellationToken);
+        if (manager is null || target is null)
+        {
+            return StructureChange.NotFound;
+        }
+
+        if (manager.Sleeve.Fund.IsDemo)
+        {
+            return StructureChange.Refused(DemoIsFixed);
+        }
+
+        if (target.FundId != manager.Sleeve.FundId)
+        {
+            return StructureChange.Refused("A manager can only move to a sleeve of the same fund.");
+        }
+
+        if (target.Id == manager.SleeveId)
+        {
+            return StructureChange.Ok;
+        }
+
+        if (await database.ManagerAccounts.AnyAsync(m => m.SleeveId == sleeveId && m.Name.ToLower() == manager.Name.ToLower(), cancellationToken))
+        {
+            return StructureChange.Refused($"{target.Name} already has a manager with that name.");
+        }
+
+        int fundId = manager.Sleeve.FundId;
+        manager.SleeveId = sleeveId;
+        await database.SaveChangesAsync(cancellationToken);
+        // Both sleeves' limits now apply to different books.
+        await alerts.EvaluateAsync(fundId, cancellationToken);
+        return StructureChange.Ok;
+    }
+
+    /// <summary>
+    /// Closes a manager without rewriting the past. From today its book is empty and nothing reads it: its keys and
+    /// wallets are switched off and its hand-entered positions no longer count. What it was worth leaves the fund as
+    /// money going out, so neither the fund's nor the sleeve's return shows a loss, and everything up to today stays.
+    /// </summary>
+    public async Task<StructureChange> RetireManagerAsync(int managerId, CancellationToken cancellationToken)
+    {
+        ManagerAccount? manager = await database.ManagerAccounts.Include(m => m.Sleeve).ThenInclude(s => s.Fund).FirstOrDefaultAsync(m => m.Id == managerId, cancellationToken);
+        if (manager is null)
+        {
+            return StructureChange.NotFound;
+        }
+
+        if (manager.Sleeve.Fund.IsDemo)
+        {
+            return StructureChange.Refused(DemoIsFixed);
+        }
+
+        if (!manager.IsActive)
+        {
+            return StructureChange.Ok;
+        }
+
+        DateTimeOffset now = clock.GetUtcNow();
+        DateOnly today = DateOnly.FromDateTime(now.UtcDateTime);
+        int fundId = manager.Sleeve.FundId;
+        if (await database.NavSnapshots.AnyAsync(n => n.ManagerAccountId == managerId, cancellationToken))
+        {
+            // One last valuation, so what leaves is what the book is worth now and not what it was at the last read.
+            (decimal nav, _, _) = await new ManagerBookWriter(database).WriteAsync(managerId, today, cancellationToken);
+            manager = await database.ManagerAccounts.FirstAsync(m => m.Id == managerId, cancellationToken);
+            database.PositionSnapshots.RemoveRange(await database.PositionSnapshots.Where(p => p.ManagerAccountId == managerId && p.Date == today).ToListAsync(cancellationToken));
+            (await database.NavSnapshots.FirstAsync(n => n.ManagerAccountId == managerId && n.Date == today, cancellationToken)).NavUsd = 0m;
+            if (nav != 0m)
+            {
+                database.CashFlows.Add(ConnectionSyncService.BookChange(managerId, -nav, now, "Manager retired: its book leaves the fund"));
+            }
+        }
+
+        foreach (VenueConnection connection in await database.VenueConnections.Where(c => c.ManagerAccountId == managerId && c.State != ConnectionState.Disabled).ToListAsync(cancellationToken))
+        {
+            connection.State = ConnectionState.Disabled;
+        }
+
+        manager.IsActive = false;
+        manager.RetiredOn = today;
+        await database.SaveChangesAsync(cancellationToken);
+        await alerts.EvaluateAsync(fundId, cancellationToken);
+        return StructureChange.Ok;
+    }
+
+    /// <summary>
+    /// Opens a retired manager again. Its hand-entered positions count from today and come back in as money
+    /// arriving; its keys and wallets stay off until each is switched on, which brings that account in the same way.
+    /// </summary>
+    public async Task<StructureChange> ReinstateManagerAsync(int managerId, CancellationToken cancellationToken)
+    {
+        ManagerAccount? manager = await database.ManagerAccounts.Include(m => m.Sleeve).ThenInclude(s => s.Fund).FirstOrDefaultAsync(m => m.Id == managerId, cancellationToken);
+        if (manager is null)
+        {
+            return StructureChange.NotFound;
+        }
+
+        if (manager.IsActive)
+        {
+            return StructureChange.Ok;
+        }
+
+        int fundId = manager.Sleeve.FundId;
+        manager.IsActive = true;
+        manager.RetiredOn = null;
+        await database.SaveChangesAsync(cancellationToken);
+        if (await database.ManualPositions.AnyAsync(p => p.ManagerAccountId == managerId, cancellationToken))
+        {
+            DateTimeOffset now = clock.GetUtcNow();
+            (decimal nav, _, _) = await new ManagerBookWriter(database).WriteAsync(managerId, DateOnly.FromDateTime(now.UtcDateTime), cancellationToken);
+            if (nav != 0m)
+            {
+                database.CashFlows.Add(ConnectionSyncService.BookChange(managerId, nav, now, "Manager reinstated: its book comes back into the fund"));
+                await database.SaveChangesAsync(cancellationToken);
+            }
+        }
+
+        await alerts.EvaluateAsync(fundId, cancellationToken);
         return StructureChange.Ok;
     }
 

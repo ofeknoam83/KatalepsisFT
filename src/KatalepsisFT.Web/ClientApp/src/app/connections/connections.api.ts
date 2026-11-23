@@ -58,6 +58,8 @@ export interface StructureManager {
   dataSource: string;
   hasHistory: boolean;
   connections: number;
+  /** The day the manager was retired; null while it is active. */
+  retiredOn: string | null;
 }
 
 export interface StructureSleeve {
@@ -127,6 +129,18 @@ export class ConnectionsApi {
 
   saveManager(managerId: number, name: string, allocatedCapitalUsd: number): Observable<void> {
     return this.http.put<void>(`/api/managers/${managerId}`, { name, allocatedCapitalUsd });
+  }
+
+  moveManager(managerId: number, sleeveId: number): Observable<void> {
+    return this.http.post<void>(`/api/managers/${managerId}/move`, { sleeveId });
+  }
+
+  retireManager(managerId: number): Observable<void> {
+    return this.http.post<void>(`/api/managers/${managerId}/retire`, {});
+  }
+
+  reinstateManager(managerId: number): Observable<void> {
+    return this.http.post<void>(`/api/managers/${managerId}/reinstate`, {});
   }
 
   removeManager(managerId: number): Observable<void> {
