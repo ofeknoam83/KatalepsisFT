@@ -17,6 +17,9 @@ public enum Venue
     BitcoinWallet = 11,
     SolanaWallet = 12,
     TronWallet = 13,
+    Bitget = 14,
+    Gate = 15,
+    Kraken = 16,
 }
 
 public enum ConnectionState

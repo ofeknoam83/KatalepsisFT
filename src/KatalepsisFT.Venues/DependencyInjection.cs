@@ -8,6 +8,7 @@ using KatalepsisFT.Venues.Hyperliquid;
 using KatalepsisFT.Venues.Kucoin;
 using KatalepsisFT.Venues.Mexc;
 using KatalepsisFT.Venues.Okx;
+using KatalepsisFT.Venues.Rest;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace KatalepsisFT.Venues;
@@ -30,6 +31,14 @@ public static class DependencyInjection
         services.AddScoped<IVenueAdapter>(provider => new CoinbasePrimeAdapter(provider.GetRequiredService<IHttpClientFactory>().CreateClient(CoinbasePrimeAdapter.HttpClientName), provider.GetRequiredService<TimeProvider>()));
         services.AddHttpClient(HyperliquidAdapter.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(20));
         services.AddScoped<IVenueAdapter>(provider => new HyperliquidAdapter(provider.GetRequiredService<IHttpClientFactory>().CreateClient(HyperliquidAdapter.HttpClientName), provider.GetRequiredService<TimeProvider>()));
+        foreach (string name in new[] { KrakenAdapter.HttpClientName, GateAdapter.HttpClientName, BitgetAdapter.HttpClientName })
+        {
+            services.AddHttpClient(name, client => client.Timeout = TimeSpan.FromSeconds(20));
+        }
+
+        services.AddScoped<IVenueAdapter>(provider => new KrakenAdapter(provider.GetRequiredService<IHttpClientFactory>().CreateClient(KrakenAdapter.HttpClientName), provider.GetRequiredService<TimeProvider>()));
+        services.AddScoped<IVenueAdapter>(provider => new GateAdapter(provider.GetRequiredService<IHttpClientFactory>().CreateClient(GateAdapter.HttpClientName), provider.GetRequiredService<TimeProvider>()));
+        services.AddScoped<IVenueAdapter>(provider => new BitgetAdapter(provider.GetRequiredService<IHttpClientFactory>().CreateClient(BitgetAdapter.HttpClientName), provider.GetRequiredService<TimeProvider>()));
         services.AddHttpClient(WalletAdapter.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(20));
         services.AddScoped<IVenueAdapter>(provider => new EvmWalletAdapter(ChainClient(provider), provider.GetRequiredService<TimeProvider>()));
         services.AddScoped<IVenueAdapter>(provider => new SolanaWalletAdapter(ChainClient(provider), provider.GetRequiredService<TimeProvider>()));

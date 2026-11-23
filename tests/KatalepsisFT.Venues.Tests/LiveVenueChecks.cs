@@ -5,6 +5,7 @@ using KatalepsisFT.Venues.Deribit;
 using KatalepsisFT.Venues.Kucoin;
 using KatalepsisFT.Venues.Mexc;
 using KatalepsisFT.Venues.Okx;
+using KatalepsisFT.Venues.Rest;
 
 namespace KatalepsisFT.Venues.Tests;
 
@@ -58,6 +59,18 @@ public class LiveVenueChecks
 
     [Fact]
     public async Task CoinbasePrime_RefusesAKeyThatDoesNotExist() => await RefusedAsync(new CoinbasePrimeAdapter(new HttpClient { Timeout = TimeSpan.FromSeconds(20) }, TimeProvider.System));
+
+    [Fact]
+    public async Task Kraken_RefusesAKeyThatDoesNotExist() =>
+        await RefusedAsync(new KrakenAdapter(Client(), TimeProvider.System), new VenueCredentials(new string('A', 56), Convert.ToBase64String(new byte[64])));
+
+    [Fact]
+    public async Task Gate_RefusesAKeyThatDoesNotExist() => await RefusedAsync(new GateAdapter(Client(), TimeProvider.System), new VenueCredentials(new string('0', 32), new string('0', 64)));
+
+    [Fact]
+    public async Task Bitget_RefusesAKeyThatDoesNotExist() => await RefusedAsync(new BitgetAdapter(Client(), TimeProvider.System), new VenueCredentials("bg_" + new string('0', 32), new string('0', 64), "passphrase"));
+
+    private static HttpClient Client() => new() { Timeout = TimeSpan.FromSeconds(20) };
 
     private static async Task RefusedAsync(IVenueAdapter adapter, VenueCredentials? credentials = null)
     {

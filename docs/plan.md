@@ -274,7 +274,13 @@ Each phase ends deployed on Render and checked in the browser. Each is split int
   - [x] Parts of an account that could not be read are stated on the connection instead of being left out silently
   - [ ] MEXC and both Coinbase venues do not say what a key may do, so their keys are stored as "permissions unverified": create them read-only at the venue
   - [ ] All four are tested on hand-written answers and on the real venues' refusal of a bad key; no real account has been read
-- [ ] **Phase 8 — New CeFi venues**: Bitget, Gate, Kraken.
+- [ ] **Phase 8 — New CeFi venues**
+  - [x] Kraken: spot balances (staked and lent forms count as the coin), deposits and withdrawals from the ledger
+  - [x] Gate: spot account, USDT-settled futures, deposits and withdrawals
+  - [x] Bitget: spot account, USDT-margined futures, deposits and withdrawals
+  - [x] Written as small signed REST clients that can only send GET requests (Kraken's read calls are POST by its own design); each real venue was seen to refuse a made-up key
+  - [ ] None of the three says what a key may do, so their keys are stored as "permissions unverified"
+  - [ ] Not read: Kraken Futures (a separate system with its own keys); Gate margin, options and delivery futures; Bitget coin-margined and USDC futures. Field readings are tested on hand-written answers only
 - [ ] **Phase 9 — DeFi venues**
   - [x] Connections by wallet address: no secret, nothing can be traded through them; read by the DeFi worker
   - [x] Hyperliquid: perp account, spot balances, deposits, withdrawals and transfers. Checked against two real public accounts with 177 open positions each: the value computed from the positions equals the value Hyperliquid states
