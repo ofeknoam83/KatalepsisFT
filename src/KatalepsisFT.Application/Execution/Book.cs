@@ -17,6 +17,9 @@ public sealed record VenueBook(Venue Venue, string Asset, InstrumentType Type, I
     public decimal? Mid => BestBid is decimal bid && BestAsk is decimal ask ? (bid + ask) / 2m : null;
 }
 
+/// <summary>Something that can be traded right now, and the venues with a live book for it.</summary>
+public sealed record LiveInstrument(string Asset, InstrumentType Type, IReadOnlyList<Venue> Venues);
+
 /// <summary>A level of the consolidated book: a venue's price and size, placed among every other venue's.</summary>
 public readonly record struct RoutedLevel(Venue Venue, decimal Price, decimal Quantity);
 
@@ -56,10 +59,16 @@ public sealed class ConsolidatedBook(TimeProvider clock)
     }
 
     /// <summary>All instruments that have at least one fresh book.</summary>
-    public IReadOnlyList<(string Asset, InstrumentType Type)> Instruments()
+    public IReadOnlyList<LiveInstrument> Instruments()
     {
         DateTimeOffset now = clock.GetUtcNow();
-        return _books.Where(b => now - b.Value.At <= MaxAge).Select(b => (b.Key.Asset, b.Key.Type)).Distinct().OrderBy(i => i.Asset).ThenBy(i => i.Type).ToList();
+        return _books
+            .Where(b => now - b.Value.At <= MaxAge)
+            .GroupBy(b => (b.Key.Asset, b.Key.Type))
+            .Select(g => new LiveInstrument(g.Key.Asset, g.Key.Type, g.Select(b => b.Key.Venue).OrderBy(v => v).ToList()))
+            .OrderBy(i => i.Asset)
+            .ThenBy(i => i.Type)
+            .ToList();
     }
 
     /// <summary>The side an order of this kind would trade against, across the given venues, best price first.</summary>
@@ -136,6 +145,7 @@ public static class VenueFees
             (Venue.Bybit, InstrumentType.Perp) => (0.0002m, 0.00055m),
             (Venue.Okx, InstrumentType.Perp) => (0.0002m, 0.0005m),
             (Venue.Hyperliquid, InstrumentType.Perp) => (0.00015m, 0.00045m),
+            (Venue.Kucoin, InstrumentType.Perp) => (0.0002m, 0.0006m),
             (Venue.Hyperliquid, _) => (0.0004m, 0.0007m),
             _ => (0.001m, 0.001m),
         };
@@ -320,7 +330,7 @@ public sealed class VenueStatusBoard(TimeProvider clock)
     public ExecutionStatus Snapshot(ConsolidatedBook books, IReadOnlyList<Venue> venues)
     {
         DateTimeOffset now = clock.GetUtcNow();
-        IReadOnlyList<(string Asset, InstrumentType Type)> instruments = books.Instruments();
+        IReadOnlyList<LiveInstrument> instruments = books.Instruments();
         lock (_gate)
         {
             return new ExecutionStatus(
@@ -332,7 +342,7 @@ public sealed class VenueStatusBoard(TimeProvider clock)
                     {
                         DateTimeOffset? last = _lastMessage.TryGetValue(venue, out DateTimeOffset at) ? at : null;
                         double? middle = _roundTrips.TryGetValue(venue, out Queue<double>? samples) && samples.Count > 0 ? samples.OrderBy(s => s).ElementAt(samples.Count / 2) : null;
-                        return new VenueStatus(venue, last is not null && now - last <= ConsolidatedBook.MaxAge, instruments.Count(i => books.Of(venue, i.Asset, i.Type) is not null), middle is null ? null : Math.Round(middle.Value, 1), last);
+                        return new VenueStatus(venue, last is not null && now - last <= ConsolidatedBook.MaxAge, instruments.Count(i => i.Venues.Contains(venue)), middle is null ? null : Math.Round(middle.Value, 1), last);
                     })
                     .ToList()
             );

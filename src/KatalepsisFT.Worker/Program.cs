@@ -89,6 +89,8 @@ if (hasPostgres && group.ToLowerInvariant() is WorkerGroups.Exec)
     builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.BybitBookStream>();
     builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.OkxBookStream>();
     builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.HyperliquidBookStream>();
+    builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.KucoinSpotBookStream>();
+    builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.KucoinPerpBookStream>();
     builder.Services.AddHostedService<MarketDataWorker>();
     builder.Services.AddHostedService<OrderEngineWorker>();
 }

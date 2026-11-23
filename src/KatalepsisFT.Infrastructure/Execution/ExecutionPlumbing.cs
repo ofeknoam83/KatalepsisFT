@@ -152,10 +152,10 @@ public sealed class KeyValueBookFeed(IConnectionMultiplexer keyValue) : IBookFee
     /// <summary>Called by the execution service: everything it currently knows, in one round trip.</summary>
     public async Task PublishAsync(ConsolidatedBook books, ExecutionStatus? status = null)
     {
-        IReadOnlyList<(string Asset, InstrumentType Type)> instruments = books.Instruments();
+        IReadOnlyList<LiveInstrument> instruments = books.Instruments();
         IBatch batch = keyValue.GetDatabase().CreateBatch();
-        List<Task> writes = [batch.StringSetAsync(IndexKey, JsonSerializer.Serialize(instruments.Select(i => new Listed(i.Asset, i.Type)), Json), Life)];
-        foreach ((string asset, InstrumentType type) in instruments)
+        List<Task> writes = [batch.StringSetAsync(IndexKey, JsonSerializer.Serialize(instruments, Json), Life)];
+        foreach ((string asset, InstrumentType type, _) in instruments)
         {
             writes.Add(batch.StringSetAsync(Key(asset, type), JsonSerializer.Serialize(books.For(asset, type), Json), Life));
         }
@@ -195,20 +195,18 @@ public sealed class KeyValueBookFeed(IConnectionMultiplexer keyValue) : IBookFee
         }
     }
 
-    public async Task<IReadOnlyList<(string Asset, InstrumentType Type)>> InstrumentsAsync(CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<LiveInstrument>> InstrumentsAsync(CancellationToken cancellationToken)
     {
         try
         {
             RedisValue stored = await keyValue.GetDatabase().StringGetAsync(IndexKey);
-            return stored.IsNullOrEmpty ? [] : (JsonSerializer.Deserialize<List<Listed>>((string)stored!, Json) ?? []).Select(l => (l.Asset, l.Type)).ToList();
+            return stored.IsNullOrEmpty ? [] : JsonSerializer.Deserialize<List<LiveInstrument>>((string)stored!, Json) ?? [];
         }
         catch (RedisException)
         {
             return [];
         }
     }
-
-    private sealed record Listed(string Asset, InstrumentType Type);
 }
 
 /// <summary>For a service with no Key Value store: there is no book to show.</summary>
@@ -216,7 +214,7 @@ public sealed class NoBookFeed : IBookFeed
 {
     public Task<IReadOnlyList<VenueBook>> ReadAsync(string asset, InstrumentType type, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<VenueBook>>([]);
 
-    public Task<IReadOnlyList<(string Asset, InstrumentType Type)>> InstrumentsAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<(string, InstrumentType)>>([]);
+    public Task<IReadOnlyList<LiveInstrument>> InstrumentsAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<LiveInstrument>>([]);
 
     public Task<ExecutionStatus?> StatusAsync(CancellationToken cancellationToken) => Task.FromResult<ExecutionStatus?>(null);
 }
@@ -226,7 +224,7 @@ public sealed class LocalBookFeed(ConsolidatedBook books) : IBookFeed
 {
     public Task<IReadOnlyList<VenueBook>> ReadAsync(string asset, InstrumentType type, CancellationToken cancellationToken) => Task.FromResult(books.For(asset, type));
 
-    public Task<IReadOnlyList<(string Asset, InstrumentType Type)>> InstrumentsAsync(CancellationToken cancellationToken) => Task.FromResult(books.Instruments());
+    public Task<IReadOnlyList<LiveInstrument>> InstrumentsAsync(CancellationToken cancellationToken) => Task.FromResult(books.Instruments());
 
     public Task<ExecutionStatus?> StatusAsync(CancellationToken cancellationToken) => Task.FromResult<ExecutionStatus?>(null);
 }

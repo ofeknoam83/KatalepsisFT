@@ -32,7 +32,8 @@ export class DynamicDecimalPipe implements PipeTransform {
     }
 
     const decimalIndex: number = value.indexOf('.');
-    let lastNonZeroIndex: number = value.length - 1;
+    // Changed: starts at the decimal point, so that "1.0000" becomes "1" instead of staying as it is.
+    let lastNonZeroIndex: number = decimalIndex;
 
     for (let i: number = value.length - 1; i > decimalIndex; i--) {
       if (value[i] !== '0') {

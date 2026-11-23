@@ -22,7 +22,7 @@ import { EditName } from '../shared/edit-name';
 import { FORMAT_PIPES } from '../shared/format';
 import { PageHead } from '../shared/page-head';
 import { keptData } from '../shared/page-data';
-import { APPROVAL_LABEL, AccountForm, Book, HaltScope, Order, OrderSide, OrderType, STATUS_COLOR, STATUS_LABEL, TIF_LABEL, TimeInForce, Trading, TradingAccount, TradingVenue } from './models';
+import { APPROVAL_LABEL, AccountForm, Book, HaltScope, Order, OrderSide, OrderType, STATUS_COLOR, STATUS_LABEL, TIF_LABEL, TimeInForce, TradedType, Trading, TradingAccount, TradingVenue, instrumentName } from './models';
 
 interface Answer {
   notice?: string | null;
@@ -142,10 +142,10 @@ interface Depth {
             </div>
             <div class="two">
               <div class="field">
-                <label>Perpetual</label>
-                <nz-select [ngModel]="asset()" (ngModelChange)="asset.set($event)" nzShowSearch style="width:100%" data-testid="ticket-asset">
-                  @for (a of assets(d); track a) {
-                    <nz-option [nzValue]="a" [nzLabel]="a + '-PERP'" />
+                <label>Instrument</label>
+                <nz-select [ngModel]="instrument()" (ngModelChange)="instrument.set($event)" nzShowSearch style="width:100%" data-testid="ticket-asset">
+                  @for (i of instruments(d); track i.type + i.asset) {
+                    <nz-option [nzValue]="i.type + ':' + i.asset" [nzLabel]="name(i.asset, i.type)" />
                   }
                 </nz-select>
               </div>
@@ -174,7 +174,11 @@ interface Depth {
                 </nz-select>
               </div>
             }
-            <label nz-checkbox [ngModel]="reduceOnly()" (ngModelChange)="reduceOnly.set($event)">Reduce only <span class="hint">may shrink a position, never open or flip one</span></label>
+            @if (type2() === 'Perp') {
+              <label nz-checkbox [ngModel]="reduceOnly()" (ngModelChange)="reduceOnly.set($event)">Reduce only <span class="hint">may shrink a position, never open or flip one</span></label>
+            } @else {
+              <span class="hint">Spot: you can sell only what the account holds.</span>
+            }
             <div class="est">
               About <b>{{ notional() | usd }}</b>
               @if (book.data()?.mid; as mid) {
@@ -192,7 +196,7 @@ interface Depth {
 
           <div class="panel" data-testid="book">
             <h3>
-              {{ asset() }}-PERP across venues
+              {{ name(asset(), type2()) }} across venues
               @if (book.data(); as b) {
                 @if (b.spreadBps !== null) {
                   <span class="hint">best bid {{ b.bestBid ?? 0 | dynamicDecimal }} on {{ venueName(d, b.bestBidVenue) }} · best ask {{ b.bestAsk ?? 0 | dynamicDecimal }} on {{ venueName(d, b.bestAskVenue) }} · {{ b.spreadBps | number: '1.2-2' }} bp apart</span>
@@ -201,7 +205,7 @@ interface Depth {
             </h3>
             @if (book.data(); as b) {
               @if (b.venues.length === 0) {
-                <p class="note" data-testid="book-empty">No venue has a live book for {{ asset() }} right now. Orders for it are refused until one does.</p>
+                <p class="note" data-testid="book-empty">No venue has a live book for {{ name(asset(), type2()) }} right now. Orders for it are refused until one does.</p>
               } @else {
                 <div class="books">
                   <nz-table [nzData]="b.venues" nzTemplateMode [nzShowPagination]="false" nzSize="small">
@@ -383,8 +387,8 @@ interface Depth {
               @for (p of a.positions; track p.asset + p.type) {
                 <tr class="pos" [attr.data-testid]="'position-' + a.id + '-' + p.asset">
                   <td style="padding-left:28px">
-                    <b [style.color]="p.quantity > 0 ? '#389e0d' : p.quantity < 0 ? '#cf1322' : '#8c8c8c'">{{ p.quantity > 0 ? 'Long' : p.quantity < 0 ? 'Short' : 'Flat' }}</b>
-                    {{ abs(p.quantity) | dynamicDecimal }} {{ p.asset }}-PERP <span class="hint">entry {{ p.averagePrice | dynamicDecimal }} · mark {{ p.markPrice ?? 0 | dynamicDecimal }}</span>
+                    <b [style.color]="p.quantity > 0 ? '#389e0d' : p.quantity < 0 ? '#cf1322' : '#8c8c8c'">{{ p.quantity > 0 ? (p.type === 'Spot' ? 'Holds' : 'Long') : p.quantity < 0 ? 'Short' : 'Flat' }}</b>
+                    {{ abs(p.quantity) | dynamicDecimal }} {{ name(p.asset, p.type) }} <span class="hint">entry {{ p.averagePrice | dynamicDecimal }} · mark {{ p.markPrice ?? 0 | dynamicDecimal }}</span>
                   </td>
                   <td></td>
                   <td class="num">{{ p.notionalUsd | usd }}</td>
@@ -392,7 +396,7 @@ interface Depth {
                   <td class="num hint" colspan="2">fees {{ p.feesUsd | usd }}</td>
                   <td class="nowrap" style="text-align:right">
                     @if (d.canTrade && p.quantity !== 0) {
-                      <a nz-popconfirm [nzPopconfirmTitle]="'Close this position at the market?'" nzOkText="Close" (nzOnConfirm)="close(a.id, p.asset, p.quantity)">Close</a>
+                      <a nz-popconfirm [nzPopconfirmTitle]="p.type === 'Spot' ? 'Sell all of it at the market?' : 'Close this position at the market?'" nzOkText="Close" (nzOnConfirm)="close(a.id, p.asset, p.type, p.quantity)">Close</a>
                     }
                   </td>
                 </tr>
@@ -421,7 +425,7 @@ interface Depth {
                 <td class="nowrap">{{ o.createdAt | date: 'd MMM HH:mm:ss' : 'UTC' }}</td>
                 <td>{{ o.account }}</td>
                 <td><b [style.color]="o.side === 'Buy' ? '#389e0d' : '#cf1322'">{{ o.side }}</b></td>
-                <td class="nowrap">{{ o.quantity | dynamicDecimal }} {{ o.asset }}-PERP {{ o.type === 'Limit' ? 'at ' + (o.limitPrice ?? 0 | dynamicDecimal) : 'at market' }}
+                <td class="nowrap">{{ o.quantity | dynamicDecimal }} {{ name(o.asset, o.instrumentType) }} {{ o.type === 'Limit' ? 'at ' + (o.limitPrice ?? 0 | dynamicDecimal) : 'at market' }}
                   @if (o.reduceOnly) {
                     <span class="hint">reduce only</span>
                   }
@@ -705,7 +709,11 @@ export class FundTradingPage {
 
   // The ticket.
   protected readonly target = signal<string | null>(null);
-  protected readonly asset = signal('BTC');
+  /** The instrument on the ticket, as "Perp:BTC" or "Spot:BTC". */
+  protected readonly instrument = signal('Perp:BTC');
+  protected readonly asset = computed(() => this.instrument().split(':')[1]);
+  protected readonly type2 = computed(() => this.instrument().split(':')[0] as TradedType);
+  protected readonly name = instrumentName;
   protected readonly type = signal<OrderType>('Market');
   protected readonly tif = signal<TimeInForce>('GoodTillCancelled');
   protected readonly quantity = signal<number | null>(null);
@@ -713,7 +721,7 @@ export class FundTradingPage {
   protected readonly reduceOnly = signal(false);
   private readonly sending = signal(false);
 
-  protected readonly book = keptData(toObservable(this.asset), this.beat, (asset) => this.http.get<Book>(`/api/book/Perp/${encodeURIComponent(asset)}`), (asset) => asset);
+  protected readonly book = keptData(toObservable(this.instrument), this.beat, (i) => this.http.get<Book>(`/api/book/${i.split(':')[0]}/${encodeURIComponent(i.split(':')[1])}`), (i) => i);
   protected readonly notional = computed(() => (this.quantity() ?? 0) * ((this.type() === 'Limit' ? this.limitPrice() : null) ?? this.book.data()?.mid ?? 0));
 
   /** Every venue's levels in one ladder, best first, with a running total for the bars. */
@@ -784,9 +792,16 @@ export class FundTradingPage {
     return d.venues.find((v) => v.venue === venue)?.needsPassphrase ?? false;
   }
 
-  /** The assets with a live book, and the chosen one even when its book has gone, so the choice does not jump. */
-  protected assets(d: Trading): string[] {
-    return d.assets.includes(this.asset()) ? d.assets : [this.asset(), ...d.assets];
+  /**
+   * What the chosen account can trade right now: the instruments its venue has a live book for (any venue's, when
+   * the system picks the venue). The chosen one stays listed even when its book has gone, so the choice does not jump.
+   */
+  protected instruments(d: Trading): { asset: string; type: TradedType }[] {
+    const target = this.target();
+    const venue = target?.[0] === 'a' ? d.accounts.find((a) => 'a' + a.id === target)?.venue : undefined;
+    const live = d.instruments.filter((i) => venue === undefined || i.venues.includes(venue));
+    const chosen = { asset: this.asset(), type: this.type2() };
+    return live.some((i) => i.asset === chosen.asset && i.type === chosen.type) ? live : [chosen, ...live];
   }
 
   /** Managers with accounts on more than one venue: for them the system can pick the venue with the best price. */
@@ -823,23 +838,24 @@ export class FundTradingPage {
       tradingAccountId: target[0] === 'a' ? Number(target.slice(1)) : null,
       managerId: target[0] === 'm' ? Number(target.slice(1)) : null,
       asset: this.asset(),
+      instrumentType: this.type2(),
       side,
       type: this.type(),
       timeInForce: this.type() === 'Market' ? 'ImmediateOrCancel' : this.tif(),
       quantity: this.quantity(),
       limitPrice: this.type() === 'Limit' ? this.limitPrice() : null,
-      reduceOnly: this.reduceOnly(),
+      reduceOnly: this.type2() === 'Perp' && this.reduceOnly(),
     });
   }
 
-  protected close(accountId: number, asset: string, quantity: number): void {
-    this.place({ tradingAccountId: accountId, managerId: null, asset, side: quantity > 0 ? 'Sell' : 'Buy', type: 'Market', timeInForce: 'ImmediateOrCancel', quantity: Math.abs(quantity), limitPrice: null, reduceOnly: true });
+  protected close(accountId: number, asset: string, type: string, quantity: number): void {
+    this.place({ tradingAccountId: accountId, managerId: null, asset, instrumentType: type, side: quantity > 0 ? 'Sell' : 'Buy', type: 'Market', timeInForce: 'ImmediateOrCancel', quantity: Math.abs(quantity), limitPrice: null, reduceOnly: type === 'Perp' });
   }
 
   private place(order: Record<string, unknown>): void {
     this.sending.set(true);
     // The name makes a repeated send (a double click, a retry after a lost answer) the same order, not a second one.
-    const body = { ...order, instrumentType: 'Perp', clientOrderId: `ui-${crypto.randomUUID()}` };
+    const body = { ...order, clientOrderId: `ui-${crypto.randomUUID()}` };
     this.run(this.http.post<Answer>('/api/orders', body), `${order['side']} ${order['quantity']} ${order['asset']} sent.`, () => this.sending.set(false));
   }
 

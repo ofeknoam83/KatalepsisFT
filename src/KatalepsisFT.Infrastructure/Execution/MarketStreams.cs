@@ -23,6 +23,9 @@ public abstract class BookStream
 
     public abstract Venue Venue { get; }
 
+    /// <summary>What kind of instrument this stream's books are for.</summary>
+    public virtual InstrumentType Type => InstrumentType.Perp;
+
     /// <summary>A request whose round trip is timed, as a measure of how long an order would take to reach the venue and be answered.</summary>
     public abstract HttpRequestMessage TimingRequest();
 
@@ -286,6 +289,160 @@ public sealed class HyperliquidBookStream : BookStream
 }
 
 /// <summary>
+/// What KuCoin's spot and futures streams share: the address of the stream and a short-lived token for it are asked
+/// for first, and every message is the whole top of one book, about ten times a second while it changes.
+/// </summary>
+public abstract class KucoinBookStream : BookStream
+{
+    private Uri? _address;
+    private int _ping;
+
+    public override Venue Venue => Venue.Kucoin;
+
+    public override bool SilenceMeansUnchanged => true;
+
+    public override string? Ping => $$"""{"id":"p{{Interlocked.Increment(ref _ping)}}","type":"ping"}""";
+
+    protected abstract string RestHost { get; }
+
+    protected abstract string Topic { get; }
+
+    /// <summary>The venue's name for the instrument of an asset, or null when it is not followed.</summary>
+    protected abstract string? SymbolOf(string asset);
+
+    public override HttpRequestMessage TimingRequest() => new(HttpMethod.Get, $"https://{RestHost}/api/v1/timestamp");
+
+    public override async Task PrepareAsync(HttpClient http, CancellationToken cancellationToken)
+    {
+        using HttpResponseMessage response = await http.PostAsync($"https://{RestHost}/api/v1/bullet-public", null, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        _address = ReadAddress(await response.Content.ReadAsStringAsync(cancellationToken));
+    }
+
+    /// <summary>The stream's address with its token, from KuCoin's answer to "where do I connect".</summary>
+    public static Uri ReadAddress(string answer)
+    {
+        using JsonDocument document = JsonDocument.Parse(answer);
+        JsonElement data = document.RootElement.GetProperty("data");
+        string endpoint = data.GetProperty("instanceServers")[0].GetProperty("endpoint").GetString()!;
+        return new Uri($"{endpoint}{(endpoint.Contains('?', StringComparison.Ordinal) ? "&" : "?")}token={Uri.EscapeDataString(data.GetProperty("token").GetString()!)}");
+    }
+
+    public override Uri Address(IReadOnlyList<string> assets) => _address ?? throw new InvalidOperationException("The stream's address has not been asked for.");
+
+    public override IEnumerable<string> Subscriptions(IReadOnlyList<string> assets)
+    {
+        List<string> symbols = assets.Select(SymbolOf).Where(s => s is not null).Select(s => s!).ToList();
+        return symbols.Count == 0 ? [] : [JsonSerializer.Serialize(new { id = "books", type = "subscribe", topic = $"{Topic}:{string.Join(',', symbols)}", privateChannel = false, response = true })];
+    }
+
+    public override StreamedBook? Read(string message)
+    {
+        using JsonDocument document = JsonDocument.Parse(message);
+        JsonElement root = document.RootElement;
+        if (!root.TryGetProperty("type", out JsonElement type) || type.GetString() != "message" || !root.TryGetProperty("topic", out JsonElement topic) || !root.TryGetProperty("data", out JsonElement data))
+        {
+            return null;
+        }
+
+        string name = topic.GetString()!;
+        int colon = name.IndexOf(':', StringComparison.Ordinal);
+        return colon > 0 && name.AsSpan(0, colon).SequenceEqual(Topic) ? Read(name[(colon + 1)..], data.GetProperty("bids"), data.GetProperty("asks")) : null;
+    }
+
+    protected abstract StreamedBook? Read(string symbol, JsonElement bids, JsonElement asks);
+}
+
+/// <summary>KuCoin spot against USDT. Sizes are in units of the asset.</summary>
+public sealed class KucoinSpotBookStream : KucoinBookStream
+{
+    public override InstrumentType Type => InstrumentType.Spot;
+
+    protected override string RestHost => "api.kucoin.com";
+
+    protected override string Topic => "/spotMarket/level2Depth50";
+
+    protected override string? SymbolOf(string asset) => $"{asset.ToUpperInvariant()}-USDT";
+
+    protected override StreamedBook? Read(string symbol, JsonElement bids, JsonElement asks) =>
+        symbol.EndsWith("-USDT", StringComparison.Ordinal) ? new StreamedBook(symbol[..^5], Levels(bids), Levels(asks)) : null;
+}
+
+/// <summary>
+/// KuCoin USDT-margined perpetuals. KuCoin calls bitcoin XBT there, and gives sizes in contracts, so the size of
+/// each contract is read first and every size turned into units of the asset.
+/// </summary>
+public sealed class KucoinPerpBookStream : KucoinBookStream
+{
+    private Dictionary<string, (string Asset, decimal ContractSize)> _contracts = [];
+    private Dictionary<string, string> _symbols = [];
+
+    protected override string RestHost => "api-futures.kucoin.com";
+
+    protected override string Topic => "/contractMarket/level2Depth50";
+
+    protected override string? SymbolOf(string asset) => _symbols.GetValueOrDefault(asset.ToUpperInvariant());
+
+    public override async Task PrepareAsync(HttpClient http, CancellationToken cancellationToken)
+    {
+        using HttpResponseMessage response = await http.GetAsync($"https://{RestHost}/api/v1/contracts/active", cancellationToken);
+        response.EnsureSuccessStatusCode();
+        UseContracts(ReadContracts(await response.Content.ReadAsStringAsync(cancellationToken)));
+        await base.PrepareAsync(http, cancellationToken);
+    }
+
+    /// <summary>Every open USDT-margined perpetual: its symbol, its asset under the usual name, and the size of one contract.</summary>
+    public static Dictionary<string, (string Asset, decimal ContractSize)> ReadContracts(string contracts)
+    {
+        using JsonDocument document = JsonDocument.Parse(contracts);
+        Dictionary<string, (string, decimal)> found = [];
+        foreach (JsonElement contract in document.RootElement.GetProperty("data").EnumerateArray())
+        {
+            string symbol = contract.GetProperty("symbol").GetString()!;
+            // Perpetuals have no expiry; "USDTM" is the USDT-margined family.
+            if (!symbol.EndsWith("USDTM", StringComparison.Ordinal) || contract.GetProperty("quoteCurrency").GetString() != "USDT" || contract.GetProperty("status").GetString() != "Open" || contract.GetProperty("expireDate").ValueKind != JsonValueKind.Null)
+            {
+                continue;
+            }
+
+            string asset = contract.GetProperty("baseCurrency").GetString()!.ToUpperInvariant();
+            decimal size = contract.GetProperty("multiplier").GetDecimal();
+            if (size > 0m)
+            {
+                found[symbol] = (asset == "XBT" ? "BTC" : asset, size);
+            }
+        }
+
+        return found;
+    }
+
+    public void UseContracts(Dictionary<string, (string Asset, decimal ContractSize)> contracts)
+    {
+        _contracts = contracts;
+        _symbols = contracts.GroupBy(c => c.Value.Asset).ToDictionary(g => g.Key, g => g.OrderBy(c => c.Key.Length).First().Key);
+    }
+
+    protected override StreamedBook? Read(string symbol, JsonElement bids, JsonElement asks) =>
+        _contracts.TryGetValue(symbol, out (string Asset, decimal ContractSize) contract) ? new StreamedBook(contract.Asset, Side(bids, contract.ContractSize), Side(asks, contract.ContractSize)) : null;
+
+    /// <summary>Levels given as [price as text, contracts as a number].</summary>
+    private static List<BookLevel> Side(JsonElement side, decimal contractSize)
+    {
+        List<BookLevel> levels = new(Depth);
+        foreach (JsonElement level in side.EnumerateArray())
+        {
+            decimal quantity = (level[1].ValueKind == JsonValueKind.String ? Number(level[1]) : level[1].GetDecimal()) * contractSize;
+            if (quantity > 0m && levels.Count < Depth)
+            {
+                levels.Add(new BookLevel(level[0].ValueKind == JsonValueKind.String ? Number(level[0]) : level[0].GetDecimal(), quantity));
+            }
+        }
+
+        return levels;
+    }
+}
+
+/// <summary>
 /// Keeps one venue's stream open and its books in the consolidated book. When the connection drops or goes quiet, the
 /// venue's books are removed at once, so nothing is routed on prices that are no longer being confirmed, and the
 /// connection is made again, waiting a little longer after each failure.
@@ -316,7 +473,7 @@ public sealed class BookStreamRunner(BookStream stream, ConsolidatedBook books, 
             }
             catch (Exception e)
             {
-                logger.LogWarning("The {Venue} market data stream stopped: {Reason}", stream.Venue, e.Message);
+                logger.LogWarning("The {Venue} {Type} market data stream stopped: {Reason}", stream.Venue, stream.Type, e.Message);
             }
             finally
             {
@@ -353,7 +510,7 @@ public sealed class BookStreamRunner(BookStream stream, ConsolidatedBook books, 
             }
         }
 
-        logger.LogInformation("The {Venue} market data stream is open.", stream.Venue);
+        logger.LogInformation("The {Venue} {Type} market data stream is open.", stream.Venue, stream.Type);
         Dictionary<string, VenueBook> latest = [];
         byte[] buffer = new byte[64 * 1024];
         using MemoryStream message = new();
@@ -414,7 +571,7 @@ public sealed class BookStreamRunner(BookStream stream, ConsolidatedBook books, 
 
                 if (read is not null)
                 {
-                    VenueBook book = new(stream.Venue, read.Asset, InstrumentType.Perp, read.Bids, read.Asks, now);
+                    VenueBook book = new(stream.Venue, read.Asset, stream.Type, read.Bids, read.Asks, now);
                     latest[read.Asset] = book;
                     books.Update(book);
                 }

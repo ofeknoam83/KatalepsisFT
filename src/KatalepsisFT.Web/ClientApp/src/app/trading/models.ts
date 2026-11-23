@@ -1,4 +1,16 @@
-export type TradingVenue = 'Binance' | 'Bybit' | 'Okx' | 'Hyperliquid';
+export type TradingVenue = 'Binance' | 'Bybit' | 'Okx' | 'Hyperliquid' | 'Kucoin';
+export type TradedType = 'Spot' | 'Perp';
+
+export interface LiveInstrument {
+  asset: string;
+  type: TradedType;
+  venues: TradingVenue[];
+}
+
+/** "BTC-PERP" for a perpetual, "BTC spot" for spot. */
+export function instrumentName(asset: string, type: string): string {
+  return type === 'Spot' ? `${asset} spot` : `${asset}-PERP`;
+}
 export type OrderSide = 'Buy' | 'Sell';
 export type OrderType = 'Market' | 'Limit';
 export type TimeInForce = 'GoodTillCancelled' | 'ImmediateOrCancel' | 'PostOnly';
@@ -89,7 +101,7 @@ export interface Trading {
   approvals: Approval[];
   venues: { venue: TradingVenue; name: string; needsPassphrase: boolean }[];
   managers: { id: number; name: string; sleeve: string }[];
-  assets: string[];
+  instruments: LiveInstrument[];
   engine: EngineStatus | null;
 }
 
@@ -110,6 +122,7 @@ export interface Order {
   account: string;
   venue: TradingVenue;
   asset: string;
+  instrumentType: TradedType;
   side: OrderSide;
   type: OrderType;
   timeInForce: TimeInForce;

@@ -26,7 +26,7 @@ public sealed record ExecutionOptions(IReadOnlyList<string> Assets, string? Mast
 }
 
 /// <summary>
-/// Keeps the four venues' market data streams open, times a request to each venue every few seconds, and publishes
+/// Keeps the venues' market data streams open, times a request to each venue every few seconds, and publishes
 /// the consolidated book and the service's own state for the web service to show.
 /// </summary>
 public sealed class MarketDataWorker(
@@ -46,10 +46,10 @@ public sealed class MarketDataWorker(
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         List<BookStream> all = streams.ToList();
-        logger.LogInformation("Following {Assets} on {Venues}.", string.Join(", ", options.Assets), string.Join(", ", all.Select(s => s.Venue)));
+        logger.LogInformation("Following {Assets} on {Venues}.", string.Join(", ", options.Assets), string.Join(", ", all.Select(s => $"{s.Venue} {s.Type}")));
         List<Task> running = all.Select(s => new BookStreamRunner(s, books, board, clients.CreateClient("exec"), clock, logger).RunAsync(options.Assets, stoppingToken)).ToList();
         running.AddRange(all.Select(s => TimeAsync(s, stoppingToken)));
-        running.Add(PublishAsync(all.Select(s => s.Venue).ToList(), stoppingToken));
+        running.Add(PublishAsync(all.Select(s => s.Venue).Distinct().ToList(), stoppingToken));
         await Task.WhenAll(running);
     }
 

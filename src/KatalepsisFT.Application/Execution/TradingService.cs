@@ -18,7 +18,7 @@ public interface IBookFeed
 {
     Task<IReadOnlyList<VenueBook>> ReadAsync(string asset, InstrumentType type, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<(string Asset, InstrumentType Type)>> InstrumentsAsync(CancellationToken cancellationToken);
+    Task<IReadOnlyList<LiveInstrument>> InstrumentsAsync(CancellationToken cancellationToken);
 
     /// <summary>How the execution service is doing, or null when it has not been heard from in the last few seconds.</summary>
     Task<ExecutionStatus?> StatusAsync(CancellationToken cancellationToken);
@@ -88,7 +88,7 @@ public sealed record TradingDto(
     IReadOnlyList<ApprovalDto> Approvals,
     IReadOnlyList<VenueOption> Venues,
     IReadOnlyList<ManagerOption> Managers,
-    IReadOnlyList<string> Assets,
+    IReadOnlyList<LiveInstrument> Instruments,
     ExecutionStatus? Engine
 );
 
@@ -184,7 +184,7 @@ public sealed record TradingChange<T>(T? Value, string? Error, bool NotFound = f
 public sealed class TradingService(IFtDbContext database, IBookFeed books, IExecutionSignal signal, ITradingVault vault, VenueAdapterRegistry adapters, TimeProvider clock)
 {
     /// <summary>The venues orders can go to in this version.</summary>
-    public static readonly IReadOnlyList<Venue> Venues = [Venue.Binance, Venue.Bybit, Venue.Okx, Venue.Hyperliquid];
+    public static readonly IReadOnlyList<Venue> Venues = [Venue.Binance, Venue.Bybit, Venue.Okx, Venue.Hyperliquid, Venue.Kucoin];
 
     public const string DemoIsFixed = "The example fund cannot trade.";
     public const int MaxOrdersListed = 300;
@@ -272,7 +272,7 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
             .ThenBy(m => m.Id)
             .Select(m => new ManagerOption(m.Id, m.Name, m.Sleeve.Name))
             .ToListAsync(cancellationToken);
-        IReadOnlyList<(string Asset, InstrumentType Type)> live = await books.InstrumentsAsync(cancellationToken);
+        IReadOnlyList<LiveInstrument> live = await books.InstrumentsAsync(cancellationToken);
         return new TradingDto(
             fundId,
             fund.Name,
@@ -285,7 +285,7 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
             approvals.Select(r => Dto(r, actor)).ToList(),
             Venues.Select(v => new VenueOption(v, VenueExposureService.NameOf(v), adapters.Find(v)?.NeedsPassphrase ?? false)).ToList(),
             managers,
-            live.Where(i => i.Type == InstrumentType.Perp).Select(i => i.Asset).Distinct().ToList(),
+            live.Where(i => i.Type is InstrumentType.Perp or InstrumentType.Spot).ToList(),
             await books.StatusAsync(cancellationToken)
         );
     }

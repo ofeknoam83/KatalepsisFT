@@ -77,6 +77,42 @@ public class MarketStreamTests
     }
 
     [Fact]
+    public void KucoinSpot_ReadsABook_AndAsksForEveryAssetInOneSubscription()
+    {
+        KucoinSpotBookStream stream = new();
+
+        StreamedBook book = stream.Read("""{"topic":"/spotMarket/level2Depth50:ETH-USDT","type":"message","subject":"level2","data":{"asks":[["1761.29","2.2615666"],["1761.31","2.1876071"]],"bids":[["1761.28","0.5"]],"timestamp":1733124805073}}""")!;
+
+        book.Asset.Should().Be("ETH");
+        stream.Type.Should().Be(InstrumentType.Spot);
+        book.Asks.Should().Equal(new BookLevel(1761.29m, 2.2615666m), new BookLevel(1761.31m, 2.1876071m));
+        book.Bids.Should().Equal(new BookLevel(1761.28m, 0.5m));
+        stream.Read("""{"id":"t1","type":"welcome"}""").Should().BeNull();
+        stream.Read("""{"id":"p1","type":"pong","timestamp":1795454772738026}""").Should().BeNull();
+        stream.Subscriptions(["BTC", "eth"]).Single().Should().Contain("/spotMarket/level2Depth50:BTC-USDT,ETH-USDT");
+        KucoinBookStream.ReadAddress("""{"code":"200000","data":{"token":"abc+/=","instanceServers":[{"endpoint":"wss://ws-api-spot.kucoin.com/","encrypt":true,"protocol":"websocket","pingInterval":18000,"pingTimeout":10000}]}}""")
+            .AbsoluteUri.Should().Be("wss://ws-api-spot.kucoin.com/?token=abc%2B%2F%3D");
+    }
+
+    [Fact]
+    public void KucoinPerp_CallsBitcoinByItsUsualName_AndTurnsContractsIntoUnitsOfTheAsset()
+    {
+        KucoinPerpBookStream stream = new();
+        stream.UseContracts(KucoinPerpBookStream.ReadContracts("""{"code":"200000","data":[{"symbol":"XBTUSDTM","baseCurrency":"XBT","quoteCurrency":"USDT","multiplier":0.001,"status":"Open","expireDate":null},{"symbol":"DOGEUSDTM","baseCurrency":"DOGE","quoteCurrency":"USDT","multiplier":100.0,"status":"Open","expireDate":null},{"symbol":"XBTUSDM","baseCurrency":"XBT","quoteCurrency":"USD","multiplier":-1,"status":"Open","expireDate":null},{"symbol":"ETHUSDTM","baseCurrency":"ETH","quoteCurrency":"USDT","multiplier":0.01,"status":"Paused","expireDate":null}]}"""));
+
+        StreamedBook bitcoin = stream.Read("""{"topic":"/contractMarket/level2Depth50:XBTUSDTM","type":"message","subject":"level2","sn":1,"data":{"sequence":1,"asks":[["61850.3",125],["61851.4",91]],"bids":[["61850.2",2217]],"ts":1,"timestamp":1}}""")!;
+        StreamedBook doge = stream.Read("""{"topic":"/contractMarket/level2Depth50:DOGEUSDTM","type":"message","subject":"level2","data":{"asks":[["0.05765",449]],"bids":[["0.05763",886]]}}""")!;
+
+        bitcoin.Asset.Should().Be("BTC");
+        bitcoin.Asks.Should().Equal(new BookLevel(61850.3m, 0.125m), new BookLevel(61851.4m, 0.091m));
+        bitcoin.Bids.Should().Equal(new BookLevel(61850.2m, 2.217m));
+        doge.Bids.Should().Equal(new BookLevel(0.05763m, 88_600m));
+        // Only open USDT-margined perpetuals are followed, and an asset without one is simply not asked for.
+        stream.Subscriptions(["BTC", "ETH", "DOGE"]).Single().Should().Contain(":XBTUSDTM,DOGEUSDTM").And.NotContain("ETH");
+        stream.Read("""{"topic":"/contractMarket/level2Depth50:ETHUSDTM","type":"message","data":{"asks":[],"bids":[]}}""").Should().BeNull();
+    }
+
+    [Fact]
     public void ConsolidatedBook_DropsAVenueWhoseStreamFell_AndOneThatHasGoneQuiet()
     {
         SetClock clock = new() { Now = new DateTimeOffset(2026, 11, 23, 12, 0, 0, TimeSpan.Zero) };
