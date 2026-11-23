@@ -1,6 +1,9 @@
 using FluentAssertions;
 using KatalepsisFT.Application.Connections;
+using KatalepsisFT.Venues.Coinbase;
 using KatalepsisFT.Venues.Deribit;
+using KatalepsisFT.Venues.Kucoin;
+using KatalepsisFT.Venues.Mexc;
 using KatalepsisFT.Venues.Okx;
 
 namespace KatalepsisFT.Venues.Tests;
@@ -39,6 +42,31 @@ public class LiveVenueChecks
         }
 
         VenueException e = (await FluentActions.Invoking(() => new OkxAdapter(TimeProvider.System).CheckCredentialsAsync(Nonsense, CancellationToken.None)).Should().ThrowAsync<VenueException>()).Which;
+
+        e.Failure.Should().Be(VenueFailure.Rejected, e.Message);
+    }
+
+    [Fact]
+    public async Task Kucoin_RefusesAKeyThatDoesNotExist() => await RefusedAsync(new KucoinAdapter(TimeProvider.System));
+
+    [Fact]
+    public async Task Mexc_RefusesAKeyThatDoesNotExist() => await RefusedAsync(new MexcAdapter(TimeProvider.System));
+
+    [Fact]
+    public async Task CoinbaseExchange_RefusesAKeyThatDoesNotExist() =>
+        await RefusedAsync(new CoinbaseExchangeAdapter(new HttpClient { Timeout = TimeSpan.FromSeconds(20) }, TimeProvider.System), new VenueCredentials("0000000000000000", Convert.ToBase64String(new byte[32]), "passphrase"));
+
+    [Fact]
+    public async Task CoinbasePrime_RefusesAKeyThatDoesNotExist() => await RefusedAsync(new CoinbasePrimeAdapter(new HttpClient { Timeout = TimeSpan.FromSeconds(20) }, TimeProvider.System));
+
+    private static async Task RefusedAsync(IVenueAdapter adapter, VenueCredentials? credentials = null)
+    {
+        if (!Enabled)
+        {
+            return;
+        }
+
+        VenueException e = (await FluentActions.Invoking(() => adapter.CheckCredentialsAsync(credentials ?? Nonsense, CancellationToken.None)).Should().ThrowAsync<VenueException>()).Which;
 
         e.Failure.Should().Be(VenueFailure.Rejected, e.Message);
     }

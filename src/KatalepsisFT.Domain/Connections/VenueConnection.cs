@@ -8,6 +8,10 @@ public enum Venue
     Bybit = 2,
     Okx = 3,
     Deribit = 4,
+    CoinbaseExchange = 5,
+    CoinbasePrime = 6,
+    Kucoin = 7,
+    Mexc = 8,
 }
 
 public enum ConnectionState

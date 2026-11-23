@@ -1,7 +1,10 @@
 using KatalepsisFT.Application.Connections;
 using KatalepsisFT.Venues.Binance;
 using KatalepsisFT.Venues.Bybit;
+using KatalepsisFT.Venues.Coinbase;
 using KatalepsisFT.Venues.Deribit;
+using KatalepsisFT.Venues.Kucoin;
+using KatalepsisFT.Venues.Mexc;
 using KatalepsisFT.Venues.Okx;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -17,6 +20,12 @@ public static class DependencyInjection
         services.AddScoped<IVenueAdapter, OkxAdapter>();
         services.AddScoped<IVenueAdapter, BinanceAdapter>();
         services.AddScoped<IVenueAdapter, BybitAdapter>();
+        services.AddScoped<IVenueAdapter, KucoinAdapter>();
+        services.AddScoped<IVenueAdapter, MexcAdapter>();
+        services.AddHttpClient(CoinbaseExchangeAdapter.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(20));
+        services.AddScoped<IVenueAdapter>(provider => new CoinbaseExchangeAdapter(provider.GetRequiredService<IHttpClientFactory>().CreateClient(CoinbaseExchangeAdapter.HttpClientName), provider.GetRequiredService<TimeProvider>()));
+        services.AddHttpClient(CoinbasePrimeAdapter.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(20));
+        services.AddScoped<IVenueAdapter>(provider => new CoinbasePrimeAdapter(provider.GetRequiredService<IHttpClientFactory>().CreateClient(CoinbasePrimeAdapter.HttpClientName), provider.GetRequiredService<TimeProvider>()));
         return services;
     }
 }

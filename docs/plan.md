@@ -266,7 +266,14 @@ Each phase ends deployed on Render and checked in the browser. Each is split int
   - [x] Alert rules are checked after every read of a connection
   - [x] Structure tab: rename a fund and set its benchmark; add, rename and remove sleeves; set each sleeve's mandate limits; add, change and remove managers. A manager with history or venue keys cannot be removed; the example fund is read-only
   - [ ] OKX funding account
-- [ ] **Phase 7 — Remaining copied CeFi venues**: Coinbase (Prime + Exchange), KuCoin, MEXC.
+- [ ] **Phase 7 — Remaining copied CeFi venues**
+  - [x] KuCoin: all spot-side accounts, USDT- and BTC-margined futures, deposits and withdrawals; key permissions are read and a key that can trade or move money is refused
+  - [x] MEXC: spot wallet, USDT/USDC futures where MEXC opens its futures API to the account, deposits and withdrawals
+  - [x] Coinbase Exchange: balances valued at Coinbase's public USD rates, transfers
+  - [x] Coinbase Prime: every portfolio the key can see, at the USD value Prime states, deposits and withdrawals
+  - [x] Parts of an account that could not be read are stated on the connection instead of being left out silently
+  - [ ] MEXC and both Coinbase venues do not say what a key may do, so their keys are stored as "permissions unverified": create them read-only at the venue
+  - [ ] All four are tested on hand-written answers and on the real venues' refusal of a bad key; no real account has been read
 - [ ] **Phase 8 — New CeFi venues**: Bitget, Gate, Kraken.
 - [ ] **Phase 9 — DeFi venues**: Hyperliquid, dYdX, GMX, then Uniswap and Aerodrome pool positions.
 - [ ] **Phase 10 — Traditional positions**: manual entry screen and CSV/XLSX upload per manager, with cash flows; validation.

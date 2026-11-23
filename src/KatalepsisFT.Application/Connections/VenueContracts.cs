@@ -40,7 +40,8 @@ public sealed record VenuePosition(
 
 /// <summary>Every balance and position of one account at one moment. Complete, or not produced at all.</summary>
 /// <param name="ReportedEquityUsd">The account value the venue itself states, to compare with the value computed from the positions.</param>
-public sealed record VenueSnapshot(DateTimeOffset AsOf, IReadOnlyList<VenuePosition> Positions, decimal? ReportedEquityUsd = null);
+/// <param name="Notes">Parts of the account that could not be read, in words. The positions given are still complete for the parts that were.</param>
+public sealed record VenueSnapshot(DateTimeOffset AsOf, IReadOnlyList<VenuePosition> Positions, decimal? ReportedEquityUsd = null, IReadOnlyList<string>? Notes = null);
 
 /// <summary>Money or coins moved into (positive) or out of (negative) the account from outside it. Not a trade, not a fee.</summary>
 /// <param name="Id">The venue's own identifier, stable across reads, so a transfer is never counted twice.</param>

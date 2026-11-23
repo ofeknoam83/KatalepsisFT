@@ -57,7 +57,7 @@ public sealed class BinanceAdapter(TimeProvider clock) : IVenueAdapter
         if (!futuresBalances.Success && futuresBalances.Error?.Code == NoPermission)
         {
             // The spot call above proved the key itself is good, so this is an account without futures.
-            return BinanceMapper.Map(clock.GetUtcNow(), spot.Balances, prices, [], []);
+            return BinanceMapper.Map(clock.GetUtcNow(), spot.Balances, prices, [], []) with { Notes = ["The futures account was not read: Binance says this key may not see it, or there is none."] };
         }
 
         BinancePositionDetailsUsdt[] positions = Data(await client.UsdFuturesApi.Account.GetPositionInformationAsync(ct: cancellationToken), "futures positions");

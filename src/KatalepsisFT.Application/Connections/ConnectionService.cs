@@ -27,7 +27,8 @@ public sealed record ConnectionDto(
     int Positions,
     decimal? ComputedNavUsd,
     decimal? ReportedEquityUsd,
-    string? TransfersError
+    string? TransfersError,
+    IReadOnlyList<string> Notes
 );
 
 public sealed record ConnectionManagerDto(int Id, string Name, string Sleeve);
@@ -237,7 +238,8 @@ public sealed class ConnectionService(IFtDbContext database, VenueAdapterRegistr
             snapshot?.Positions.Count ?? 0,
             snapshot is null ? null : ManagerBookWriter.NavOf(snapshot),
             snapshot?.ReportedEquityUsd,
-            c.TransfersError
+            c.TransfersError,
+            snapshot?.Notes ?? []
         );
     }
 }
