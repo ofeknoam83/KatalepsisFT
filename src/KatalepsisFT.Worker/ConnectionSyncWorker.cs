@@ -12,14 +12,18 @@ namespace KatalepsisFT.Worker;
 /// </summary>
 public sealed class ConnectionSyncWorker(IServiceScopeFactory scopes, WorkerIdentity identity, TimeProvider clock, ILogger<ConnectionSyncWorker> logger) : BackgroundService
 {
-    public static readonly TimeSpan Interval = TimeSpan.FromSeconds(60);
+    /// <summary>How often exchange accounts are read. Each read is pushed to open browsers as soon as it is stored.</summary>
+    public static readonly TimeSpan Interval = TimeSpan.FromSeconds(10);
+
+    /// <summary>Wallets are read through public chain nodes, which refuse callers that ask much more often than this.</summary>
+    public static readonly TimeSpan WalletInterval = TimeSpan.FromSeconds(30);
 
     /// <summary>Pause between two accounts, so a venue is not hit by all of them at once.</summary>
     private static readonly TimeSpan Stagger = TimeSpan.FromMilliseconds(500);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using PeriodicTimer timer = new(Interval, clock);
+        using PeriodicTimer timer = new(identity.Group == WorkerGroups.Defi ? WalletInterval : Interval, clock);
         do
         {
             try

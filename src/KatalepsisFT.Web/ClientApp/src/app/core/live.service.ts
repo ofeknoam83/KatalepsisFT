@@ -10,7 +10,7 @@ import { HubConnection, HubConnectionBuilder, HubConnectionState, HttpTransportT
 @Injectable({ providedIn: 'root' })
 export class LiveService {
   /** How often pages reload when the socket is not connected. */
-  private static readonly fallbackMs = 60_000;
+  private static readonly fallbackMs = 15_000;
 
   /** Goes up by one whenever the fund being watched should be read again. */
   readonly tick = signal(0);

@@ -6,7 +6,7 @@ import { NzTableModule } from 'ng-zorro-antd/table';
 import { NzTabsModule } from 'ng-zorro-antd/tabs';
 import { NzTagModule } from 'ng-zorro-antd/tag';
 import { ExposureBar } from '../shared/exposure-bar';
-import { FORMAT_PIPES, pct } from '../shared/format';
+import { FORMAT_PIPES, pct, wholeUsd } from '../shared/format';
 import { pageData } from '../shared/page-data';
 import { AlertStrip } from '../alerts/alert-strip';
 import { PerformancePanel } from '../performance/performance-panel';
@@ -176,7 +176,7 @@ function heat(value: number, max: number): Record<string, string> {
 
         <nz-tab nzTitle="Overlap">
           <div class="panel" style="overflow-x:auto">
-            <h3>Who holds what <span class="hint">Net exposure per manager and asset, $M · darker = larger</span></h3>
+            <h3>Who holds what <span class="hint">Net exposure per manager and asset, USD · darker = larger</span></h3>
             <table class="matrix">
               <tr>
                 <th></th>
@@ -192,7 +192,7 @@ function heat(value: number, max: number): Record<string, string> {
                     @if (value === null) {
                       <td style="background:#fafafa;color:#bfbfbf">·</td>
                     } @else {
-                      <td [style]="heatStyle(value)">{{ value / 1e6 >= 0 ? '+' : '−' }}{{ abs(value / 1e6).toFixed(1) }}</td>
+                      <td [style]="heatStyle(value)">{{ value >= 0 ? '+' : '−' }}{{ whole(value) }}</td>
                     }
                   }
                 </tr>
@@ -200,7 +200,7 @@ function heat(value: number, max: number): Record<string, string> {
               <tr>
                 <th class="row">Gross</th>
                 @for (asset of d.assets; track asset.asset.symbol) {
-                  <td><b>{{ (asset.grossUsd / 1e6).toFixed(1) }}</b></td>
+                  <td><b>{{ whole(asset.grossUsd) }}</b></td>
                 }
               </tr>
               <tr>
@@ -269,6 +269,7 @@ export class SleevePage {
   private readonly matrixMax = computed(() => Math.max(1, ...(this.page.data()?.assets ?? []).flatMap((a) => a.holders.map((h) => Math.abs(h.netUsd)))));
 
   protected readonly abs = Math.abs;
+  protected readonly whole = wholeUsd;
 
   protected firstWord(name: string): string {
     return name.split(' ')[0];

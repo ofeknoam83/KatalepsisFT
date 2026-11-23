@@ -70,8 +70,8 @@ import { LoadFunds, ViewState } from '../funds/view.state';
       <nz-header>
         <a class="brand" routerLink="/"><span class="mark">K</span>Katalepsis <small>FT</small></a>
         <span style="flex:1"></span>
-        <span class="live" [class.on]="live.connected()" [title]="live.connected() ? 'Figures update as they change' : 'No live connection: pages refresh every minute'" data-testid="live-state">
-          <i></i>{{ live.connected() ? 'Live' : 'Refreshing every minute' }}
+        <span class="live" [class.on]="live.connected()" [title]="live.connected() ? 'Figures update as they change' : 'No live connection: pages refresh every 15 seconds'" data-testid="live-state">
+          <i></i>{{ live.connected() ? 'Live' : 'Refreshing every 15 s' }}
         </span>
         <span class="who" nz-dropdown [nzDropdownMenu]="menu" nzTrigger="click" nzPlacement="bottomRight" data-testid="user-menu">
           <span>{{ session()?.displayName || session()?.email }}</span>

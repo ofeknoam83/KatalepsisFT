@@ -3,27 +3,23 @@ import { DynamicDecimalPipe } from './dynamic-decimal.pipe';
 
 const MINUS = '−';
 
-/** 205_400_000 → "$205.4M"; 950_000 → "$950K"; negative values get a minus sign in front. */
-export function usd(value: number | null | undefined, digits = 1): string {
+/**
+ * A dollar amount in full, never shortened to K or M: 205_400_312.4 → "$205,400,312.40". Negative values get a
+ * minus sign in front. The second argument is kept for callers written when amounts were shortened; it has no effect.
+ */
+export function usd(value: number | null | undefined, _digits = 1): string {
   if (value === null || value === undefined) {
     return '–';
   }
 
-  const abs = Math.abs(value);
-  const sign = value < 0 ? MINUS : '';
-  if (abs >= 1e9) {
-    return `${sign}$${(abs / 1e9).toFixed(2)}B`;
-  }
+  const text = Math.abs(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // A value that rounds to nothing carries no sign.
+  return `${value < 0 && text !== '0.00' ? MINUS : ''}$${text}`;
+}
 
-  if (abs >= 1e6) {
-    return `${sign}$${(abs / 1e6).toFixed(digits)}M`;
-  }
-
-  if (abs >= 1e3) {
-    return `${sign}$${(abs / 1e3).toFixed(0)}K`;
-  }
-
-  return `${sign}$${abs.toFixed(0)}`;
+/** A dollar amount in full without the currency sign, for dense tables: 1_250_000.4 → "1,250,000". */
+export function wholeUsd(value: number): string {
+  return Math.round(Math.abs(value)).toLocaleString('en-US');
 }
 
 /** 0.0512 → "+5.1%". With signed = false: "5.1%". */
