@@ -35,5 +35,10 @@ public static class DependencyInjection
     }
 
     internal static void Configure(DbContextOptionsBuilder options, NpgsqlDataSource dataSource) =>
-        options.UseNpgsql(dataSource).UseSnakeCaseNamingConvention();
+        options
+            .UseNpgsql(dataSource)
+            .UseSnakeCaseNamingConvention()
+            // EF keeps one set of internals per data source and complains past twenty of them. A service has one
+            // data source; the tests start many services in one process, each with its own, and that is all this is.
+            .ConfigureWarnings(warnings => warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.CoreEventId.ManyServiceProvidersCreatedWarning));
 }

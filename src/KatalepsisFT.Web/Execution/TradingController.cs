@@ -63,6 +63,16 @@ public sealed class TradingController(TradingService trading) : ControllerBase
     [HttpPost("trading-accounts/{id:int}/key")]
     public async Task<IActionResult> RequestKeyAsync(int id, TradingKeyRequest request, CancellationToken cancellationToken) => Result(await trading.RequestKeyAsync(id, request, Actor, cancellationToken));
 
+    [Authorize(Roles = Roles.Admin)]
+    [Audit("Real trading asked for", TradingAccount = "id")]
+    [HttpPost("trading-accounts/{id:int}/go-live")]
+    public async Task<IActionResult> GoLiveAsync(int id, CancellationToken cancellationToken) => Result(await trading.RequestGoLiveAsync(id, Actor, cancellationToken));
+
+    [Authorize(Roles = Roles.Admin)]
+    [Audit("Account taken back to paper", TradingAccount = "id")]
+    [HttpPost("trading-accounts/{id:int}/paper")]
+    public async Task<IActionResult> BackToPaperAsync(int id, CancellationToken cancellationToken) => Result(await trading.BackToPaperAsync(id, cancellationToken));
+
     [Authorize(Roles = Roles.CanTrade)]
     [Audit("Kill switch pulled", Fund = "fundId")]
     [HttpPost("funds/{fundId:int}/halts")]

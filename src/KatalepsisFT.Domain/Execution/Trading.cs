@@ -52,6 +52,15 @@ public class TradingAccount
 
     /// <summary>What a paper account starts with, in USD.</summary>
     public decimal PaperBalanceUsd { get; set; }
+
+    /// <summary>For a real account: what the venue says the account is worth, in USD, at the last reading.</summary>
+    public decimal? LiveEquityUsd { get; set; }
+
+    /// <summary>When the venue's account was last read successfully.</summary>
+    public DateTimeOffset? LiveSyncedAt { get; set; }
+
+    /// <summary>Why the last reading of the venue's account failed; null when it worked.</summary>
+    public string? LiveSyncError { get; set; }
     public required string CreatedBy { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
 }

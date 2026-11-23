@@ -44,7 +44,9 @@ public interface ITradingVault
 
 // ---------------------------------------------------------------- shapes
 
-public sealed record TradingPositionDto(string Asset, InstrumentType Type, decimal Quantity, decimal AveragePrice, decimal? MarkPrice, decimal? NotionalUsd, decimal? UnrealisedPnlUsd, decimal RealisedPnlUsd, decimal FeesUsd);
+/// <param name="LiquidationPrice">For a leveraged position on a real account: where the venue would close it by force.</param>
+/// <param name="LiquidationDistance">How far the market is from that price, as a fraction of the market price.</param>
+public sealed record TradingPositionDto(string Asset, InstrumentType Type, decimal Quantity, decimal AveragePrice, decimal? MarkPrice, decimal? NotionalUsd, decimal? UnrealisedPnlUsd, decimal RealisedPnlUsd, decimal FeesUsd, decimal? LiquidationPrice = null, decimal? LiquidationDistance = null);
 
 public sealed record TradingAccountDto(
     int Id,
@@ -65,7 +67,10 @@ public sealed record TradingAccountDto(
     decimal PaperBalanceUsd,
     decimal EquityUsd,
     bool IsHalted,
-    IReadOnlyList<TradingPositionDto> Positions
+    IReadOnlyList<TradingPositionDto> Positions,
+    bool CanGoLive = false,
+    DateTimeOffset? LiveReadAt = null,
+    string? LiveReadError = null
 );
 
 public sealed record HaltDto(int Id, HaltScope Scope, Venue? Venue, int? TradingAccountId, string Where, string Reason, string PulledBy, DateTimeOffset PulledAt, bool ReleaseRequested);
@@ -189,6 +194,9 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
     public const string DemoIsFixed = "The example fund cannot trade.";
     public const int MaxOrdersListed = 300;
 
+    /// <summary>The venues real orders can be sent to. The others trade on paper only.</summary>
+    public static readonly IReadOnlyList<Venue> LiveVenues = [Venue.Kucoin];
+
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     // ---------------------------------------------------------------- reading
@@ -237,10 +245,12 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
                     .Select(p =>
                     {
                         decimal? mark = marks.GetValueOrDefault((a.Venue, p.Asset, p.InstrumentType));
-                        return new TradingPositionDto(p.Asset, p.InstrumentType, p.Quantity, p.AveragePrice, mark, mark * Math.Abs(p.Quantity), mark is decimal m ? Math.Round(p.Quantity * (m - p.AveragePrice), 2) : null, p.RealisedPnlUsd, p.FeesUsd);
+                        decimal? distance = mark is decimal at && at > 0m && p.LiquidationPrice is decimal liquidation && p.Quantity != 0m ? Math.Round(Math.Abs(at - liquidation) / at, 4) : null;
+                        return new TradingPositionDto(p.Asset, p.InstrumentType, p.Quantity, p.AveragePrice, mark, mark * Math.Abs(p.Quantity), mark is decimal m && p.AveragePrice > 0m ? Math.Round(p.Quantity * (m - p.AveragePrice), 2) : null, p.RealisedPnlUsd, p.FeesUsd, p.Quantity == 0m ? null : p.LiquidationPrice, distance);
                     })
                     .ToList();
-                decimal equity = a.PaperBalanceUsd + own.Sum(p => p.RealisedPnlUsd - p.FeesUsd + (p.UnrealisedPnlUsd ?? 0m));
+                // A real account is worth what the venue says it is worth; a paper one, its starting balance and what its trades made.
+                decimal equity = a.Mode == TradingMode.Live ? a.LiveEquityUsd ?? 0m : a.PaperBalanceUsd + own.Sum(p => p.RealisedPnlUsd - p.FeesUsd + (p.UnrealisedPnlUsd ?? 0m));
                 return new TradingAccountDto(
                     a.Id,
                     a.ManagerAccountId,
@@ -260,7 +270,11 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
                     a.PaperBalanceUsd,
                     Math.Round(equity, 2),
                     Covers(halts, a),
-                    own
+                    // A real account lists everything the venue holds for it; what is at nothing is left out.
+                    a.Mode == TradingMode.Live ? own.Where(p => p.Quantity != 0m).ToList() : own,
+                    a.Mode == TradingMode.Paper && a.EncryptedKey is not null && LiveVenues.Contains(a.Venue),
+                    a.Mode == TradingMode.Live ? a.LiveSyncedAt : null,
+                    a.Mode == TradingMode.Live ? a.LiveSyncError : null
                 );
             })
             .ToList();
@@ -614,6 +628,24 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
                     account.MaxPositionNotionalUsd = p.GetProperty("maxPositionNotionalUsd").GetDecimal();
                     account.PriceBandBps = p.GetProperty("priceBandBps").GetInt32();
                     break;
+                case ApprovalKind.GoLive when account is not null:
+                    if (account.EncryptedKey is null)
+                    {
+                        return TradingChange<int>.Refused("The account no longer has a trading key.");
+                    }
+
+                    if (await HasOpenOrdersAsync(account.Id, cancellationToken))
+                    {
+                        return TradingChange<int>.Refused("The account has open paper orders. Cancel them first; real trading starts from a clean sheet.");
+                    }
+
+                    // Paper positions were never real. From here the account shows what the venue holds for it.
+                    database.TradingPositions.RemoveRange(await database.TradingPositions.Where(p => p.TradingAccountId == account.Id).ToListAsync(cancellationToken));
+                    account.Mode = TradingMode.Live;
+                    account.LiveEquityUsd = null;
+                    account.LiveSyncedAt = null;
+                    account.LiveSyncError = null;
+                    break;
                 case ApprovalKind.ReleaseHalt:
                     TradingHalt? halt = await database.TradingHalts.FirstOrDefaultAsync(h => h.Id == request.TradingHaltId && h.ReleasedAt == null, cancellationToken);
                     if (halt is not null)
@@ -637,6 +669,78 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
         await database.SaveChangesAsync(cancellationToken);
         return TradingChange<int>.Ok(request.Id);
     }
+
+    /// <summary>
+    /// Asks for an account to trade real money. It needs a trading key that has passed its check, a venue real
+    /// orders can be sent to, and no open paper orders; and then a second administrator.
+    /// </summary>
+    public async Task<TradingChange<int>> RequestGoLiveAsync(int accountId, Actor actor, CancellationToken cancellationToken)
+    {
+        TradingAccount? account = await database.TradingAccounts.Include(a => a.ManagerAccount).ThenInclude(m => m.Sleeve).FirstOrDefaultAsync(a => a.Id == accountId, cancellationToken);
+        if (account is null)
+        {
+            return TradingChange<int>.Missing;
+        }
+
+        string venue = VenueExposureService.NameOf(account.Venue);
+        string? refusal =
+            account.Mode == TradingMode.Live ? "The account already trades real money."
+            : !LiveVenues.Contains(account.Venue) ? $"Real orders cannot be sent to {venue} yet. It trades on paper."
+            : account.EncryptedKey is null ? "Add a trading key first, and have it approved."
+            : await HasOpenOrdersAsync(accountId, cancellationToken) ? "The account has open paper orders. Cancel them first; real trading starts from a clean sheet."
+            : await database.ApprovalRequests.AnyAsync(r => r.TradingAccountId == accountId && r.Kind == ApprovalKind.GoLive && r.Status == ApprovalStatus.Pending, cancellationToken) ? "This has already been asked for and is waiting for a second administrator."
+            : null;
+        if (refusal is not null)
+        {
+            return TradingChange<int>.Refused(refusal);
+        }
+
+        Ask(
+            ApprovalKind.GoLive,
+            account.ManagerAccount.Sleeve.FundId,
+            account.Id,
+            null,
+            $"Trade real money on {account.ManagerAccount.Name} · {venue}: orders up to {account.MaxOrderNotionalUsd:N0} USD, positions up to {account.MaxPositionNotionalUsd:N0} USD, leverage {account.Leverage:0.##}×",
+            new { },
+            actor
+        );
+        await database.SaveChangesAsync(cancellationToken);
+        return TradingChange<int>.Ok(account.Id, "Asked for. Real trading starts when a second administrator approves.");
+    }
+
+    /// <summary>
+    /// Takes an account back to paper. One administrator is enough: it is the safe direction. Whatever the account
+    /// holds at the venue stays there, untouched; it is simply no longer traded or shown from here.
+    /// </summary>
+    public async Task<TradingChange<int>> BackToPaperAsync(int accountId, CancellationToken cancellationToken)
+    {
+        TradingAccount? account = await database.TradingAccounts.FirstOrDefaultAsync(a => a.Id == accountId, cancellationToken);
+        if (account is null)
+        {
+            return TradingChange<int>.Missing;
+        }
+
+        if (account.Mode != TradingMode.Live)
+        {
+            return TradingChange<int>.Refused("The account already trades on paper.");
+        }
+
+        if (await HasOpenOrdersAsync(accountId, cancellationToken))
+        {
+            return TradingChange<int>.Refused("The account has open orders at the venue. Cancel them first, or pull the kill switch, and wait until they are gone.");
+        }
+
+        database.TradingPositions.RemoveRange(await database.TradingPositions.Where(p => p.TradingAccountId == accountId).ToListAsync(cancellationToken));
+        account.Mode = TradingMode.Paper;
+        account.LiveEquityUsd = null;
+        account.LiveSyncedAt = null;
+        account.LiveSyncError = null;
+        await database.SaveChangesAsync(cancellationToken);
+        return TradingChange<int>.Ok(account.Id, "Back on paper. What the account holds at the venue has not been touched.");
+    }
+
+    private Task<bool> HasOpenOrdersAsync(int accountId, CancellationToken cancellationToken) =>
+        database.Orders.AnyAsync(o => o.TradingAccountId == accountId && (o.Status == OrderStatus.Received || o.Status == OrderStatus.Accepted || o.Status == OrderStatus.Working || o.Status == OrderStatus.PartlyFilled), cancellationToken);
 
     /// <summary>Withdraws one's own request.</summary>
     public async Task<TradingChange<int>> CancelRequestAsync(int requestId, Actor actor, CancellationToken cancellationToken)
@@ -984,7 +1088,9 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
             o.SubmittedBy,
             o.CreatedAt,
             o.UpdatedAt,
-            o.Events.OrderBy(e => e.At).ThenBy(e => e.Id).Select(e => new OrderEventDto(e.At, e.Kind, e.Venue, e.Quantity, e.Price, e.FeeUsd, e.Detail)).ToList()
+            // In the order they were written down. The web service and the execution service each stamp their own
+            // events, and their clocks need not agree to the millisecond.
+            o.Events.OrderBy(e => e.Id).Select(e => new OrderEventDto(e.At, e.Kind, e.Venue, e.Quantity, e.Price, e.FeeUsd, e.Detail)).ToList()
         );
     }
 

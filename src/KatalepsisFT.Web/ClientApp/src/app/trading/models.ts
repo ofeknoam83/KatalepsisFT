@@ -27,6 +27,9 @@ export interface TradingPosition {
   unrealisedPnlUsd: number | null;
   realisedPnlUsd: number;
   feesUsd: number;
+  /** For a leveraged position on a real account: where the venue would close it by force, and how far away that is. */
+  liquidationPrice: number | null;
+  liquidationDistance: number | null;
 }
 
 export interface TradingAccount {
@@ -49,6 +52,10 @@ export interface TradingAccount {
   equityUsd: number;
   isHalted: boolean;
   positions: TradingPosition[];
+  canGoLive: boolean;
+  /** For a real account: when its venue account was last read, and why the last reading failed if it did. */
+  liveReadAt: string | null;
+  liveReadError: string | null;
 }
 
 export interface Halt {
@@ -187,4 +194,4 @@ export interface AccountForm {
 export const TIF_LABEL: Record<TimeInForce, string> = { GoodTillCancelled: 'Rests until cancelled', ImmediateOrCancel: 'Fill now, cancel the rest', PostOnly: 'Maker only' };
 export const STATUS_LABEL: Record<OrderStatus, string> = { Received: 'Received', Accepted: 'Accepted', Working: 'Working', PartlyFilled: 'Partly filled', Filled: 'Filled', Cancelled: 'Cancelled', Rejected: 'Rejected' };
 export const STATUS_COLOR: Record<OrderStatus, string> = { Received: 'default', Accepted: 'blue', Working: 'blue', PartlyFilled: 'gold', Filled: 'green', Cancelled: 'default', Rejected: 'red' };
-export const APPROVAL_LABEL: Record<Approval['kind'], string> = { AddTradingKey: 'Trading key', RaiseLimits: 'Higher limits', ReleaseHalt: 'Release a halt', GoLive: 'Go live' };
+export const APPROVAL_LABEL: Record<Approval['kind'], string> = { AddTradingKey: 'Trading key', RaiseLimits: 'Higher limits', ReleaseHalt: 'Release a halt', GoLive: 'Real money' };

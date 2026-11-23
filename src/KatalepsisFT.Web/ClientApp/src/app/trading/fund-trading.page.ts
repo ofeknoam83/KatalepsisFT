@@ -53,8 +53,13 @@ interface Depth {
       <app-fund-tabs [fundId]="d.fundId" />
 
       <div class="status" data-testid="engine-status">
-        <nz-tag nzColor="gold">Paper trading</nz-tag>
-        <span class="hint">Orders fill against the venues' real, live books. No order is sent to a venue and no money moves.</span>
+        @if (anyLive(d)) {
+          <nz-tag nzColor="red" data-testid="live-tag">Real money</nz-tag>
+          <span class="hint">Accounts marked Live send real orders to their venue. Paper accounts fill against live books and move no money.</span>
+        } @else {
+          <nz-tag nzColor="gold">Paper trading</nz-tag>
+          <span class="hint">Orders fill against the venues' real, live books. No order is sent to a venue and no money moves.</span>
+        }
         <span style="flex:1"></span>
         @if (d.engine; as engine) {
           @for (v of engine.venues; track v.venue) {
@@ -186,9 +191,12 @@ interface Depth {
               }
             </div>
             <div class="two">
-              <button nz-button class="buy" [disabled]="!canSend(d)" (click)="send('Buy')" data-testid="ticket-buy">Buy {{ asset() }}</button>
-              <button nz-button class="sell" [disabled]="!canSend(d)" (click)="send('Sell')" data-testid="ticket-sell">Sell {{ asset() }}</button>
+              <button nz-button class="buy" [disabled]="!canSend(d)" nz-popconfirm [nzCondition]="!targetIsLive(d)" [nzPopconfirmTitle]="'Send a real order to buy ' + (quantity() ?? 0) + ' ' + asset() + '?'" nzOkText="Send it" (nzOnConfirm)="send('Buy')" data-testid="ticket-buy">Buy {{ asset() }}</button>
+              <button nz-button class="sell" [disabled]="!canSend(d)" nz-popconfirm [nzCondition]="!targetIsLive(d)" [nzPopconfirmTitle]="'Send a real order to sell ' + (quantity() ?? 0) + ' ' + asset() + '?'" nzOkText="Send it" (nzOnConfirm)="send('Sell')" data-testid="ticket-sell">Sell {{ asset() }}</button>
             </div>
+            @if (targetIsLive(d)) {
+              <p class="note" style="color:#cf1322" data-testid="ticket-live">This account trades real money. A market order goes out priced at the edge of the account's price band, to trade now or not at all.</p>
+            }
             @if (!d.canTrade) {
               <p class="note">Your account can look but not trade. Trading needs the Trader or Admin role.</p>
             }
@@ -351,7 +359,7 @@ interface Depth {
             </div>
             <p class="note" style="flex-basis:100%">
               {{ account.venue === 'Hyperliquid' ? 'Give the account address as the key and an API wallet as the secret: an API wallet can trade and cannot withdraw.' : 'The key must be able to trade and must not be able to withdraw; it is checked with the venue now and refused otherwise.' }}
-              It is stored so that only the execution service can read it, and is used only after a second administrator approves. The account keeps trading on paper in this version.
+              It is stored so that only the execution service can read it, and is used only after a second administrator approves. The account stays on paper until "Go live" is asked for and approved too.
             </p>
           </div>
         }
@@ -371,7 +379,12 @@ interface Depth {
                     <nz-tag nzColor="red" style="margin-left:6px">Halted</nz-tag>
                   }
                 </td>
-                <td><nz-tag [nzColor]="a.mode === 'Paper' ? 'gold' : 'green'">{{ a.mode }}</nz-tag></td>
+                <td>
+                  <nz-tag [nzColor]="a.mode === 'Paper' ? 'gold' : 'red'">{{ a.mode }}</nz-tag>
+                  @if (a.mode === 'Live') {
+                    <div class="hint" [title]="'What the account holds is read from ' + a.venueName + ' every few seconds'">{{ a.liveReadAt ? 'read ' + (a.liveReadAt | date: 'HH:mm:ss' : 'UTC') : 'not read yet' }}</div>
+                  }
+                </td>
                 <td class="num">{{ a.equityUsd | usd }}</td>
                 <td class="num">{{ a.maxOrderNotionalUsd | usd }}</td>
                 <td class="num">{{ a.maxPositionNotionalUsd | usd }}</td>
@@ -381,14 +394,36 @@ interface Depth {
                   @if (d.canAdmin) {
                     <a (click)="startEdit(a)" [attr.data-testid]="'limits-' + a.id">Limits</a>
                     <a style="margin-left:12px" (click)="openKey(a.id)" [attr.data-testid]="'key-' + a.id">{{ a.hasKey ? 'Replace key' : 'Add key' }}</a>
+                    @if (a.canGoLive) {
+                      <a
+                        style="margin-left:12px;color:#cf1322"
+                        nz-popconfirm
+                        [nzPopconfirmTitle]="'Ask for ' + a.manager + ' on ' + a.venueName + ' to trade real money, with orders up to ' + (a.maxOrderNotionalUsd | usd) + '? A second administrator has to approve.'"
+                        nzOkText="Ask for it"
+                        (nzOnConfirm)="run(http.post('/api/trading-accounts/' + a.id + '/go-live', {}), 'Asked for.')"
+                        [attr.data-testid]="'go-live-' + a.id"
+                        >Go live</a
+                      >
+                    }
+                    @if (a.mode === 'Live') {
+                      <a style="margin-left:12px" nz-popconfirm nzPopconfirmTitle="Take this account back to paper? What it holds at the venue is not touched." nzOkText="Back to paper" (nzOnConfirm)="run(http.post('/api/trading-accounts/' + a.id + '/paper', {}), 'Back on paper.')" [attr.data-testid]="'paper-' + a.id">Back to paper</a>
+                    }
                   }
                 </td>
               </tr>
+              @if (a.liveReadError) {
+                <tr class="pos">
+                  <td colspan="8" style="padding-left:28px;color:#cf1322" [attr.data-testid]="'read-error-' + a.id">{{ a.venueName }}'s account could not be read: {{ a.liveReadError }}. What is shown is the last successful reading.</td>
+                </tr>
+              }
               @for (p of a.positions; track p.asset + p.type) {
                 <tr class="pos" [attr.data-testid]="'position-' + a.id + '-' + p.asset">
                   <td style="padding-left:28px">
                     <b [style.color]="p.quantity > 0 ? '#389e0d' : p.quantity < 0 ? '#cf1322' : '#8c8c8c'">{{ p.quantity > 0 ? (p.type === 'Spot' ? 'Holds' : 'Long') : p.quantity < 0 ? 'Short' : 'Flat' }}</b>
                     {{ abs(p.quantity) | dynamicDecimal }} {{ name(p.asset, p.type) }} <span class="hint">entry {{ p.averagePrice | dynamicDecimal }} · mark {{ p.markPrice ?? 0 | dynamicDecimal }}</span>
+                    @if (p.liquidationPrice !== null) {
+                      <span class="hint" [style.color]="(p.liquidationDistance ?? 1) < 0.1 ? '#cf1322' : null" title="Where the venue would close this position by force, and how far the market is from it"> · liquidation {{ p.liquidationPrice | dynamicDecimal }}{{ p.liquidationDistance === null ? '' : ' (' + (p.liquidationDistance * 100 | number: '1.0-1') + '% away)' }}</span>
+                    }
                   </td>
                   <td></td>
                   <td class="num">{{ p.notionalUsd | usd }}</td>
@@ -778,6 +813,20 @@ export class FundTradingPage {
   /** Loads the page again now, without waiting for the next second. */
   protected again(): void {
     this.version.update((v) => v + 1);
+  }
+
+  protected anyLive(d: Trading): boolean {
+    return d.accounts.some((a) => a.mode === 'Live');
+  }
+
+  /** Whether the ticket's order would be a real one. With "best venue", any real account of the manager makes it so. */
+  protected targetIsLive(d: Trading): boolean {
+    const target = this.target();
+    if (target === null) {
+      return false;
+    }
+
+    return target[0] === 'a' ? d.accounts.some((a) => 'a' + a.id === target && a.mode === 'Live') : d.accounts.some((a) => 'm' + a.managerId === target && a.mode === 'Live');
   }
 
   protected abs(value: number): number {

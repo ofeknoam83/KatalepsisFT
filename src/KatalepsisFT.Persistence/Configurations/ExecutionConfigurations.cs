@@ -16,6 +16,8 @@ internal sealed class TradingAccountConfiguration : IEntityTypeConfiguration<Tra
         account.Property(x => x.MaxOrderNotionalUsd).HasPrecision(20, 2);
         account.Property(x => x.MaxPositionNotionalUsd).HasPrecision(20, 2);
         account.Property(x => x.PaperBalanceUsd).HasPrecision(20, 2);
+        account.Property(x => x.LiveEquityUsd).HasPrecision(20, 2);
+        account.Property(x => x.LiveSyncError).HasMaxLength(500);
         // One account per manager and venue: two would let the same money be traded twice.
         account.HasIndex(x => new { x.ManagerAccountId, x.Venue }).IsUnique();
         account.HasOne(x => x.ManagerAccount).WithMany().HasForeignKey(x => x.ManagerAccountId).OnDelete(DeleteBehavior.Restrict);
@@ -78,6 +80,10 @@ internal sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
         order.Property(x => x.AverageFillPrice).HasPrecision(28, 10);
         order.Property(x => x.ArrivalPrice).HasPrecision(28, 10);
         order.Property(x => x.FeesUsd).HasPrecision(20, 6);
+        order.Property(x => x.VenueClientId).HasMaxLength(40);
+        order.Property(x => x.VenueOrderId).HasMaxLength(64);
+        // Postgres' own change counter of the row: a save made from an older reading of the order fails.
+        order.Property(x => x.Version).IsRowVersion();
         order.Ignore(x => x.IsOpen);
         order.Ignore(x => x.RemainingQuantity);
         // The same name from the same sender on the same account is the same order.
@@ -111,6 +117,7 @@ internal sealed class TradingPositionConfiguration : IEntityTypeConfiguration<Tr
         position.Property(x => x.AveragePrice).HasPrecision(28, 10);
         position.Property(x => x.RealisedPnlUsd).HasPrecision(20, 6);
         position.Property(x => x.FeesUsd).HasPrecision(20, 6);
+        position.Property(x => x.LiquidationPrice).HasPrecision(28, 10);
         position.HasIndex(x => new { x.TradingAccountId, x.Asset, x.InstrumentType }).IsUnique();
         position.HasOne(x => x.TradingAccount).WithMany().HasForeignKey(x => x.TradingAccountId).OnDelete(DeleteBehavior.Restrict);
     }

@@ -572,6 +572,10 @@ namespace KatalepsisFT.Persistence.Migrations
                         .HasColumnType("character varying(500)")
                         .HasColumnName("reject_reason");
 
+                    b.Property<DateTimeOffset?>("SentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("sent_at");
+
                     b.Property<int>("Side")
                         .HasColumnType("integer")
                         .HasColumnName("side");
@@ -609,6 +613,22 @@ namespace KatalepsisFT.Persistence.Migrations
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
+
+                    b.Property<string>("VenueClientId")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("venue_client_id");
+
+                    b.Property<string>("VenueOrderId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("venue_order_id");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
 
                     b.HasKey("Id")
                         .HasName("pk_orders");
@@ -815,6 +835,20 @@ namespace KatalepsisFT.Persistence.Migrations
                         .HasColumnType("numeric(6,2)")
                         .HasColumnName("leverage");
 
+                    b.Property<decimal?>("LiveEquityUsd")
+                        .HasPrecision(20, 2)
+                        .HasColumnType("numeric(20,2)")
+                        .HasColumnName("live_equity_usd");
+
+                    b.Property<string>("LiveSyncError")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("live_sync_error");
+
+                    b.Property<DateTimeOffset?>("LiveSyncedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("live_synced_at");
+
                     b.Property<int>("ManagerAccountId")
                         .HasColumnType("integer")
                         .HasColumnName("manager_account_id");
@@ -943,6 +977,11 @@ namespace KatalepsisFT.Persistence.Migrations
                     b.Property<int>("InstrumentType")
                         .HasColumnType("integer")
                         .HasColumnName("instrument_type");
+
+                    b.Property<decimal?>("LiquidationPrice")
+                        .HasPrecision(28, 10)
+                        .HasColumnType("numeric(28,10)")
+                        .HasColumnName("liquidation_price");
 
                     b.Property<decimal>("Quantity")
                         .HasPrecision(28, 10)

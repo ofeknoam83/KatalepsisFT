@@ -99,6 +99,22 @@ public class Order
     public DateTimeOffset UpdatedAt { get; set; }
     public List<OrderEvent> Events { get; set; } = [];
 
+    /// <summary>
+    /// For an order on a real account: when it was handed to the venue. It is written down before the order goes
+    /// out, so an order with this set and no answer on record is one whose fate has to be asked of the venue,
+    /// never one to send again.
+    /// </summary>
+    public DateTimeOffset? SentAt { get; set; }
+
+    /// <summary>The name the venue knows the order by. Ours, so the order can be found there even if the answer to sending it was lost.</summary>
+    public string? VenueClientId { get; set; }
+
+    /// <summary>The venue's own id for the order, once it has answered.</summary>
+    public string? VenueOrderId { get; set; }
+
+    /// <summary>Changes with every save. A save based on an older reading fails, so two processes can never both act on one order.</summary>
+    public uint Version { get; set; }
+
     public bool IsOpen => Status is OrderStatus.Received or OrderStatus.Accepted or OrderStatus.Working or OrderStatus.PartlyFilled;
 
     public decimal RemainingQuantity => Quantity - FilledQuantity;
@@ -113,6 +129,9 @@ public enum OrderEventKind
     Fill = 5,
     CancelRequested = 6,
     Cancelled = 7,
+
+    /// <summary>Something worth knowing that did not change the order's state.</summary>
+    Note = 8,
 }
 
 /// <summary>One thing that happened to an order. Only ever added: the full list is the order's record.</summary>
@@ -146,5 +165,8 @@ public class TradingPosition
     public decimal AveragePrice { get; set; }
     public decimal RealisedPnlUsd { get; set; }
     public decimal FeesUsd { get; set; }
+
+    /// <summary>For a leveraged position on a real account: the price at which the venue would close it by force, as the venue reports it.</summary>
+    public decimal? LiquidationPrice { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 }

@@ -15,19 +15,19 @@ namespace KatalepsisFT.Application.Execution;
 /// all of a step is on record or none of it is. After a crash the engine simply runs again; an order is never in a
 /// state the database does not show.
 ///
-/// In this phase every account trades on paper: orders are filled against the live book by <see cref="PaperMatcher"/>
-/// and nothing is sent to a venue.
+/// This engine works the orders of paper accounts: they are filled against the live book by <see cref="PaperMatcher"/>
+/// and nothing is sent to a venue. Orders of real accounts are worked by <see cref="LiveExecution"/>.
 /// </summary>
 public sealed class ExecutionEngine(IFtDbContext database, ConsolidatedBook books, TimeProvider clock, ILogger<ExecutionEngine> logger)
 {
-    public const string LiveNotYet = "Real-money trading is not switched on in this version. The account trades on paper.";
-
     /// <summary>Looks at every open order once.</summary>
     /// <returns>How many orders changed.</returns>
     public async Task<int> RunOnceAsync(CancellationToken cancellationToken)
     {
         List<long> open = await database
             .Orders.Where(o => o.Status == OrderStatus.Received || o.Status == OrderStatus.Accepted || o.Status == OrderStatus.Working || o.Status == OrderStatus.PartlyFilled)
+            // Orders of real accounts are worked by LiveExecution, against the venue itself.
+            .Where(o => o.TradingAccount.Mode == TradingMode.Paper)
             .OrderBy(o => o.Id)
             .Select(o => o.Id)
             .ToListAsync(cancellationToken);
@@ -62,7 +62,7 @@ public sealed class ExecutionEngine(IFtDbContext database, ConsolidatedBook book
     {
         database.DiscardChanges();
         Order? order = await database.Orders.Include(o => o.TradingAccount).FirstOrDefaultAsync(o => o.Id == orderId, cancellationToken);
-        if (order is null || !order.IsOpen)
+        if (order is null || !order.IsOpen || order.TradingAccount.Mode != TradingMode.Paper)
         {
             return false;
         }
@@ -120,12 +120,6 @@ public sealed class ExecutionEngine(IFtDbContext database, ConsolidatedBook book
         if (order.CancelRequested)
         {
             Close(order, OrderStatus.Cancelled, OrderEventKind.Cancelled, now, "Cancelled on request before it was worked.");
-            return;
-        }
-
-        if (account.Mode == TradingMode.Live)
-        {
-            Close(order, OrderStatus.Rejected, OrderEventKind.Rejected, now, LiveNotYet);
             return;
         }
 

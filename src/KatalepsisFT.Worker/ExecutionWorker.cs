@@ -152,6 +152,7 @@ public sealed class OrderEngineWorker(
     IConnectionMultiplexer keyValue,
     VenueStatusBoard board,
     ExecutionOptions options,
+    OpenedTradingKeys keys,
     ILogger<OrderEngineWorker> logger
 ) : BackgroundService
 {
@@ -316,6 +317,7 @@ public sealed class OrderEngineWorker(
             }
             else
             {
+                keys.Use(opener);
                 logger.LogInformation("The trading-key vault is ready.");
             }
 
@@ -332,5 +334,143 @@ public sealed class OrderEngineWorker(
     {
         await using NpgsqlCommand command = new(sql, connection) { CommandTimeout = 5 };
         return await command.ExecuteScalarAsync(cancellationToken) is true;
+    }
+}
+
+/// <summary>The key that opens stored trading keys, once the vault has been prepared. It never leaves this service.</summary>
+public sealed class OpenedTradingKeys : ITradingKeys
+{
+    private volatile SealedTradingVault.TradingKeyOpener? _opener;
+
+    public bool Ready => _opener is not null;
+
+    public void Use(SealedTradingVault.TradingKeyOpener opener) => _opener = opener;
+
+    public KatalepsisFT.Application.Connections.VenueCredentials Open(string sealedKey) =>
+        (_opener ?? throw new InvalidOperationException("The trading-key vault has not been prepared.")).Open(sealedKey);
+}
+
+/// <summary>
+/// Works the orders of real accounts and keeps reading what those accounts hold at their venues. It only acts while
+/// this copy of the execution service is the acting one. Accounts are worked side by side, so a slow answer from a
+/// venue for one account does not hold up another's orders; within an account, one thing happens at a time.
+/// </summary>
+public sealed class LiveOrdersWorker(IServiceScopeFactory scopes, IConnectionMultiplexer keyValue, VenueStatusBoard board, TimeProvider clock, ILogger<LiveOrdersWorker> logger) : BackgroundService
+{
+    private static readonly TimeSpan Round = TimeSpan.FromMilliseconds(100);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<int, Task> _working = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<int, DateTimeOffset> _read = new();
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        using SemaphoreSlim wake = new(0, 1);
+        try
+        {
+            await keyValue.GetSubscriber().SubscribeAsync(RedisChannel.Literal(KeyValueExecutionSignal.Channel), (_, _) =>
+            {
+                try
+                {
+                    wake.Release();
+                }
+                catch (Exception e) when (e is SemaphoreFullException or ObjectDisposedException)
+                {
+                }
+            });
+        }
+        catch (RedisException e)
+        {
+            logger.LogWarning("Real orders cannot be woken by new orders and will be found on the rounds: {Reason}", e.Message);
+        }
+
+        bool announced = false;
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                if (board.IsLeader)
+                {
+                    LiveWork work;
+                    using (IServiceScope scope = scopes.CreateScope())
+                    {
+                        LiveExecution live = scope.ServiceProvider.GetRequiredService<LiveExecution>();
+                        if (!announced)
+                        {
+                            announced = true;
+                            logger.LogInformation("Real orders can be sent to: {Venues}.", string.Join(", ", live.Venues));
+                        }
+
+                        work = await live.WorkAsync(stoppingToken);
+                    }
+
+                    DateTimeOffset now = clock.GetUtcNow();
+                    foreach (int accountId in work.Accounts.Union(work.OpenOrders.Keys))
+                    {
+                        List<long> orders = work.OpenOrders.GetValueOrDefault(accountId) ?? [];
+                        bool readDue = !_read.TryGetValue(accountId, out DateTimeOffset at) || now - at >= LiveExecution.ReadAccountEvery;
+                        if ((orders.Count > 0 || readDue) && !_working.ContainsKey(accountId))
+                        {
+                            _working[accountId] = Task.Run(() => WorkAccountAsync(accountId, orders, readDue, stoppingToken), stoppingToken);
+                        }
+                    }
+                }
+
+                await wake.WaitAsync(Round, stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception e)
+            {
+                logger.LogError(e, "The round for real orders failed and will run again.");
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+            }
+        }
+
+        // What is under way is allowed to finish: an order half way to a venue must get its answer written down.
+        await Task.WhenAll(_working.Values.ToArray()).WaitAsync(TimeSpan.FromSeconds(10), CancellationToken.None).ContinueWith(_ => { }, TaskScheduler.Default);
+    }
+
+    private async Task WorkAccountAsync(int accountId, List<long> orders, bool readDue, CancellationToken stopping)
+    {
+        try
+        {
+            using IServiceScope scope = scopes.CreateScope();
+            LiveExecution live = scope.ServiceProvider.GetRequiredService<LiveExecution>();
+            bool changed = false;
+            foreach (long orderId in orders)
+            {
+                try
+                {
+                    // Not cancelled half way: once an order is on its way out, its answer must be recorded.
+                    changed |= await live.HandleAsync(orderId, CancellationToken.None);
+                }
+                catch (Exception e)
+                {
+                    logger.LogError(e, "Real order {OrderId} could not be handled; it is tried again.", orderId);
+                }
+            }
+
+            if ((changed || readDue) && !stopping.IsCancellationRequested)
+            {
+                _read[accountId] = clock.GetUtcNow();
+                await live.ReadAccountAsync(accountId, CancellationToken.None);
+            }
+        }
+        catch (Exception e)
+        {
+            logger.LogError(e, "Real account {AccountId} could not be worked; it is tried again.", accountId);
+        }
+        finally
+        {
+            _working.TryRemove(accountId, out _);
+        }
     }
 }

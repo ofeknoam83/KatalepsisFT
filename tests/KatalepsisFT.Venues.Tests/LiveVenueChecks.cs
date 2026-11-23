@@ -83,4 +83,31 @@ public class LiveVenueChecks
 
         e.Failure.Should().Be(VenueFailure.Rejected, e.Message);
     }
+
+    [Fact]
+    public async Task KucoinOrders_ReadItsRulesForSpotAndPerpetuals_AndAreRefusedWithAKeyThatDoesNotExist()
+    {
+        if (!Enabled)
+        {
+            return;
+        }
+
+        KucoinOrderGateway gateway = new(new HttpClient { Timeout = TimeSpan.FromSeconds(20) }, TimeProvider.System);
+
+        KatalepsisFT.Application.Execution.VenueInstrument spot = (await gateway.InstrumentAsync("BTC", KatalepsisFT.Domain.Instruments.InstrumentType.Spot, CancellationToken.None))!;
+        KatalepsisFT.Application.Execution.VenueInstrument perp = (await gateway.InstrumentAsync("BTC", KatalepsisFT.Domain.Instruments.InstrumentType.Perp, CancellationToken.None))!;
+        Func<Task> find = () => gateway.FindAsync(Nonsense, spot, KatalepsisFT.Domain.Instruments.InstrumentType.Spot, "kft1-000000000000", CancellationToken.None);
+        Func<Task> findPerp = () => gateway.FindAsync(Nonsense, perp, KatalepsisFT.Domain.Instruments.InstrumentType.Perp, "kft1-000000000000", CancellationToken.None);
+        Func<Task> account = () => gateway.AccountAsync(Nonsense, CancellationToken.None);
+
+        spot.Symbol.Should().Be("BTC-USDT");
+        spot.PriceStep.Should().BeGreaterThan(0m);
+        perp.Symbol.Should().Be("XBTUSDTM");
+        perp.QuantityStep.Should().Be(0.001m);
+        (await gateway.InstrumentAsync("NOSUCHCOIN", KatalepsisFT.Domain.Instruments.InstrumentType.Spot, CancellationToken.None)).Should().BeNull();
+        // A key KuCoin does not know is a clear no, on both of its systems; never "not found" and never "unclear".
+        (await find.Should().ThrowAsync<KatalepsisFT.Application.Execution.VenueRefusedException>()).Which.Message.Should().Contain("code 4000");
+        (await findPerp.Should().ThrowAsync<KatalepsisFT.Application.Execution.VenueRefusedException>()).Which.Message.Should().Contain("code 4000");
+        await account.Should().ThrowAsync<KatalepsisFT.Application.Execution.VenueRefusedException>();
+    }
 }

@@ -92,7 +92,16 @@ if (hasPostgres && group.ToLowerInvariant() is WorkerGroups.Exec)
     builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.KucoinSpotBookStream>();
     builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.KucoinPerpBookStream>();
     builder.Services.AddHostedService<MarketDataWorker>();
+    // Real orders. The gateway and the opened trading keys exist only in this service.
+    builder.Services.AddSingleton<OpenedTradingKeys>();
+    builder.Services.AddSingleton<KatalepsisFT.Application.Execution.ITradingKeys>(provider => provider.GetRequiredService<OpenedTradingKeys>());
+    builder.Services.AddSingleton<KatalepsisFT.Application.Execution.LivePacing>();
+    builder.Services.AddHttpClient(KatalepsisFT.Venues.Kucoin.KucoinOrderGateway.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(8));
+    builder.Services.AddSingleton<KatalepsisFT.Application.Execution.IOrderGateway>(provider =>
+        new KatalepsisFT.Venues.Kucoin.KucoinOrderGateway(provider.GetRequiredService<IHttpClientFactory>().CreateClient(KatalepsisFT.Venues.Kucoin.KucoinOrderGateway.HttpClientName), provider.GetRequiredService<TimeProvider>()));
+    builder.Services.AddScoped<KatalepsisFT.Application.Execution.LiveExecution>();
     builder.Services.AddHostedService<OrderEngineWorker>();
+    builder.Services.AddHostedService<LiveOrdersWorker>();
 }
 
 await builder.Build().RunAsync();
