@@ -22,7 +22,7 @@ interface ChangePasswordForm {
   template: `
     <div class="auth-page">
       <form class="box" nz-form nzLayout="vertical" [formGroup]="form" (ngSubmit)="submit()">
-        <div class="brand"><img class="mark" src="/favicon.svg" alt="" />Katalepsis <small>FT</small></div>
+        <div class="brand"><img class="mark" src="/favicon.svg" alt="" /><span class="name">Katalepsis<small>Fund Terminal</small></span></div>
         <h1>Change your password</h1>
         @if (session()?.mustChangePassword) {
           <p class="hint">Your account still has the password it was created with. Choose your own to continue.</p>
