@@ -1,145 +1,362 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { Store } from '@ngxs/store';
-import { NzAvatarModule } from 'ng-zorro-antd/avatar';
 import { NzDropDownModule } from 'ng-zorro-antd/dropdown';
-import { NzLayoutModule } from 'ng-zorro-antd/layout';
 import { NzMenuModule } from 'ng-zorro-antd/menu';
 import { LiveService } from '../core/live.service';
 import { Logout, SessionState } from '../core/session.state';
+import { SLEEVE_COLORS } from '../funds/models';
 import { LoadFunds, ViewState } from '../funds/view.state';
 
+/** The frame around every page: the side menu with the fund switcher, the open fund's sleeves, admin links and the user. */
 @Component({
   selector: 'app-shell',
-  imports: [RouterLink, RouterLinkActive, RouterOutlet, NzAvatarModule, NzDropDownModule, NzLayoutModule, NzMenuModule],
+  imports: [RouterLink, RouterLinkActive, RouterOutlet, NzDropDownModule, NzMenuModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: `
-    nz-layout.outer {
+    :host {
+      display: flex;
       min-height: 100vh;
     }
-    nz-header {
-      background: #fff;
-      border-bottom: 1px solid #f0f0f0;
-      padding: 0 20px;
-      height: 56px;
-      line-height: 56px;
+    nav {
+      flex: 0 0 256px;
+      width: 256px;
+      box-sizing: border-box;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+      background: var(--kft-card);
+      border-right: 1px solid var(--kft-line);
+      padding: 18px 14px 12px;
       display: flex;
-      align-items: center;
-      justify-content: space-between;
+      flex-direction: column;
+      gap: 18px;
     }
-    nz-sider {
-      background: #fff;
-      border-right: 1px solid #f0f0f0;
+    main {
+      flex: 1 1 0;
+      min-width: 0;
+      padding: 22px 32px 40px;
     }
-    .group {
-      font-size: 11px;
-      color: #8c8c8c;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      padding: 14px 24px 4px;
+    .brand {
+      padding: 2px 6px;
     }
-    .who {
+    .switch {
       display: flex;
       align-items: center;
       gap: 10px;
+      width: 100%;
+      min-height: 52px;
+      padding: 8px 10px;
+      border: 1px solid #e1e4ea;
+      border-radius: 10px;
+      background: #fafbfc;
+      font: inherit;
+      color: inherit;
+      text-align: left;
       cursor: pointer;
     }
-    .live {
+    .switch:hover {
+      border-color: #c9ceda;
+    }
+    .badge {
+      flex: 0 0 30px;
+      height: 30px;
+      border-radius: 8px;
+      background: #ececfb;
+      color: var(--kft-brand);
+      display: grid;
+      place-items: center;
+      font-weight: 600;
+      font-size: 12px;
+    }
+    .switch .names {
+      flex: 1 1 0;
+      min-width: 0;
+    }
+    .switch b,
+    .who b {
+      display: block;
+      font-weight: 600;
+      font-size: 13.5px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .switch small,
+    .who small {
+      display: block;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-size: 12px;
+      color: var(--kft-text-3);
+    }
+    .group {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--kft-text-3);
+      padding: 0 10px 6px;
+    }
+    .links {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .links a {
       display: flex;
       align-items: center;
-      gap: 6px;
-      margin-right: 22px;
-      font-size: 12px;
-      color: #8c8c8c;
+      gap: 10px;
+      min-height: 38px;
+      padding: 0 10px;
+      border-radius: 8px;
+      color: #344054;
+      font-weight: 500;
+    }
+    .links a:hover {
+      background: #f5f6f8;
+    }
+    .links a.on {
+      background: var(--kft-brand-soft);
+      color: var(--kft-brand);
+      font-weight: 600;
+    }
+    .links a.sleeve {
+      padding-left: 14px;
+    }
+    .links a i {
+      flex: 0 0 8px;
+      height: 8px;
+      border-radius: 3px;
+    }
+    .links svg {
+      flex: 0 0 18px;
+      color: var(--kft-text-3);
+    }
+    .links a.on svg {
+      color: var(--kft-brand);
+    }
+    .foot {
+      margin-top: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding-top: 10px;
+      border-top: 1px solid #eef0f3;
+    }
+    .live {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      align-self: flex-start;
+      margin-left: 6px;
+      font-size: 12.5px;
+      font-weight: 500;
+      color: var(--kft-text-2);
+      background: var(--kft-fill);
+      padding: 4px 11px;
+      border-radius: 999px;
     }
     .live i {
       width: 7px;
       height: 7px;
       border-radius: 50%;
-      background: #bfbfbf;
+      background: #98a2b3;
+    }
+    .live.on {
+      color: #05603a;
+      background: var(--kft-up-soft);
     }
     .live.on i {
-      background: #52c41a;
+      background: #12925a;
     }
-    nz-content {
-      padding: 20px;
+    .who {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px;
+      border-radius: 10px;
+      cursor: pointer;
+    }
+    .who:hover {
+      background: #f5f6f8;
+    }
+    .who .badge {
+      border-radius: 50%;
+      flex-basis: 32px;
+      height: 32px;
+      font-size: 13px;
+    }
+    .who span {
+      min-width: 0;
+    }
+
+    /* The list that opens under the fund switcher. */
+    .funds {
+      width: 300px;
+      background: #fff;
+      border-radius: 14px;
+      box-shadow: 0 12px 32px rgba(16, 24, 40, 0.16);
+      border: 1px solid var(--kft-line);
+      padding: 10px;
+    }
+    .funds input {
+      width: 100%;
+      box-sizing: border-box;
+      height: 36px;
+      border: 1px solid #e1e4ea;
+      border-radius: 9px;
+      padding: 0 10px;
+      font: inherit;
+      outline: none;
+    }
+    .funds input:focus {
+      border-color: var(--kft-brand);
+    }
+    .funds ul {
+      list-style: none;
+      margin: 8px 0 0;
+      padding: 0;
+      max-height: 340px;
+      overflow-y: auto;
+    }
+    .funds li a {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 36px;
+      padding: 0 10px;
+      border-radius: 8px;
+      color: var(--kft-text);
+    }
+    .funds li a:hover,
+    .funds li a.on {
+      background: var(--kft-brand-soft);
+    }
+    .funds li em {
+      margin-left: auto;
+      font-style: normal;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--kft-text-3);
+    }
+    .funds .none {
+      padding: 10px;
+      color: var(--kft-text-3);
+      font-size: 13px;
     }
 
     /* Smaller laptops: the menu gives up some of its width to the figures. */
     @media (max-width: 1500px) {
-      nz-sider {
-        flex: 0 0 184px !important;
-        max-width: 184px !important;
-        min-width: 184px !important;
-        width: 184px !important;
+      nav {
+        flex-basis: 216px;
+        width: 216px;
+        padding: 14px 10px 10px;
       }
 
-      nz-content {
-        padding: 14px;
-      }
-
-      nz-sider li[nz-menu-item] {
-        padding-left: 14px !important;
-        padding-right: 8px !important;
-        font-size: 13px;
-      }
-
-      .group {
-        padding: 12px 14px 4px;
+      main {
+        padding: 16px 18px 32px;
       }
     }
   `,
   template: `
-    <nz-layout class="outer">
-      <nz-header>
-        <a class="brand" routerLink="/"><span class="mark">K</span>Katalepsis <small>FT</small></a>
-        <span style="flex:1"></span>
+    <nav aria-label="Main">
+      <a class="brand" routerLink="/"><span class="mark">K</span>Katalepsis <small>FT</small></a>
+
+      <button type="button" class="switch" nz-dropdown [nzDropdownMenu]="fundMenu" nzTrigger="click" [(nzVisible)]="switching" data-testid="fund-switcher">
+        <span class="badge" aria-hidden="true">{{ fundInitials() }}</span>
+        <span class="names">
+          <b>{{ current()?.name ?? 'Choose a fund' }}</b>
+          <small>{{ currentKind() }}{{ otherCount() > 0 ? ' · ' + otherCount() + ' more' : '' }}</small>
+        </span>
+        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#5b6474" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6l3-3 3 3M5 10l3 3 3-3" /></svg>
+      </button>
+      <nz-dropdown-menu #fundMenu="nzDropdownMenu">
+        <div class="funds">
+          <input type="search" placeholder="Find a fund or account" aria-label="Find a fund or account" [value]="search()" (input)="search.set($any($event.target).value)" />
+          <ul>
+            @for (fund of shownFunds(); track fund.id) {
+              <li>
+                <a [routerLink]="['/funds', fund.id]" [class.on]="fund.id === fundId()" (click)="switching = false; search.set('')" [title]="fund.name">
+                  {{ fund.name }}
+                  @if (fund.isDemo) {
+                    <em>DEMO</em>
+                  }
+                  @if (fund.kind === 'Sma') {
+                    <em [title]="'Separately managed account of ' + fund.ownerName">SMA</em>
+                  }
+                </a>
+              </li>
+            } @empty {
+              <li class="none">Nothing matches.</li>
+            }
+          </ul>
+        </div>
+      </nz-dropdown-menu>
+
+      @if (fundId(); as id) {
+        <div class="links">
+          <div class="group">This fund</div>
+          <a [routerLink]="['/funds', id]" routerLinkActive="on">
+            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="2.5" y="2.5" width="5.5" height="5.5" rx="1.2" /><rect x="10" y="2.5" width="5.5" height="5.5" rx="1.2" /><rect x="2.5" y="10" width="5.5" height="5.5" rx="1.2" /><rect x="10" y="10" width="5.5" height="5.5" rx="1.2" /></svg>
+            Fund
+          </a>
+          @for (sleeve of sleeves(); track sleeve.id; let i = $index) {
+            <a class="sleeve" [routerLink]="['/sleeves', sleeve.id]" routerLinkActive="on"><i [style.background]="colors[i % colors.length]"></i>{{ sleeve.name }}</a>
+          }
+        </div>
+      }
+
+      @if (isAdmin()) {
+        <div class="links">
+          <div class="group">Admin</div>
+          <a routerLink="/admin/funds/new" routerLinkActive="on">
+            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="9" cy="9" r="6.5" /><path d="M9 6v6M6 9h6" /></svg>
+            New fund or SMA
+          </a>
+          <a routerLink="/admin/users" routerLinkActive="on">
+            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="9" cy="6.5" r="3" /><path d="M3.5 15c.8-2.6 2.9-4 5.5-4s4.7 1.4 5.5 4" /></svg>
+            Users
+          </a>
+          <a routerLink="/admin/strategy-keys" routerLinkActive="on">
+            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="12" r="3" /><path d="M8.2 9.8L15 3M12.5 5.5l2 2" /></svg>
+            Strategy keys
+          </a>
+          <a routerLink="/admin/audit" routerLinkActive="on">
+            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 2.5H11l2.500 2.500v10.500h-9z" /><path d="M6.5 8h5M6.5 11h5" /></svg>
+            Audit trail
+          </a>
+          <a routerLink="/admin/system" routerLinkActive="on">
+            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9h3l2-5 3.500 10 2-5H16" /></svg>
+            System status
+          </a>
+        </div>
+      }
+
+      <div class="foot">
         <span class="live" [class.on]="live.connected()" [title]="live.connected() ? 'Figures update as they change' : 'No live connection: pages refresh every 15 seconds'" data-testid="live-state">
           <i></i>{{ live.connected() ? 'Live' : 'Refreshing every 15 s' }}
         </span>
-        <span class="who" nz-dropdown [nzDropdownMenu]="menu" nzTrigger="click" nzPlacement="bottomRight" data-testid="user-menu">
-          <span>{{ session()?.displayName || session()?.email }}</span>
-          <nz-avatar [nzText]="initials()" style="background:#e6f0ff;color:#1677ff" />
-        </span>
+        <div class="who" nz-dropdown [nzDropdownMenu]="menu" nzTrigger="click" nzPlacement="topLeft" data-testid="user-menu">
+          <span class="badge" aria-hidden="true">{{ initials() }}</span>
+          <span>
+            <b>{{ session()?.displayName || session()?.email }}</b>
+            <small>{{ session()?.roles?.join(', ') }}</small>
+          </span>
+        </div>
         <nz-dropdown-menu #menu="nzDropdownMenu">
           <ul nz-menu>
-            <li nz-menu-item nzDisabled>{{ session()?.email }} · {{ session()?.roles?.join(', ') }}</li>
+            <li nz-menu-item nzDisabled>{{ session()?.email }}</li>
             <li nz-menu-divider></li>
             <li nz-menu-item routerLink="/change-password">Change password</li>
             <li nz-menu-item (click)="signOut()">Sign out</li>
           </ul>
         </nz-dropdown-menu>
-      </nz-header>
-      <nz-layout>
-        <nz-sider nzWidth="220px" nzTheme="light">
-          <div class="group">Funds and accounts</div>
-          <ul nz-menu nzMode="inline" style="border-inline-end:0">
-            @for (fund of funds() ?? []; track fund.id) {
-              <li nz-menu-item [routerLink]="['/funds', fund.id]" [class.ant-menu-item-selected]="fund.id === fundId()" [title]="fund.name">{{ fund.name }}@if (fund.isDemo) {<span style="color:#8c8c8c;font-size:11px;margin-left:6px">DEMO</span>}@if (fund.kind === 'Sma') {<span style="color:#8c8c8c;font-size:11px;margin-left:6px" [title]="'Separately managed account of ' + fund.ownerName">SMA</span>}</li>
-            }
-          </ul>
-          @if (sleeves().length > 0) {
-            <div class="group">Sleeves</div>
-            <ul nz-menu nzMode="inline" style="border-inline-end:0">
-              @for (sleeve of sleeves(); track sleeve.id) {
-                <li nz-menu-item [routerLink]="['/sleeves', sleeve.id]" routerLinkActive="ant-menu-item-selected">{{ sleeve.name }}</li>
-              }
-            </ul>
-          }
-          @if (isAdmin()) {
-            <div class="group">Admin</div>
-            <ul nz-menu nzMode="inline" style="border-inline-end:0">
-              <li nz-menu-item routerLink="/admin/funds/new" routerLinkActive="ant-menu-item-selected">New fund or SMA</li>
-              <li nz-menu-item routerLink="/admin/users" routerLinkActive="ant-menu-item-selected">Users</li>
-              <li nz-menu-item routerLink="/admin/strategy-keys" routerLinkActive="ant-menu-item-selected">Strategy keys</li>
-              <li nz-menu-item routerLink="/admin/audit" routerLinkActive="ant-menu-item-selected">Audit trail</li>
-              <li nz-menu-item routerLink="/admin/system" routerLinkActive="ant-menu-item-selected">System status</li>
-            </ul>
-          }
-        </nz-sider>
-        <nz-content><router-outlet /></nz-content>
-      </nz-layout>
-    </nz-layout>
+      </div>
+    </nav>
+    <main><router-outlet /></main>
   `,
 })
 export class Shell {
@@ -147,20 +364,33 @@ export class Shell {
   private readonly router = inject(Router);
   protected readonly live = inject(LiveService);
 
+  protected readonly colors = SLEEVE_COLORS;
   protected readonly session = this.store.selectSignal(SessionState.session);
   protected readonly isAdmin = this.store.selectSignal(SessionState.isAdmin);
   protected readonly fundId = this.store.selectSignal(ViewState.fundId);
   protected readonly funds = this.store.selectSignal(ViewState.funds);
   protected readonly sleeves = this.store.selectSignal(ViewState.sleeves);
-  protected readonly initials = computed(() => {
-    const name = this.session()?.displayName || this.session()?.email || '';
-    return name
-      .split(/[\s@.]+/)
-      .filter((part) => part.length > 0)
-      .slice(0, 2)
-      .map((part) => part[0].toUpperCase())
-      .join('');
+
+  /** What is typed in the fund switcher, and whether its list is open. */
+  protected readonly search = signal('');
+  protected switching = false;
+
+  protected readonly current = computed(() => (this.funds() ?? []).find((fund) => fund.id === this.fundId()) ?? null);
+  protected readonly otherCount = computed(() => Math.max(0, (this.funds() ?? []).length - (this.current() ? 1 : 0)));
+  protected readonly currentKind = computed(() => {
+    const fund = this.current();
+    if (!fund) {
+      return 'Funds and accounts';
+    }
+
+    return fund.isDemo ? 'Demo fund' : fund.kind === 'Sma' ? 'Managed account' : 'Fund';
   });
+  protected readonly shownFunds = computed(() => {
+    const wanted = this.search().trim().toLowerCase();
+    return (this.funds() ?? []).filter((fund) => wanted === '' || fund.name.toLowerCase().includes(wanted));
+  });
+  protected readonly fundInitials = computed(() => initialsOf(this.current()?.name ?? 'K'));
+  protected readonly initials = computed(() => initialsOf(this.session()?.displayName || this.session()?.email || ''));
 
   constructor() {
     this.store.dispatch(new LoadFunds());
@@ -177,4 +407,14 @@ export class Shell {
     this.live.stop();
     this.store.dispatch(new Logout()).subscribe(() => void this.router.navigate(['/login']));
   }
+}
+
+/** "Liquid Master Fund" → "LM"; an email gives the letters before and after the dot or the at sign. */
+function initialsOf(name: string): string {
+  return name
+    .split(/[\s@.]+/)
+    .filter((part) => part.length > 0)
+    .slice(0, 2)
+    .map((part) => part[0].toUpperCase())
+    .join('');
 }

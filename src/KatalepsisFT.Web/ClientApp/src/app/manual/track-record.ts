@@ -76,8 +76,8 @@ interface TrackRecord {
           <div class="tiles" data-testid="track-summary">
             <div class="tile"><div class="k">Imported days</div><div class="v">{{ t.days }}</div><div class="d">{{ t.from | date: 'd MMM y' : 'UTC' }} to {{ t.to | date: 'd MMM y' : 'UTC' }}</div></div>
             <div class="tile"><div class="k">Return over those days</div><div class="v" [class]="t.totalReturn | tone">{{ t.totalReturn | pct: 2 }}</div><div class="d">Money paid in or out is not counted as return</div></div>
-            <div class="tile"><div class="k">First imported NAV</div><div class="v">{{ t.firstNavUsd | usd }}</div><div class="d">{{ t.from | date: 'd MMM y' : 'UTC' }}</div></div>
-            <div class="tile"><div class="k">Last imported NAV</div><div class="v">{{ t.lastNavUsd | usd }}</div><div class="d">{{ t.to | date: 'd MMM y' : 'UTC' }}</div></div>
+            <div class="tile"><div class="k">First imported NAV</div><div class="v">{{ t.firstNavUsd | compact }}</div><div class="x">{{ t.firstNavUsd | usd }}</div><div class="d">{{ t.from | date: 'd MMM y' : 'UTC' }}</div></div>
+            <div class="tile"><div class="k">Last imported NAV</div><div class="v">{{ t.lastNavUsd | compact }}</div><div class="x">{{ t.lastNavUsd | usd }}</div><div class="d">{{ t.to | date: 'd MMM y' : 'UTC' }}</div></div>
           </div>
           @if (t.firstLiveDay) {
             <nz-alert

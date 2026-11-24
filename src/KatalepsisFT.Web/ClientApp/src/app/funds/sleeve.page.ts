@@ -1,4 +1,5 @@
 import { DecimalPipe } from '@angular/common';
+import { Coin } from '../shared/coin';
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { NzAlertModule } from 'ng-zorro-antd/alert';
@@ -34,7 +35,7 @@ function heat(value: number, max: number): Record<string, string> {
 
 @Component({
   selector: 'app-sleeve-page',
-  imports: [DecimalPipe, RouterLink, NzAlertModule, NzTableModule, NzTabsModule, NzTagModule, ExposureBar, PageHead, AlertStrip, AddManager, PerformancePanel, RiskPanel, LiquidityPanel, ...FORMAT_PIPES],
+  imports: [Coin, DecimalPipe, RouterLink, NzAlertModule, NzTableModule, NzTabsModule, NzTagModule, ExposureBar, PageHead, AlertStrip, AddManager, PerformancePanel, RiskPanel, LiquidityPanel, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (page.failed()) {
@@ -50,9 +51,9 @@ function heat(value: number, max: number): Record<string, string> {
       />
 
       <div class="tiles">
-        <div class="tile"><div class="k">Sleeve NAV</div><div class="v">{{ d.totals.navUsd | usd }}</div><div class="d">{{ d.totals.navUsd | share: d.fundNavUsd : 0 }} of fund</div></div>
-        <div class="tile"><div class="k">Long</div><div class="v">{{ d.totals.longUsd | usd }}</div><div class="d">{{ d.totals.longUsd | share: d.totals.navUsd : 0 }} of sleeve NAV</div></div>
-        <div class="tile"><div class="k">Short</div><div class="v">{{ d.totals.shortUsd | usd }}</div><div class="d">{{ -d.totals.shortUsd | share: d.totals.navUsd : 0 }} of sleeve NAV</div></div>
+        <div class="tile"><div class="k">Sleeve NAV</div><div class="v">{{ d.totals.navUsd | compact }}</div><div class="x">{{ d.totals.navUsd | usd }}</div><div class="d">{{ d.totals.navUsd | share: d.fundNavUsd : 0 }} of fund</div></div>
+        <div class="tile"><div class="k">Long</div><div class="v">{{ d.totals.longUsd | compact }}</div><div class="x">{{ d.totals.longUsd | usd }}</div><div class="d">{{ d.totals.longUsd | share: d.totals.navUsd : 0 }} of sleeve NAV</div></div>
+        <div class="tile"><div class="k">Short</div><div class="v">{{ d.totals.shortUsd | compact }}</div><div class="x">{{ d.totals.shortUsd | usd }}</div><div class="d">{{ -d.totals.shortUsd | share: d.totals.navUsd : 0 }} of sleeve NAV</div></div>
         <div class="tile"><div class="k">Gross exposure</div><div class="v">{{ d.totals.grossUsd | share: d.totals.navUsd : 0 }}</div><div class="d">{{ d.totals.grossUsd | usd }}</div></div>
         <div class="tile"><div class="k">Net exposure</div><div class="v">{{ d.totals.netUsd / d.totals.navUsd | pct: 0 : false }}</div><div class="d">{{ d.totals.netUsd | usd }}</div></div>
       </div>
@@ -151,7 +152,7 @@ function heat(value: number, max: number): Record<string, string> {
               <tbody>
                 @for (row of assets.data; track row.asset.symbol) {
                   <tr>
-                    <td class="nowrap"><span class="coin">{{ row.asset.symbol }}</span><a [routerLink]="['/funds', d.fund.id, 'assets', row.asset.symbol]"><b>{{ row.asset.symbol }}</b></a></td>
+                    <td class="nowrap"><app-coin [symbol]="row.asset.symbol" /><a [routerLink]="['/funds', d.fund.id, 'assets', row.asset.symbol]"><b>{{ row.asset.symbol }}</b></a></td>
                     <td class="num">{{ row.asset.price | price }}</td>
                     <td class="num" [class]="row.asset.change30D | tone">{{ row.asset.change30D | pct }}</td>
                     <td class="num" [class]="row.asset.changeYtd | tone">{{ row.asset.changeYtd | pct }}</td>

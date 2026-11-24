@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { Coin } from '../shared/coin';
 import { RouterLink } from '@angular/router';
 import { NzAlertModule } from 'ng-zorro-antd/alert';
 import { NzTableModule } from 'ng-zorro-antd/table';
@@ -12,7 +13,7 @@ import { InstrumentType, SLEEVE_COLORS } from './models';
 
 @Component({
   selector: 'app-fund-holdings-page',
-  imports: [RouterLink, NzAlertModule, NzTableModule, NzTagModule, PageHead, FundTabs, ...FORMAT_PIPES],
+  imports: [Coin, RouterLink, NzAlertModule, NzTableModule, NzTagModule, PageHead, FundTabs, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (page.failed()) {
@@ -24,16 +25,16 @@ import { InstrumentType, SLEEVE_COLORS } from './models';
 
       <div class="tiles">
         <div class="tile"><div class="k">Assets held</div><div class="v">{{ d.assets.length }}</div></div>
-        <div class="tile"><div class="k">Long</div><div class="v">{{ d.totals.longUsd | usd }}</div><div class="d">{{ d.totals.longUsd | share: d.totals.navUsd : 0 }} of NAV</div></div>
-        <div class="tile"><div class="k">Short</div><div class="v">{{ d.totals.shortUsd | usd }}</div><div class="d">{{ -d.totals.shortUsd | share: d.totals.navUsd : 0 }} of NAV</div></div>
-        <div class="tile"><div class="k">Gross</div><div class="v">{{ d.totals.grossUsd | usd }}</div><div class="d">{{ d.totals.grossUsd | share: d.totals.navUsd : 0 }} of NAV</div></div>
-        <div class="tile"><div class="k">Net</div><div class="v">{{ d.totals.netUsd | usd }}</div><div class="d">{{ d.totals.netUsd / d.totals.navUsd | pct: 0 : false }} of NAV</div></div>
-        <div class="tile"><div class="k">Cash</div><div class="v">{{ d.totals.cashUsd | usd }}</div><div class="d">Not counted as exposure</div></div>
+        <div class="tile"><div class="k">Long</div><div class="v">{{ d.totals.longUsd | compact }}</div><div class="x">{{ d.totals.longUsd | usd }}</div><div class="d">{{ d.totals.longUsd | share: d.totals.navUsd : 0 }} of NAV</div></div>
+        <div class="tile"><div class="k">Short</div><div class="v">{{ d.totals.shortUsd | compact }}</div><div class="x">{{ d.totals.shortUsd | usd }}</div><div class="d">{{ -d.totals.shortUsd | share: d.totals.navUsd : 0 }} of NAV</div></div>
+        <div class="tile"><div class="k">Gross</div><div class="v">{{ d.totals.grossUsd | compact }}</div><div class="x">{{ d.totals.grossUsd | usd }}</div><div class="d">{{ d.totals.grossUsd | share: d.totals.navUsd : 0 }} of NAV</div></div>
+        <div class="tile"><div class="k">Net</div><div class="v">{{ d.totals.netUsd | compact }}</div><div class="x">{{ d.totals.netUsd | usd }}</div><div class="d">{{ d.totals.netUsd / d.totals.navUsd | pct: 0 : false }} of NAV</div></div>
+        <div class="tile"><div class="k">Cash</div><div class="v">{{ d.totals.cashUsd | compact }}</div><div class="x">{{ d.totals.cashUsd | usd }}</div><div class="d">Not counted as exposure</div></div>
       </div>
 
       <div class="panel">
         <h3>Holdings by asset <span class="hint">Exposure is delta-adjusted · click an asset to see where it sits across sleeves</span></h3>
-        <nz-table #assets [nzData]="d.assets" [nzShowPagination]="false" [nzFrontPagination]="false" nzSize="small" [nzScroll]="{ x: '1100px' }">
+        <nz-table #assets [nzData]="d.assets" [nzShowPagination]="false" [nzFrontPagination]="false" nzSize="small" [nzScroll]="{ x: '1680px' }">
           <thead>
             <tr>
               <th nzWidth="200px">Asset</th><th class="num">Price</th><th class="num">1D</th><th class="num">30D</th><th class="num">YTD</th>
@@ -47,7 +48,7 @@ import { InstrumentType, SLEEVE_COLORS } from './models';
             @for (row of assets.data; track row.asset.symbol) {
               <tr>
                 <td class="nowrap">
-                  <span class="coin">{{ row.asset.symbol }}</span><a [routerLink]="['/funds', d.fund.id, 'assets', row.asset.symbol]"><b>{{ row.asset.symbol }}</b></a>
+                  <app-coin [symbol]="row.asset.symbol" /><a [routerLink]="['/funds', d.fund.id, 'assets', row.asset.symbol]"><b>{{ row.asset.symbol }}</b></a>
                   @if (row.hasOffsettingManagers) {
                     <nz-tag nzColor="gold" style="margin-left:6px">Both sides</nz-tag>
                   }

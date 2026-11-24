@@ -1,4 +1,5 @@
 import { AddManager } from './add-manager';
+import { Coin } from '../shared/coin';
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { NzAlertModule } from 'ng-zorro-antd/alert';
@@ -15,7 +16,7 @@ import { SLEEVE_COLORS } from './models';
 
 @Component({
   selector: 'app-fund-overview-page',
-  imports: [RouterLink, NzAlertModule, NzTableModule, ExposureBar, PageHead, FundTabs, ...FORMAT_PIPES, AlertStrip, IntradayPanel, AddManager],
+  imports: [Coin, RouterLink, NzAlertModule, NzTableModule, ExposureBar, PageHead, FundTabs, ...FORMAT_PIPES, AlertStrip, IntradayPanel, AddManager],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (page.failed()) {
@@ -33,11 +34,23 @@ import { SLEEVE_COLORS } from './models';
       <app-alert-strip [fundId]="d.fund.id" />
 
       <div class="tiles">
-        <div class="tile"><div class="k">Net asset value</div><div class="v">{{ d.totals.navUsd | usd }}</div><div class="d">Cash {{ d.totals.cashUsd | usd }}</div></div>
-        <div class="tile"><div class="k">Long exposure</div><div class="v">{{ d.totals.longUsd | usd }}</div><div class="d">{{ d.totals.longUsd | share: d.totals.navUsd : 0 }} of NAV</div></div>
-        <div class="tile"><div class="k">Short exposure</div><div class="v">{{ d.totals.shortUsd | usd }}</div><div class="d">{{ -d.totals.shortUsd | share: d.totals.navUsd : 0 }} of NAV</div></div>
-        <div class="tile"><div class="k">Gross exposure</div><div class="v">{{ d.totals.grossUsd | share: d.totals.navUsd : 0 }}</div><div class="d">{{ d.totals.grossUsd | usd }}</div></div>
-        <div class="tile"><div class="k">Net exposure</div><div class="v">{{ d.totals.netUsd / d.totals.navUsd | pct: 0 : false }}</div><div class="d">{{ d.totals.netUsd | usd }}</div></div>
+        <div class="tile"><div class="k">Net asset value</div><div class="v">{{ d.totals.navUsd | compact }}</div><div class="x">{{ d.totals.navUsd | usd }}</div><div class="d">Cash {{ d.totals.cashUsd | usd }}</div></div>
+        <div class="tile">
+          <div class="k">Long exposure</div><div class="v">{{ d.totals.longUsd | compact }}</div><div class="x">{{ d.totals.longUsd | usd }}</div>
+          <div class="bar"><i [style.width.%]="barWidth(d.totals.longUsd, d.totals.navUsd)"></i></div><div class="d">{{ d.totals.longUsd | share: d.totals.navUsd : 0 }} of NAV</div>
+        </div>
+        <div class="tile">
+          <div class="k">Short exposure</div><div class="v">{{ d.totals.shortUsd | compact }}</div><div class="x">{{ d.totals.shortUsd | usd }}</div>
+          <div class="bar"><i class="short" [style.width.%]="barWidth(-d.totals.shortUsd, d.totals.navUsd)"></i></div><div class="d">{{ -d.totals.shortUsd | share: d.totals.navUsd : 0 }} of NAV</div>
+        </div>
+        <div class="tile">
+          <div class="k">Gross exposure</div><div class="v">{{ d.totals.grossUsd | share: d.totals.navUsd : 0 }}</div><div class="x">{{ d.totals.grossUsd | usd }}</div>
+          <div class="bar"><i class="plain" [style.width.%]="barWidth(d.totals.grossUsd, d.totals.navUsd)"></i></div><div class="d">Long plus short, of NAV</div>
+        </div>
+        <div class="tile">
+          <div class="k">Net exposure</div><div class="v">{{ d.totals.netUsd / d.totals.navUsd | pct: 0 : false }}</div><div class="x">{{ d.totals.netUsd | usd }}</div>
+          <div class="bar"><i class="plain" [style.width.%]="barWidth(d.totals.netUsd, d.totals.navUsd)"></i></div><div class="d">Long minus short, of NAV</div>
+        </div>
       </div>
 
       <app-intraday-panel [fundId]="d.fund.id" />
@@ -91,7 +104,7 @@ import { SLEEVE_COLORS } from './models';
             <tbody>
               @for (row of assets.data; track row.asset.symbol) {
                 <tr>
-                  <td><span class="coin">{{ row.asset.symbol }}</span><a [routerLink]="['/funds', d.fund.id, 'assets', row.asset.symbol]"><b>{{ row.asset.symbol }}</b></a></td>
+                  <td><app-coin [symbol]="row.asset.symbol" /><a [routerLink]="['/funds', d.fund.id, 'assets', row.asset.symbol]"><b>{{ row.asset.symbol }}</b></a></td>
                   <td class="num">{{ row.longUsd | usd }}</td>
                   <td class="num">{{ row.shortUsd | usd }}</td>
                   <td class="num" [class]="row.netUsd | tone">{{ row.netUsd | usd }}</td>
@@ -129,5 +142,10 @@ export class FundOverviewPage {
   protected readonly page = pageData((params, filter) => this.api.overview(Number(params.get('fundId')), filter));
   protected readonly managerCount = computed(() => (this.page.data()?.sleeves ?? []).reduce((sum, s) => sum + s.managers, 0));
   protected readonly sleeveScale = computed(() => Math.max(1, ...(this.page.data()?.sleeves ?? []).flatMap((s) => [s.totals.longUsd, -s.totals.shortUsd])));
+  /** How much of a tile's bar to fill: a share of NAV, kept between nothing and the whole bar. */
+  protected barWidth(value: number, nav: number): number {
+    return nav > 0 ? Math.max(0, Math.min(100, (value / nav) * 100)) : 0;
+  }
+
   protected readonly assetScale = computed(() => Math.max(1, ...(this.page.data()?.topAssets ?? []).flatMap((a) => [a.longUsd, -a.shortUsd])));
 }

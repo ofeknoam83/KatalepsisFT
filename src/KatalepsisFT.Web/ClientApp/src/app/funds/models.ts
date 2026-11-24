@@ -192,7 +192,7 @@ export interface AssetDetail {
 }
 
 /** Sleeves are told apart by a fixed colour per position in the fund, never by rank. */
-export const SLEEVE_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'];
+export const SLEEVE_COLORS = ['#3b5bdb', '#d9642b', '#0e8a6a', '#c58b00', '#c2528b', '#2f7d32', '#7048c6', '#c0392b'];
 
 export interface Intraday {
   times: string[];

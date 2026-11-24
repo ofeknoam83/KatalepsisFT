@@ -17,6 +17,27 @@ export function usd(value: number | null | undefined, _digits = 1): string {
   return `${value < 0 && text !== '0.00' ? MINUS : ''}$${text}`;
 }
 
+/**
+ * A dollar amount short enough to read at a glance, for the big figure on a tile: 210_351_674.56 → "$210.35M".
+ * The exact amount is always shown next to it. Under a thousand dollars it is the exact amount.
+ */
+export function compactUsd(value: number | null | undefined): string {
+  if (value === null || value === undefined) {
+    return '–';
+  }
+
+  const size = Math.abs(value);
+  const sign = value < 0 && size >= 0.005 ? MINUS : '';
+  for (const [limit, letter] of [[1e12, 'T'], [1e9, 'B'], [1e6, 'M'], [1e3, 'K']] as const) {
+    // 999,995 would round to "1000.00K"; it is shown in the next unit up instead.
+    if (size >= limit * 0.999995) {
+      return `${sign}$${(size / limit).toFixed(2)}${letter}`;
+    }
+  }
+
+  return usd(value);
+}
+
 /** A dollar amount in full without the currency sign, for dense tables: 1_250_000.4 → "1,250,000". */
 export function wholeUsd(value: number): string {
   return Math.round(Math.abs(value)).toLocaleString('en-US');
@@ -75,6 +96,13 @@ export class UsdPipe implements PipeTransform {
   }
 }
 
+@Pipe({ name: 'compact' })
+export class CompactPipe implements PipeTransform {
+  transform(value: number | null | undefined): string {
+    return compactUsd(value);
+  }
+}
+
 @Pipe({ name: 'pct' })
 export class PctPipe implements PipeTransform {
   transform(value: number | null | undefined, digits = 1, signed = true): string {
@@ -103,4 +131,4 @@ export class LabelPipe implements PipeTransform {
   }
 }
 
-export const FORMAT_PIPES = [UsdPipe, PctPipe, SharePipe, TonePipe, LabelPipe, PricePipe] as const;
+export const FORMAT_PIPES = [UsdPipe, CompactPipe, PctPipe, SharePipe, TonePipe, LabelPipe, PricePipe] as const;

@@ -115,10 +115,11 @@ export class RiaChartComponent implements OnDestroy {
           label: s.label,
           data: s.data,
           borderColor: s.color,
-          backgroundColor: `${s.color}33`,
+          backgroundColor: softFill(s),
           borderWidth: s.width ?? 1.8,
           borderDash: s.dash ?? [],
-          fill: s.fill === true ? 'origin' : false,
+          // A line that never touches zero is filled down to the bottom of the chart; one that crosses it, to zero.
+          fill: s.fill === true ? (aboveZero(s.data) ? 'start' : 'origin') : false,
           pointRadius: 0,
           pointHoverRadius: 3,
           tension: 0,
@@ -147,7 +148,7 @@ export class RiaChartComponent implements OnDestroy {
           y: {
             type: this.log() ? 'logarithmic' : 'linear',
             border: { display: false },
-            grid: { color: '#f0f0f0' },
+            grid: { color: '#eef0f4' },
             ticks: {
               callback: (v: string | number): string => formatY(+v, format),
             },
@@ -230,4 +231,28 @@ export class RiaSparklineComponent {
   protected area(line: string): string {
     return `${line} L200,44 L0,44 Z`;
   }
+}
+
+function aboveZero(data: readonly (number | null)[]): boolean {
+  return data.every((value) => value === null || value > 0);
+}
+
+/** The colour under a filled line: for a line above zero it fades out towards the bottom of the chart. */
+function softFill(series: RiaChartSeries): string | ((context: { chart: Chart }) => CanvasGradient | string) {
+  const flat = `${series.color}33`;
+  if (series.fill !== true || !aboveZero(series.data)) {
+    return flat;
+  }
+
+  return ({ chart }) => {
+    const area = chart.chartArea;
+    if (!area) {
+      return flat;
+    }
+
+    const gradient = chart.ctx.createLinearGradient(0, area.top, 0, area.bottom);
+    gradient.addColorStop(0, `${series.color}38`);
+    gradient.addColorStop(1, `${series.color}00`);
+    return gradient;
+  };
 }

@@ -1,4 +1,5 @@
 import { TrackRecordPanel } from '../manual/track-record';
+import { Coin } from '../shared/coin';
 import { ManagerConnections } from '../connections/manager-connections';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
@@ -21,7 +22,7 @@ import { FundsApi } from './funds.api';
 
 @Component({
   selector: 'app-manager-page',
-  imports: [DatePipe, DecimalPipe, RouterLink, NzAlertModule, NzTableModule, NzTabsModule, NzTagModule, ExposureBar, PageHead, PerformancePanel, RiskPanel, LiquidityPanel, ManualBookPanel, ManagerConnections, TrackRecordPanel, ...FORMAT_PIPES],
+  imports: [Coin, DatePipe, DecimalPipe, RouterLink, NzAlertModule, NzTableModule, NzTabsModule, NzTagModule, ExposureBar, PageHead, PerformancePanel, RiskPanel, LiquidityPanel, ManualBookPanel, ManagerConnections, TrackRecordPanel, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (page.failed()) {
@@ -37,18 +38,18 @@ import { FundsApi } from './funds.api';
       />
 
       <div class="tiles">
-        <div class="tile"><div class="k">Manager NAV</div><div class="v">{{ d.totals.navUsd | usd }}</div><div class="d">{{ d.totals.navUsd | share: d.sleeveNavUsd : 0 }} of sleeve · {{ d.totals.navUsd | share: d.fundNavUsd }} of fund</div></div>
-        <div class="tile"><div class="k">Long</div><div class="v">{{ d.totals.longUsd | usd }}</div><div class="d">{{ d.totals.longUsd | share: d.totals.navUsd : 0 }} of NAV</div></div>
-        <div class="tile"><div class="k">Short</div><div class="v">{{ d.totals.shortUsd | usd }}</div><div class="d">{{ -d.totals.shortUsd | share: d.totals.navUsd : 0 }} of NAV</div></div>
+        <div class="tile"><div class="k">Manager NAV</div><div class="v">{{ d.totals.navUsd | compact }}</div><div class="x">{{ d.totals.navUsd | usd }}</div><div class="d">{{ d.totals.navUsd | share: d.sleeveNavUsd : 0 }} of sleeve · {{ d.totals.navUsd | share: d.fundNavUsd }} of fund</div></div>
+        <div class="tile"><div class="k">Long</div><div class="v">{{ d.totals.longUsd | compact }}</div><div class="x">{{ d.totals.longUsd | usd }}</div><div class="d">{{ d.totals.longUsd | share: d.totals.navUsd : 0 }} of NAV</div></div>
+        <div class="tile"><div class="k">Short</div><div class="v">{{ d.totals.shortUsd | compact }}</div><div class="x">{{ d.totals.shortUsd | usd }}</div><div class="d">{{ -d.totals.shortUsd | share: d.totals.navUsd : 0 }} of NAV</div></div>
         <div class="tile"><div class="k">Gross / Net</div><div class="v">{{ d.totals.grossUsd | share: d.totals.navUsd : 0 }} / {{ d.totals.netUsd / d.totals.navUsd | pct: 0 : false }}</div><div class="d">of manager NAV</div></div>
-        <div class="tile"><div class="k">Unrealised PnL</div><div class="v" [class]="unrealised() | tone">{{ unrealised() | usd: 2 }}</div><div class="d">Open positions</div></div>
+        <div class="tile"><div class="k">Unrealised PnL</div><div class="v" [class]="unrealised() | tone">{{ unrealised() | compact }}</div><div class="x">{{ unrealised() | usd }}</div><div class="d">Open positions</div></div>
       </div>
 
       <nz-tabs [nzAnimated]="false" [nzSelectedIndex]="startTab">
         <nz-tab nzTitle="Positions">
       <div class="panel">
         <h3>Positions <span class="hint">Click an instrument to see the asset across the fund</span></h3>
-        <nz-table #positions [nzData]="d.positions" [nzShowPagination]="false" [nzFrontPagination]="false" nzSize="small" [nzScroll]="{ x: '1000px' }">
+        <nz-table #positions [nzData]="d.positions" [nzShowPagination]="false" [nzFrontPagination]="false" nzSize="small" [nzScroll]="{ x: '1500px' }">
           <thead>
             <tr>
               <th nzWidth="150px">Instrument</th><th>Type</th><th>Side</th><th class="num">Quantity</th><th class="num">Entry</th><th class="num">Mark</th><th class="num">Exposure</th>
@@ -59,7 +60,7 @@ import { FundsApi } from './funds.api';
             @for (row of positions.data; track row.instrument) {
               <tr>
                 <td class="nowrap">
-                  <span class="coin">{{ row.asset }}</span>
+                  <app-coin [symbol]="row.asset" />
                   @if (row.type === 'Cash') {
                     {{ row.instrument }}
                   } @else {
@@ -100,7 +101,7 @@ import { FundsApi } from './funds.api';
           <tbody>
             @for (row of assets.data; track row.asset.symbol) {
               <tr>
-                <td><span class="coin">{{ row.asset.symbol }}</span>{{ row.asset.symbol }}</td>
+                <td><app-coin [symbol]="row.asset.symbol" />{{ row.asset.symbol }}</td>
                 <td class="num">{{ row.longUsd | usd }}</td><td class="num">{{ row.shortUsd | usd }}</td>
                 <td class="num" [class]="row.netUsd | tone">{{ row.netUsd | usd }}</td>
                 <td><app-exposure-bar [long]="row.longUsd" [short]="row.shortUsd" [scale]="scale()" /></td>

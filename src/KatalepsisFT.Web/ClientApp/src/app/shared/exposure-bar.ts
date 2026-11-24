@@ -11,24 +11,24 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
     }
     .track {
       position: relative;
-      height: 10px;
-      background: linear-gradient(to right, transparent calc(50% - 0.5px), #c3c2b7 calc(50% - 0.5px), #c3c2b7 calc(50% + 0.5px), transparent calc(50% + 0.5px));
+      height: 14px;
+      background: linear-gradient(to right, transparent calc(50% - 0.5px), #98a2b3 calc(50% - 0.5px), #98a2b3 calc(50% + 0.5px), transparent calc(50% + 0.5px));
     }
     .long,
     .short {
       position: absolute;
-      top: 0;
-      height: 10px;
+      top: 3px;
+      height: 8px;
     }
     .long {
       left: calc(50% + 1px);
-      background: #2a78d6;
-      border-radius: 0 3px 3px 0;
+      background: var(--kft-brand);
+      border-radius: 0 4px 4px 0;
     }
     .short {
       right: calc(50% + 1px);
-      background: #e34948;
-      border-radius: 3px 0 0 3px;
+      background: #f0a070;
+      border-radius: 4px 0 0 4px;
     }
   `,
   template: `

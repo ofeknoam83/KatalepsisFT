@@ -31,8 +31,8 @@ const CHILD_COLORS = ['#2a78d6', '#e08a00', '#1f9d74', '#8a4fd3', '#c2417a', '#5
     }
     @if (data(); as d) {
       <div class="tiles">
-        <div class="tile"><div class="k">1-day value at risk, 95%</div><div class="v">{{ d.var.valueAtRiskUsd | usd: 2 }}</div><div class="d">{{ d.var.valueAtRiskUsd | share: d.totals.navUsd : 2 }} of NAV · today's book over {{ d.var.days }} days</div></div>
-        <div class="tile"><div class="k">Expected shortfall, 95%</div><div class="v">{{ d.var.expectedShortfallUsd | usd: 2 }}</div><div class="d">Average loss on the worst 5% of days</div></div>
+        <div class="tile"><div class="k">1-day value at risk, 95%</div><div class="v">{{ d.var.valueAtRiskUsd | compact }}</div><div class="x">{{ d.var.valueAtRiskUsd | usd }}</div><div class="d">{{ d.var.valueAtRiskUsd | share: d.totals.navUsd : 2 }} of NAV · today's book over {{ d.var.days }} days</div></div>
+        <div class="tile"><div class="k">Expected shortfall, 95%</div><div class="v">{{ d.var.expectedShortfallUsd | compact }}</div><div class="x">{{ d.var.expectedShortfallUsd | usd }}</div><div class="d">Average loss on the worst 5% of days</div></div>
         <div class="tile"><div class="k">Gross leverage</div><div class="v">{{ leverage(d.totals.grossUsd, d.totals.navUsd) }}</div><div class="d">Gross {{ d.totals.grossUsd | usd }} on NAV {{ d.totals.navUsd | usd }}</div></div>
         <div class="tile"><div class="k">Net exposure</div><div class="v">{{ d.totals.netUsd | share: d.totals.navUsd }}</div><div class="d">{{ d.totals.netUsd | usd }} net</div></div>
         <div class="tile"><div class="k">Top 5 assets</div><div class="v">{{ d.topFiveShareOfGross | pct: 1 : false }}</div><div class="d">of gross exposure</div></div>

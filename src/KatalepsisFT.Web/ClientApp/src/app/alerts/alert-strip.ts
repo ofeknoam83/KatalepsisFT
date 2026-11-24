@@ -14,38 +14,81 @@ import { AlertsApi } from './alerts.api';
   styles: `
     a {
       display: flex;
-      gap: 10px;
-      align-items: baseline;
-      padding: 9px 14px;
-      margin-bottom: 14px;
-      border-radius: 8px;
-      border: 1px solid #ffccc7;
-      background: #fff2f0;
-      color: #1f1f1f;
-      font-size: 13px;
+      flex-wrap: wrap;
+      gap: 10px 14px;
+      align-items: center;
+      padding: 12px 16px;
+      margin-bottom: 18px;
+      border-radius: var(--kft-radius);
+      border: 1px solid #f3d3cf;
+      background: var(--kft-card);
+      box-shadow: var(--kft-shadow);
+      color: var(--kft-text);
     }
     a.calm {
-      border-color: #ffe58f;
-      background: #fffbe6;
+      border-color: #f3e2b3;
+    }
+    .icon {
+      flex: 0 0 34px;
+      height: 34px;
+      border-radius: 10px;
+      background: var(--kft-down-soft);
+      color: var(--kft-down);
+      display: grid;
+      place-items: center;
+    }
+    a.calm .icon {
+      background: var(--kft-warn-soft);
+      color: var(--kft-warn);
+    }
+    .text {
+      flex: 1 1 380px;
+      min-width: 0;
     }
     b {
-      color: #cf1322;
+      font-weight: 600;
     }
-    a.calm b {
-      color: #ad6800;
+    .critical {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--kft-down);
+      background: var(--kft-down-soft);
+      padding: 2px 8px;
+      border-radius: 999px;
+      margin-left: 6px;
     }
-    span.more {
-      margin-left: auto;
-      color: #1677ff;
+    .summary {
+      display: block;
+      font-size: 13px;
+      color: var(--kft-text-2);
+      margin-top: 2px;
+    }
+    .more {
+      display: inline-flex;
+      align-items: center;
+      min-height: 36px;
+      padding: 0 14px;
+      border: 1px solid #d5d9e0;
+      border-radius: 9px;
+      font-weight: 600;
+      font-size: 13px;
     }
   `,
   template: `
     @if (list(); as l) {
       @if (l.counts.active > 0) {
         <a [routerLink]="['/funds', fundId(), 'alerts']" [queryParams]="sleeveId() === null ? {} : { sleeve: sleeveId() }" [class.calm]="l.counts.critical === 0" data-testid="alert-strip">
-          <b>{{ l.counts.active }} active {{ l.counts.active === 1 ? 'alert' : 'alerts' }}</b>
-          <span>{{ summary() }}</span>
-          <span class="more">Open the inbox →</span>
+          <span class="icon" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2.5l7 12.5H2z" /><path d="M9 7.5V11M9 13.2v.1" /></svg>
+          </span>
+          <span class="text">
+            <b>{{ l.counts.active }} active {{ l.counts.active === 1 ? 'alert' : 'alerts' }}</b>
+            @if (l.counts.critical > 0) {
+              <span class="critical">{{ l.counts.critical }} critical</span>
+            }
+            <span class="summary">{{ summary() }}</span>
+          </span>
+          <span class="more">Open the inbox</span>
         </a>
       }
     }
@@ -71,6 +114,6 @@ export class AlertStrip {
 
     const first = l.alerts[0];
     const rest = l.counts.active - 1;
-    return `${l.counts.critical} critical · ${first.scopeName}: ${first.description}${rest > 0 ? ` · and ${rest} more` : ''}`;
+    return `${first.scopeName}: ${first.description}${rest > 0 ? ` · and ${rest} more` : ''}`;
   });
 }

@@ -43,7 +43,7 @@ export class IntradayPanel {
       return index > 0 && iso.slice(0, 10) !== all[index - 1].slice(0, 10) ? `${iso.slice(8, 10)}/${iso.slice(5, 7)} ${time}` : time;
     }),
   );
-  protected readonly series = computed<RiaChartSeries[]>(() => [{ label: 'NAV', data: this.data()?.navUsd ?? [], color: '#0d366b', width: 2 }]);
+  protected readonly series = computed<RiaChartSeries[]>(() => [{ label: 'NAV', data: this.data()?.navUsd ?? [], color: '#4338ca', width: 2.2, fill: true }]);
   protected readonly change = computed(() => {
     const nav = this.data()?.navUsd ?? [];
     return nav.length >= 2 && nav[0] !== 0 ? nav[nav.length - 1] / nav[0] - 1 : null;

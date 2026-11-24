@@ -54,7 +54,7 @@ import { LoadFunds } from '../funds/view.state';
 
     .pencil:hover,
     .pencil:focus-visible {
-      color: #1677ff;
+      color: var(--kft-brand);
       background: #e6f0ff;
     }
 
@@ -70,7 +70,7 @@ import { LoadFunds } from '../funds/view.state';
       min-width: 12ch;
       max-width: 60ch;
       padding: 1px 8px;
-      border: 1px solid #1677ff;
+      border: 1px solid var(--kft-brand);
       border-radius: 6px;
       outline: none;
       background: #fff;
@@ -84,7 +84,7 @@ import { LoadFunds } from '../funds/view.state';
       background: none;
       padding: 2px 4px;
       cursor: pointer;
-      color: #1677ff;
+      color: var(--kft-brand);
     }
 
     .no {

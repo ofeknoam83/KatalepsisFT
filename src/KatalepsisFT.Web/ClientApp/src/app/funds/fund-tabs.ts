@@ -1,4 +1,5 @@
-import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect, inject, input } from '@angular/core';
+import { FundsApi } from './funds.api';
 import { Store } from '@ngxs/store';
 import { SessionState } from '../core/session.state';
 import { RouterLink, RouterLinkActive } from '@angular/router';
@@ -10,21 +11,22 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
   styles: `
     nav {
       display: flex;
-      gap: 24px;
+      gap: 4px 22px;
       flex-wrap: wrap;
-      border-bottom: 1px solid #d9d9d9;
-      margin-bottom: 14px;
+      border-bottom: 1px solid #e3e6eb;
+      margin-bottom: 18px;
     }
     a {
-      padding: 8px 0 9px;
-      color: #595959;
+      padding: 10px 0 11px;
+      color: var(--kft-text-2);
+      font-weight: 500;
       font-size: 14px;
       margin-bottom: -1px;
     }
     a.on {
-      color: #1677ff;
-      border-bottom: 2px solid #1677ff;
-      font-weight: 500;
+      color: var(--kft-brand);
+      border-bottom: 2px solid var(--kft-brand);
+      font-weight: 600;
     }
   `,
   template: `
@@ -47,4 +49,11 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
 export class FundTabs {
   readonly fundId = input.required<number>();
   protected readonly isAdmin = inject(Store).selectSignal(SessionState.isAdmin);
+
+  constructor() {
+    // Every page of a fund carries these tabs, so this is where the side menu learns which fund is open, whichever
+    // page was opened first.
+    const api = inject(FundsApi);
+    effect(() => api.open(this.fundId()));
+  }
 }

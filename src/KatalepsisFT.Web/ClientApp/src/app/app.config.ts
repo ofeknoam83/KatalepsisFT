@@ -3,6 +3,7 @@ import { ApplicationConfig, provideBrowserGlobalErrorListeners, provideZonelessC
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
 import { provideRouter, withNavigationErrorHandler } from '@angular/router';
 import { provideStore } from '@ngxs/store';
+import { provideNzConfig } from 'ng-zorro-antd/core/config';
 import { en_US, provideNzI18n } from 'ng-zorro-antd/i18n';
 import { routes } from './app.routes';
 import { apiInterceptor } from './core/api.interceptor';
@@ -18,6 +19,8 @@ export const appConfig: ApplicationConfig = {
     provideHttpClient(withInterceptors([apiInterceptor])),
     provideAnimationsAsync(),
     provideNzI18n(en_US),
+    // The brand colour for every ng-zorro component; the rest of the look is in styles.less.
+    provideNzConfig({ theme: { primaryColor: '#4338ca' } }),
     provideStore([SessionState, ViewState]),
   ],
 };

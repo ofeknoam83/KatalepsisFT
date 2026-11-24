@@ -22,7 +22,7 @@ export interface Crumb {
   imports: [DatePipe, FormsModule, RouterLink, EditName, NzBreadCrumbModule, NzSegmentedModule, NzTagModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <nz-breadcrumb style="margin-bottom:8px">
+    <nz-breadcrumb style="margin-bottom:2px">
       @for (crumb of crumbs(); track crumb.label) {
         <nz-breadcrumb-item>
           @if (crumb.link) {
@@ -42,7 +42,7 @@ export interface Crumb {
       <span class="grow"></span>
       @if (asOf()) {
         <!-- Today's figures are the latest reading and still moving; an earlier day's are that day's last. -->
-        <span class="sub">{{ isToday() ? 'Live · today,' : 'As of end of' }} {{ asOf() | date: 'd MMM y' : 'UTC' }} (UTC)</span>
+        <span class="sub">{{ isToday() ? 'Today,' : 'As of end of' }} {{ asOf() | date: 'd MMM y' : 'UTC' }} (UTC)</span>
       }
       @if (showFilter()) {
         <nz-segmented [nzOptions]="options" [ngModel]="filter()" (nzValueChange)="setFilter($event)" data-testid="instrument-filter" />

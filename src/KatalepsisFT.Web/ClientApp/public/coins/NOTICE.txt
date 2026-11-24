@@ -1,0 +1,2 @@
+Token icons in this folder are from the web3icons project (https://github.com/0xa3k5/web3icons), MIT licence,
+version 4.0.61: the "branded" set, with the "background" version for icons drawn only in white.

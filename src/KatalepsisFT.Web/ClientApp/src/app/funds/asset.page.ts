@@ -40,9 +40,9 @@ import { SLEEVE_COLORS } from './models';
       <div class="tiles">
         <div class="tile"><div class="k">Price</div><div class="v">{{ d.asset.price | price }}</div><div class="d">1D <span [class]="d.asset.change1D | tone">{{ d.asset.change1D | pct }}</span></div></div>
         <div class="tile"><div class="k">Return YTD</div><div class="v" [class]="d.asset.changeYtd | tone">{{ d.asset.changeYtd | pct }}</div><div class="d">30D <span [class]="d.asset.change30D | tone">{{ d.asset.change30D | pct }}</span></div></div>
-        <div class="tile"><div class="k">Fund exposure, gross</div><div class="v">{{ d.grossUsd | usd }}</div><div class="d">Net <span [class]="d.netUsd | tone">{{ d.netUsd | usd }}</span> · long {{ d.longUsd | usd }} · short {{ d.shortUsd | usd }}</div></div>
+        <div class="tile"><div class="k">Fund exposure, gross</div><div class="v">{{ d.grossUsd | compact }}</div><div class="x">{{ d.grossUsd | usd }}</div><div class="d">Net <span [class]="d.netUsd | tone">{{ d.netUsd | usd }}</span> · long {{ d.longUsd | usd }} · short {{ d.shortUsd | usd }}</div></div>
         <div class="tile"><div class="k">Share of fund</div><div class="v">{{ d.grossUsd | share: d.fundNavUsd }}</div><div class="d">Gross ÷ fund NAV</div></div>
-        <div class="tile"><div class="k">Average daily volume</div><div class="v">{{ d.asset.averageDailyVolumeUsd | usd }}</div><div class="d">30 days, Binance spot · position is {{ volumeMultiple() }}</div></div>
+        <div class="tile"><div class="k">Average daily volume</div><div class="v">{{ d.asset.averageDailyVolumeUsd | compact }}</div><div class="x">{{ d.asset.averageDailyVolumeUsd | usd }}</div><div class="d">30 days, Binance spot · position is {{ volumeMultiple() }}</div></div>
       </div>
 
       <div class="panel">
