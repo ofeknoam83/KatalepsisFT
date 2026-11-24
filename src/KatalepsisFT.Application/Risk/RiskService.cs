@@ -58,7 +58,11 @@ public sealed class RiskService(IFtDbContext database)
             })
             .ToList();
 
-        VarResult var = HistoricalVar.Compute(HistoricalVar.HypotheticalPnl(assets.ToDictionary(a => a.Asset, a => a.NetUsd), market.Returns(VarLookbackDays)));
+        Dictionary<string, double[]> pastMoves = market.Returns(VarLookbackDays);
+        VarResult var = HistoricalVar.Compute(HistoricalVar.HypotheticalPnl(assets.ToDictionary(a => a.Asset, a => a.NetUsd), pastMoves));
+        // Value at risk is worked out from past price moves, so an asset without any is not in it. That is said, with
+        // how much it is, rather than left for the reader to assume the figure covers the whole book.
+        var uncovered = assets.Where(a => a.NetUsd != 0m && !pastMoves.ContainsKey(a.Asset)).OrderByDescending(a => Math.Abs(a.NetUsd)).ToList();
         BookTotals totals = HoldingsAggregator.Totals(rows);
 
         NavHistory history = await NavHistory.LoadAsync(database, book.Managers.Select(m => m.Id).ToArray(), cancellationToken);
@@ -103,7 +107,7 @@ public sealed class RiskService(IFtDbContext database)
             context.Scope,
             book.AsOf,
             TotalsDto.From(totals),
-            new VarDto(var.ValueAtRiskUsd, var.ExpectedShortfallUsd, var.Days, 0.95),
+            new VarDto(var.ValueAtRiskUsd, var.ExpectedShortfallUsd, var.Days, 0.95, uncovered.Sum(a => Math.Abs(a.NetUsd)), uncovered.Select(a => a.Asset).ToList()),
             totals.GrossUsd > 0m ? Math.Round(assets.Take(5).Sum(a => a.GrossUsd) / totals.GrossUsd, 4) : 0m,
             grid,
             byChild,

@@ -55,9 +55,20 @@ public sealed class ConnectionSyncService(IFtDbContext database, VenueAdapterReg
                 return false;
             }
 
+            // A reading that leaves out part of the account, straight after one that had all of it, is most likely the
+            // venue stumbling (busy, a late timestamp), not the futures account ceasing to exist. Taking it would drop
+            // that part from the book and bring it back a minute later. So it is treated as a failed reading, and only
+            // accepted once it has stayed that way for a few readings.
+            if (snapshot.Notes is { Count: > 0 } && connection.ConsecutiveFailures < 4 && connection.LastSnapshotJson is { } before
+                && JsonSerializer.Deserialize<VenueSnapshot>(before, ManagerBookWriter.Json) is { Notes: null or { Count: 0 } })
+            {
+                throw new VenueException(VenueFailure.Unavailable, $"Part of the account could not be read this time. {snapshot.Notes[0]} The last complete reading is kept.");
+            }
+
             // A connection whose value was not in the book until now brings it in as money arriving, not as a gain.
             if (connection.LastSnapshotJson is null)
             {
+                connection.BookedAt = now;
                 AddBookChange(connection.ManagerAccountId, ManagerBookWriter.NavOf(snapshot), now, $"{adapter.DisplayName} connection \"{connection.Label}\" added to the book");
             }
 
@@ -152,7 +163,9 @@ public sealed class ConnectionSyncService(IFtDbContext database, VenueAdapterReg
             List<string> ids = transfers.Select(t => prefix + t.Id).ToList();
             HashSet<string> known = (await database.CashFlows.Where(f => f.ManagerAccountId == connection.ManagerAccountId && ids.Contains(f.ExternalId!)).Select(f => f.ExternalId!).ToListAsync(cancellationToken)).ToHashSet();
             DateOnly today = DateOnly.FromDateTime(now.UtcDateTime);
-            foreach (VenueTransfer transfer in transfers.Where(t => t.Quantity != 0m && t.At >= connection.CreatedAt && known.Add(prefix + t.Id)))
+            // Only what moved after the connection's value entered the book: anything earlier is already part of that value.
+            DateTimeOffset inBookSince = connection.BookedAt ?? connection.CreatedAt;
+            foreach (VenueTransfer transfer in transfers.Where(t => t.Quantity != 0m && t.At >= inBookSince && known.Add(prefix + t.Id)))
             {
                 decimal usd = Math.Round(transfer.Quantity * await UsdPriceAsync(transfer.Asset.ToUpperInvariant(), snapshot, cancellationToken), 2);
                 database.CashFlows.Add(

@@ -232,7 +232,7 @@ public sealed class GateOrderGateway(HttpClient http, TimeProvider clock) : Rest
             {
                 // The order carries fee rates only; what was paid is on its trades.
                 JsonElement trades = await SendAsync(credentials, HttpMethod.Get, "/futures/usdt/my_trades", $"contract={instrument.Symbol}&order={Uri.EscapeDataString(orderId)}", null, cancellationToken);
-                perpFees = trades.ValueKind != JsonValueKind.Array || trades.GetArrayLength() == 0 ? null : trades.EnumerateArray().Sum(t => Math.Abs(Number(t, "fee")));
+                perpFees = trades.ValueKind != JsonValueKind.Array || trades.GetArrayLength() == 0 ? null : trades.EnumerateArray().Sum(t => Number(t, "fee"));
             }
             catch (Exception e) when (e is VenueRefusedException or VenueUnclearException)
             {

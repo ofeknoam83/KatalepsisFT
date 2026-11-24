@@ -65,6 +65,13 @@ public class VenueConnection
     /// <summary>When deposits and withdrawals were last read successfully.</summary>
     public DateTimeOffset? TransfersCheckedAt { get; set; }
 
+    /// <summary>
+    /// When this connection's value was last taken into the manager's book as money arriving: its first reading, and
+    /// the first one after it was switched back on. A deposit made before that moment is already inside that value
+    /// and must not be counted a second time as a transfer.
+    /// </summary>
+    public DateTimeOffset? BookedAt { get; set; }
+
     /// <summary>Why deposits and withdrawals could not be read; positions are unaffected.</summary>
     public string? TransfersError { get; set; }
     public DateTimeOffset CreatedAt { get; set; }

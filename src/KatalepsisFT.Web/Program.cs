@@ -69,6 +69,21 @@ builder.Services.AddAuthorizationBuilder().SetFallbackPolicy(new AuthorizationPo
 
 // The keys that protect the session cookie live in Postgres, so either web instance can read a session the other issued.
 builder.Services.AddDataProtection().SetApplicationName("KatalepsisFT").PersistKeysToDbContext<FtDbContext>();
+// And they are stored sealed under the MASTER_KEY secret, so that a copy of the database is not enough to forge a
+// session. Without the secret (a developer's machine) they are stored as before.
+if (builder.Configuration[KatalepsisFT.Infrastructure.Security.CredentialVault.MasterKeySetting] is { } sessionMaster && sessionMaster.Trim().Length >= KatalepsisFT.Infrastructure.Security.CredentialVault.MinimumMasterKeyLength)
+{
+    KatalepsisFT.Web.Auth.SessionKeySecret sessionSecret = new(sessionMaster);
+    builder.Services.AddSingleton(sessionSecret);
+    builder.Services.AddOptions<Microsoft.AspNetCore.DataProtection.KeyManagement.KeyManagementOptions>().Configure<IServiceProvider>((options, services) =>
+    {
+        options.XmlEncryptor = new KatalepsisFT.Web.Auth.SessionKeyEncryptor(sessionSecret);
+        options.XmlRepository = new KatalepsisFT.Web.Auth.SealedOnlyKeyRepository(
+            new Microsoft.AspNetCore.DataProtection.EntityFrameworkCore.EntityFrameworkCoreXmlRepository<FtDbContext>(services, services.GetRequiredService<ILoggerFactory>())
+        );
+    });
+}
+
 
 builder.Services.AddScoped<IValidator<LoginRequest>, LoginRequestValidator>();
 builder.Services.AddScoped<IValidator<ChangePasswordRequest>, ChangePasswordRequestValidator>();

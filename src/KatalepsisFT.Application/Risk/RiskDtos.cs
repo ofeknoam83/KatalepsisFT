@@ -12,7 +12,9 @@ public sealed record ScenarioGridDto(string ReferenceAsset, IReadOnlyList<double
 /// <param name="Pnl">One value per shock, at each asset's own beta.</param>
 public sealed record ScenarioRowDto(PerformanceScope Kind, int Id, string Name, decimal NavUsd, IReadOnlyList<decimal> Pnl);
 
-public sealed record VarDto(decimal ValueAtRiskUsd, decimal ExpectedShortfallUsd, int Days, double Confidence);
+/// <param name="UncoveredUsd">Exposure the figures leave out because the assets have no price history to simulate from; zero when everything is covered.</param>
+/// <param name="UncoveredAssets">Those assets, largest first.</param>
+public sealed record VarDto(decimal ValueAtRiskUsd, decimal ExpectedShortfallUsd, int Days, double Confidence, decimal UncoveredUsd, IReadOnlyList<string> UncoveredAssets);
 
 public sealed record MandateCheckDto(int SleeveId, string Sleeve, MandateLimitKind Kind, string Rule, decimal? Current, decimal Limit, bool? WithinLimit);
 

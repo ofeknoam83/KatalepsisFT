@@ -23,6 +23,16 @@ public sealed class LivePacing
 
     public void Seen(long orderId) => _missingSince.TryRemove(orderId, out _);
 
+    private readonly ConcurrentDictionary<(int Account, string Asset, InstrumentType Type), int> _held = new();
+
+    /// <summary>
+    /// Whether the account reading may leave a position as it is this once, because an order of ours is open in it and
+    /// its own report will explain the difference. Only a few times in a row: after that the venue's figure is taken.
+    /// </summary>
+    public bool MayHoldBack(int accountId, string asset, InstrumentType type) => _held.AddOrUpdate((accountId, asset, type), 1, (_, held) => held + 1) <= 3;
+
+    public void Settled(int accountId, string asset, InstrumentType type) => _held.TryRemove((accountId, asset, type), out _);
+
     public bool MayAsk(long orderId, DateTimeOffset now, TimeSpan every) => Due(_asked, orderId, now, every);
 
     public bool MayCancel(long orderId, DateTimeOffset now, TimeSpan every) => Due(_cancelSent, orderId, now, every);
@@ -494,6 +504,14 @@ public sealed class LiveExecution(IFtDbContext database, IEnumerable<IOrderGatew
             }
 
             List<VenueHolding> holdings = Netted(report.Holdings);
+            // Where an order of ours is still open, a quantity that differs from the record is most likely a fill the
+            // order's own report has not brought yet. That report books the fill against the position as it was, which
+            // is what gives the right profit; taking the venue's quantity first would lose it. So such a position
+            // waits a moment for the order.
+            HashSet<(string Asset, InstrumentType Type)> working = (await database.Orders.AsNoTracking()
+                .Where(o => o.TradingAccountId == accountId && (o.Status == OrderStatus.Accepted || o.Status == OrderStatus.Working || o.Status == OrderStatus.PartlyFilled))
+                .Select(o => new { o.Asset, o.InstrumentType })
+                .ToListAsync(cancellationToken)).Select(o => (o.Asset, o.InstrumentType)).ToHashSet();
             decimal equity = report.CashUsd + (report.DerivativesEquityUsd ?? 0m);
             foreach (VenueHolding holding in holdings)
             {
@@ -515,6 +533,19 @@ public sealed class LiveExecution(IFtDbContext database, IEnumerable<IOrderGatew
                     positions.Add(position);
                 }
 
+                if (position.Quantity == holding.Quantity)
+                {
+                    pacing.Settled(accountId, holding.Asset, holding.Type);
+                }
+                else if (working.Contains((holding.Asset, holding.Type)) && pacing.MayHoldBack(accountId, holding.Asset, holding.Type))
+                {
+                    continue;
+                }
+                else
+                {
+                    pacing.Settled(accountId, holding.Asset, holding.Type);
+                }
+
                 if (position.Quantity != holding.Quantity || position.LiquidationPrice != holding.LiquidationPrice)
                 {
                     position.UpdatedAt = now;
@@ -529,6 +560,12 @@ public sealed class LiveExecution(IFtDbContext database, IEnumerable<IOrderGatew
 
             foreach (TradingPosition gone in positions.Where(p => p.Quantity != 0m && !holdings.Any(h => h.Asset == p.Asset && h.Type == p.InstrumentType)))
             {
+                if (working.Contains((gone.Asset, gone.InstrumentType)) && pacing.MayHoldBack(accountId, gone.Asset, gone.InstrumentType))
+                {
+                    continue;
+                }
+
+                pacing.Settled(accountId, gone.Asset, gone.InstrumentType);
                 gone.Quantity = 0m;
                 gone.LiquidationPrice = null;
                 gone.UpdatedAt = now;

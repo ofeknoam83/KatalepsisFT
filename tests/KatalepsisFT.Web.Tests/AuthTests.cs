@@ -59,7 +59,8 @@ public class AuthTests(TestDatabase database) : IClassFixture<TestDatabase>
 
         HttpResponseMessage response = await LoginAsync(client, email, TestDatabase.Password);
 
-        response.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        // The same answer as for a wrong password: a locked account does not announce itself to whoever is guessing.
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
     [Fact]

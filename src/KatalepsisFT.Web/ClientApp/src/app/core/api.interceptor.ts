@@ -20,7 +20,8 @@ export const apiInterceptor: HttpInterceptorFn = (request, next) => {
     catchError((error: HttpErrorResponse) => {
       if (error.status === 401 && !request.url.startsWith('/api/auth/')) {
         store.dispatch(new SessionExpired());
-        void router.navigate(['/login']);
+        // A session that ran out: after signing in again the person is brought back to where they were.
+        void router.navigate(['/login'], router.url.startsWith('/login') || router.url === '/' ? {} : { queryParams: { next: router.url } });
       }
 
       return throwError(() => error);

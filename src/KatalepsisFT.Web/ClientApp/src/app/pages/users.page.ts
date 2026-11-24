@@ -57,7 +57,7 @@ const ROLE_NOTE: Record<Role, string> = {
           <tr><th>Name</th><th>Email</th><th>Role</th><th>Since</th><th></th></tr>
         </thead>
         <tbody>
-          @for (u of users.data() ?? []; track u.id) {
+          @for (u of users.data() ?? []; track u.id + ':' + refused()) {
             <tr>
               <td><b><app-edit-name [value]="u.displayName" [url]="'/api/users/' + u.id + '/name'" what="this person" [maxlength]="100" (saved)="again()" /></b>
                 @if (u.isDisabled) {
@@ -154,6 +154,9 @@ export class UsersPage {
     this.run(this.http.post<{ user: User; temporaryPassword: string }>(`/api/users/${user.id}/reset-password`, {}), (created) => this.password.set({ email: user.email, password: created.temporaryPassword }));
   }
 
+  /** Counts refused changes; part of each row's identity, so a refusal redraws the rows. */
+  protected readonly refused = signal(0);
+
   protected run<T>(request: Observable<T>, done?: (answer: T) => void): void {
     this.error.set(null);
     request.subscribe({
@@ -163,6 +166,8 @@ export class UsersPage {
       },
       error: (e: { error?: { message?: string } }) => {
         this.error.set(e.error?.message ?? 'That did not work. Try again.');
+        // The rows are drawn afresh, so a control that was changed goes back to what the server still holds.
+        this.refused.update((n) => n + 1);
         this.version.update((v) => v + 1);
       },
     });

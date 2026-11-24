@@ -22,6 +22,14 @@ public sealed class AuthController(
 {
     private const string WrongCredentials = "Email or password is incorrect.";
 
+    /// <summary>
+    /// Said whenever sign-in is refused, whatever the reason, so that the answer does not tell a stranger which emails
+    /// have an account or which of them are locked. The hint about locking is there for the person who is locked out.
+    /// </summary>
+    private const string Refused = WrongCredentials + " After five wrong attempts an account is locked for 15 minutes.";
+
+    private static readonly Lazy<string> DummyHash = new(() => new PasswordHasher<AppUser>().HashPassword(new AppUser(), "not a real password"));
+
     [AllowAnonymous]
     [EnableRateLimiting("sign-in")]
     [HttpPost("login")]
@@ -38,20 +46,22 @@ public sealed class AuthController(
         {
             // What was typed is not written down: anyone can send anything here, and the audit trail is not theirs to fill.
             await NoteAsync("(unknown email)", "Sign-in refused", "unknown email", cancellationToken);
-            return Unauthorized(new ErrorResponse(WrongCredentials));
+            // The same work as for a real account, so that the time the answer takes does not give the email away.
+            users.PasswordHasher.VerifyHashedPassword(new AppUser(), DummyHash.Value, request.Password);
+            return Unauthorized(new ErrorResponse(Refused));
         }
 
         SignInResult result = await signIn.PasswordSignInAsync(user, request.Password, request.RememberMe, lockoutOnFailure: true);
         if (result.IsLockedOut)
         {
             await NoteAsync(user.Email ?? request.Email, "Sign-in refused", "account locked after repeated failures", cancellationToken);
-            return StatusCode(StatusCodes.Status429TooManyRequests, new ErrorResponse("Too many failed attempts. Try again in 15 minutes."));
+            return Unauthorized(new ErrorResponse(Refused));
         }
 
         if (!result.Succeeded)
         {
             await NoteAsync(user.Email ?? request.Email, "Sign-in refused", "wrong password", cancellationToken);
-            return Unauthorized(new ErrorResponse(WrongCredentials));
+            return Unauthorized(new ErrorResponse(Refused));
         }
 
         // The same name every other entry carries for this user.

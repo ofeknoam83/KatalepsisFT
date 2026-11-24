@@ -75,8 +75,13 @@ public abstract class RestOrderGateway(HttpClient http, TimeProvider clock)
     /// itself is taken at the order's own price; anything else (a venue's own token) cannot be told here, and then
     /// there is no figure at all.
     /// </summary>
-    protected static decimal? FeesInDollars(IEnumerable<(decimal Amount, string? Currency)> fees, string asset, decimal price)
+    /// <param name="chargesAreNegative">
+    /// How the venue writes a fee. Most write what was charged as a positive number and a rebate as a negative one;
+    /// OKX and Bitget write it the other way round. The result is always "what it cost": a rebate comes out negative.
+    /// </param>
+    protected static decimal? FeesInDollars(IEnumerable<(decimal Amount, string? Currency)> fees, string asset, decimal price, bool chargesAreNegative = false)
     {
+        decimal sign = chargesAreNegative ? -1m : 1m;
         decimal total = 0m;
         foreach ((decimal amount, string? currency) in fees)
         {
@@ -87,11 +92,11 @@ public abstract class RestOrderGateway(HttpClient http, TimeProvider clock)
 
             if (IsDollar(currency))
             {
-                total += Math.Abs(amount);
+                total += sign * amount;
             }
             else if (string.Equals(currency, asset, StringComparison.OrdinalIgnoreCase) && price > 0m)
             {
-                total += Math.Abs(amount) * price;
+                total += sign * amount * price;
             }
             else
             {

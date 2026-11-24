@@ -9,13 +9,14 @@ function withSession<T>(store: Store, then: () => T): Observable<T> {
 }
 
 /** Pages inside the app: need a session, and an account that still has a given password may only change it. */
-export const signedIn: CanActivateFn = (): Observable<boolean | UrlTree> => {
+export const signedIn: CanActivateFn = (_route, state): Observable<boolean | UrlTree> => {
   const store = inject(Store);
   const router = inject(Router);
   return withSession(store, () => {
     const session = store.selectSnapshot(SessionState.session);
     if (session === null) {
-      return router.parseUrl('/login');
+      // The page that was asked for is remembered, so signing in leads there and not to the start page.
+      return state.url === '/' ? router.parseUrl('/login') : router.createUrlTree(['/login'], { queryParams: { next: state.url } });
     }
 
     return session.mustChangePassword ? router.parseUrl('/change-password') : true;

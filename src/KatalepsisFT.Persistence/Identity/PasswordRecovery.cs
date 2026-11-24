@@ -10,6 +10,34 @@ namespace KatalepsisFT.Persistence.Identity;
 /// </summary>
 public sealed class PasswordRecovery(UserManager<AppUser> users, FtDbContext database, TimeProvider clock)
 {
+    /// <summary>
+    /// Makes an existing account an administrator. This is how a second administrator is appointed when only one is
+    /// left: from the server, by someone who holds the hosting account, and not by the remaining administrator alone.
+    /// </summary>
+    /// <returns>False when there is no such account.</returns>
+    public async Task<bool> MakeAdminAsync(string email, CancellationToken cancellationToken)
+    {
+        AppUser? user = await users.FindByEmailAsync(email.Trim());
+        if (user is null)
+        {
+            return false;
+        }
+
+        user.AdminProposedBy = null;
+        IList<string> roles = await users.GetRolesAsync(user);
+        IdentityResult changed = await users.RemoveFromRolesAsync(user, roles);
+        changed = changed.Succeeded ? await users.AddToRoleAsync(user, KatalepsisFT.Domain.Access.Roles.Admin) : changed;
+        changed = changed.Succeeded ? await users.UpdateSecurityStampAsync(user) : changed;
+        if (!changed.Succeeded)
+        {
+            throw new InvalidOperationException(string.Join("; ", changed.Errors.Select(e => e.Description)));
+        }
+
+        database.AuditEntries.Add(new AuditEntry { At = clock.GetUtcNow(), UserName = "Server command", Action = "Made an administrator from the server", Subject = user.Email });
+        await database.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
     /// <summary>Gives the account a new temporary password and returns it; null when there is no such account.</summary>
     public async Task<string?> ResetAsync(string email, CancellationToken cancellationToken)
     {

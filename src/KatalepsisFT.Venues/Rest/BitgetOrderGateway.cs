@@ -170,7 +170,7 @@ public sealed class BitgetOrderGateway(HttpClient http, TimeProvider clock) : Re
         bool done = state is "filled" or "cancelled" or "canceled";
         decimal filled = Number(o, "baseVolume");
         decimal value = Number(o, "quoteVolume");
-        decimal? fees = filled <= 0m ? null : spot ? SpotFees(o, instrument.Symbol[..^4], value / filled) : Text(o, "fee") is { Length: > 0 } ? Math.Abs(Number(o, "fee")) : null;
+        decimal? fees = filled <= 0m ? null : spot ? SpotFees(o, instrument.Symbol[..^4], value / filled) : Text(o, "fee") is { Length: > 0 } ? -Number(o, "fee") : null;
         return new VenueOrderReport(done ? VenueOrderState.Done : VenueOrderState.Open, filled, value, fees, Text(o, "orderId"));
     }
 
@@ -190,7 +190,8 @@ public sealed class BitgetOrderGateway(HttpClient http, TimeProvider clock) : Re
             return null;
         }
 
-        return FeesInDollars([(Number(fees, "t"), Text(order, "side") == "buy" ? asset : "USDT")], asset, price);
+        // Bitget writes a fee it charged as a negative number.
+        return FeesInDollars([(Number(fees, "t"), Text(order, "side") == "buy" ? asset : "USDT")], asset, price, chargesAreNegative: true);
     }
 
     public async Task<VenueAccountReport> AccountAsync(VenueCredentials credentials, CancellationToken cancellationToken)

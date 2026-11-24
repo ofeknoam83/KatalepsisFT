@@ -704,6 +704,21 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
         }
 
         await database.SaveChangesAsync(cancellationToken);
+        // An order sent on paper at the very moment the account went live must not go to a venue. The account is
+        // looked at again now that it is live; if such an order is there, the switch is undone and has to be asked for again.
+        if (approve && request.Kind == ApprovalKind.GoLive && request.TradingAccountId is int wentLive && await HasOpenOrdersAsync(wentLive, cancellationToken))
+        {
+            TradingAccount? undone = await database.TradingAccounts.FirstOrDefaultAsync(a => a.Id == wentLive, cancellationToken);
+            if (undone is not null)
+            {
+                undone.Mode = TradingMode.Paper;
+                request.Status = ApprovalStatus.Rejected;
+                request.Note = "An order came in at the same moment, so the account stayed on paper.";
+                await database.SaveChangesAsync(cancellationToken);
+                return TradingChange<int>.Refused("An order was sent on this account at the same moment, so it stayed on paper. Cancel the order and ask again.");
+            }
+        }
+
         return TradingChange<int>.Ok(request.Id);
     }
 
@@ -767,8 +782,18 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
             return TradingChange<int>.Refused("The account has open orders at the venue. Cancel them first, or pull the kill switch, and wait until they are gone.");
         }
 
-        database.TradingPositions.RemoveRange(await database.TradingPositions.Where(p => p.TradingAccountId == accountId).ToListAsync(cancellationToken));
+        // The switch is made first and looked at again afterwards: an order that came in at the same moment was taken
+        // as a real one, and must not be left to the paper engine. Then the switch is undone and refused.
         account.Mode = TradingMode.Paper;
+        await database.SaveChangesAsync(cancellationToken);
+        if (await HasOpenOrdersAsync(accountId, cancellationToken))
+        {
+            account.Mode = TradingMode.Live;
+            await database.SaveChangesAsync(cancellationToken);
+            return TradingChange<int>.Refused("An order came in at the same moment. Cancel it first, or pull the kill switch, and try again once it is gone.");
+        }
+
+        database.TradingPositions.RemoveRange(await database.TradingPositions.Where(p => p.TradingAccountId == accountId).ToListAsync(cancellationToken));
         account.LiveEquityUsd = null;
         account.LiveSyncedAt = null;
         account.LiveSyncError = null;

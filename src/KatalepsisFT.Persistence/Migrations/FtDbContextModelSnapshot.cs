@@ -346,6 +346,10 @@ namespace KatalepsisFT.Persistence.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<DateTimeOffset?>("BookedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("booked_at");
+
                     b.Property<int>("ConsecutiveFailures")
                         .HasColumnType("integer")
                         .HasColumnName("consecutive_failures");

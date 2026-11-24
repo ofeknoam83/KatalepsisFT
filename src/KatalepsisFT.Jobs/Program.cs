@@ -20,9 +20,10 @@ using StackExchange.Redis;
 //   demo     loads daily prices, brings the demo fund up to the latest day with prices and evaluates its alert rules
 //   deploy   migrate, then demo; run by Render before each deploy. A failure of the demo step does not stop the deploy.
 //   reset-password <email>   gives that account a temporary password and prints it; for when nobody can sign in to do it
-const string Usage = "Usage: KatalepsisFT.Jobs check | migrate | demo | deploy | reset-password <email>";
+//   make-admin <email>       makes an existing account an administrator; for when only one administrator is left
+const string Usage = "Usage: KatalepsisFT.Jobs check | migrate | demo | deploy | reset-password <email> | make-admin <email>";
 string command = args.Length > 0 ? args[0] : string.Empty;
-if (command is not ("check" or "migrate" or "demo" or "deploy" or "reset-password") || (command == "reset-password" && args.Length != 2))
+if (command is not ("check" or "migrate" or "demo" or "deploy" or "reset-password" or "make-admin") || (command is "reset-password" or "make-admin" && args.Length != 2))
 {
     Console.Error.WriteLine(Usage);
     return 2;
@@ -71,6 +72,13 @@ if (command == "reset-password")
     string? temporary = await scope.ServiceProvider.GetRequiredService<PasswordRecovery>().ResetAsync(args[1], CancellationToken.None);
     Console.WriteLine(temporary is null ? "There is no account with that email." : $"Temporary password: {temporary}  It must be changed at the next sign-in.");
     return temporary is null ? 1 : 0;
+}
+
+if (command == "make-admin")
+{
+    bool made = await scope.ServiceProvider.GetRequiredService<PasswordRecovery>().MakeAdminAsync(args[1], CancellationToken.None);
+    Console.WriteLine(made ? "That account is now an administrator." : "There is no account with that email. Add the person on the Users page first, as a Viewer.");
+    return made ? 0 : 1;
 }
 
 if (command == "demo")

@@ -175,7 +175,8 @@ public sealed class OkxOrderGateway(HttpClient http, TimeProvider clock) : RestO
         decimal filled = Number(o, "accFillSz") * ContractSize(instrument);
         decimal average = Number(o, "avgPx");
         // The fee is negative when it was charged. On spot it may be in the coin that was bought.
-        decimal? fees = filled > 0m ? FeesInDollars([(Number(o, "fee"), Text(o, "feeCcy"))], instrument.Symbol[..instrument.Symbol.IndexOf('-', StringComparison.Ordinal)], average) : null;
+        decimal? fees = filled > 0m ? // OKX writes a fee it charged as a negative number and a rebate as a positive one.
+            FeesInDollars([(Number(o, "fee"), Text(o, "feeCcy"))], instrument.Symbol[..instrument.Symbol.IndexOf('-', StringComparison.Ordinal)], average, chargesAreNegative: true) : null;
         return new VenueOrderReport(Final.Contains(Text(o, "state") ?? string.Empty) ? VenueOrderState.Done : VenueOrderState.Open, filled, filled * average, fees, Text(o, "ordId"));
     }
 

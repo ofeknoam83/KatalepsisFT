@@ -49,7 +49,7 @@ const DAYS: AlertMetric = 'SlowestDaysToLiquidate';
       <nz-table [nzData]="data()?.rules ?? []" nzTemplateMode [nzShowPagination]="false" nzSize="small" data-testid="rules-table">
         <thead><tr><th>Where</th><th>Condition</th><th>Severity</th><th>Source</th><th>State</th><th>On</th>@if (isAdmin()) {<th></th>}</tr></thead>
         <tbody>
-          @for (rule of data()?.rules ?? []; track rule.id) {
+          @for (rule of data()?.rules ?? []; track rule.id + ':' + refused()) {
             <tr>
               <td><b>{{ rule.scopeName }}</b> <span class="kind">{{ rule.scopeKind }}</span></td>
               <td>{{ rule.description }}</td>
@@ -223,13 +223,17 @@ export class AlertRules {
   }
 
   /** Switches a rule on or off, or deletes it, straight from the table. */
+  /** Counts refused changes; part of each row's identity, so a refusal redraws the rows. */
+  protected readonly refused = signal(0);
+
   protected save(request: Observable<unknown>): void {
     this.error.set(null);
     request.subscribe({
       next: () => this.version.update((v) => v + 1),
       error: (e: { error?: { message?: string } }) => {
         this.error.set(e.error?.message ?? 'Could not save the rule.');
-        // Reloaded so that a switch that was flipped goes back to what the server holds.
+        // Reloaded, and the rows drawn afresh, so that a switch that was flipped goes back to what the server holds.
+        this.refused.update((n) => n + 1);
         this.version.update((v) => v + 1);
       },
     });

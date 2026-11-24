@@ -76,7 +76,11 @@ export class LoginPage {
     this.busy.set(true);
     this.error.set(null);
     this.store.dispatch(new Login(email, password, rememberMe)).subscribe({
-      next: () => void this.router.navigate(['/']),
+      next: () => {
+        // Back to the page that was asked for. Only a path inside this app is followed, never an address elsewhere.
+        const next = this.router.parseUrl(this.router.url).queryParamMap.get('next');
+        void (next !== null && next.startsWith('/') && !next.startsWith('//') && !next.startsWith('/login') ? this.router.navigateByUrl(next) : this.router.navigate(['/']));
+      },
       error: (error: unknown) => {
         this.busy.set(false);
         this.error.set(apiMessage(error, 'Could not sign in. Try again.'));

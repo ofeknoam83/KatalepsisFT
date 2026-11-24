@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 namespace KatalepsisFT.Application.Performance;
 
 /// <summary>Returns, statistics, benchmark comparison and profit attribution for a fund, a sleeve or a manager.</summary>
-public sealed class PerformanceService(IFtDbContext database)
+public sealed class PerformanceService(IFtDbContext database, KatalepsisFT.Application.Prices.TodayPrices? todayPrices = null, TimeProvider? clock = null)
 {
     /// <summary>The most points a chart series carries; longer histories are thinned, keeping both ends and the trough.</summary>
     private const int MaxChartPoints = BacktestConstants.MaxChartPoints;
@@ -317,6 +317,21 @@ public sealed class PerformanceService(IFtDbContext database)
             .Select(b => new { b.AssetId, b.Date, b.Close })
             .ToListAsync(cancellationToken);
         var byAsset = bars.GroupBy(b => b.AssetId).ToDictionary(g => g.Key, g => new SortedDictionary<DateOnly, decimal>(g.ToDictionary(b => b.Date, b => b.Close)));
+
+        // Daily closes end yesterday. When the series runs up to today, today's point is what the assets cost now, so
+        // the benchmark moves through the day like the fund it is compared with.
+        if (todayPrices is not null && to == DateOnly.FromDateTime((clock ?? TimeProvider.System).GetUtcNow().UtcDateTime))
+        {
+            var symbols = await database.Assets.AsNoTracking().Where(a => assetIds.Contains(a.Id)).Select(a => new { a.Id, a.Symbol }).ToListAsync(cancellationToken);
+            IReadOnlyDictionary<string, decimal> now = await todayPrices.GetAsync(symbols.Select(a => a.Symbol).ToList(), cancellationToken);
+            foreach (var asset in symbols)
+            {
+                if (now.TryGetValue(asset.Symbol, out decimal price) && byAsset.TryGetValue(asset.Id, out SortedDictionary<DateOnly, decimal>? known) && !known.ContainsKey(to))
+                {
+                    known[to] = price;
+                }
+            }
+        }
 
         // An asset with no prices at all cannot be part of the basket; the others share its weight, as they would in
         // a real basket that could not buy it. Leaving the weight unfilled would turn part of the benchmark into cash.

@@ -49,7 +49,7 @@ export interface Risk {
   scope: Scope;
   asOf: string;
   totals: Totals;
-  var: { valueAtRiskUsd: number; expectedShortfallUsd: number; days: number; confidence: number };
+  var: { valueAtRiskUsd: number; expectedShortfallUsd: number; days: number; confidence: number; uncoveredUsd: number; uncoveredAssets: string[] };
   topFiveShareOfGross: number;
   scenario: ScenarioGrid;
   scenarioByChild: ScenarioRow[];

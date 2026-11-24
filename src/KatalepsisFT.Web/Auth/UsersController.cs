@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using KatalepsisFT.Application.Auth;
 using KatalepsisFT.Domain.Access;
+using KatalepsisFT.Persistence;
 using KatalepsisFT.Persistence.Identity;
 using KatalepsisFT.Web.Audit;
 using Microsoft.AspNetCore.Authorization;
@@ -33,7 +34,7 @@ public sealed record SetDisabledRequest(bool Disabled);
 [ApiController]
 [Route("api/users")]
 [Authorize(Roles = Roles.Admin)]
-public sealed class UsersController(UserManager<AppUser> users) : ControllerBase
+public sealed class UsersController(UserManager<AppUser> users, FtDbContext database) : ControllerBase
 {
     [HttpGet]
     public async Task<List<UserDto>> ListAsync(CancellationToken cancellationToken)
@@ -66,6 +67,11 @@ public sealed class UsersController(UserManager<AppUser> users) : ControllerBase
 
         // With another administrator around, a new one starts as a Viewer until that other one agrees.
         bool needsSecond = request.Role == Roles.Admin && await OtherAdminsAsync() > 0;
+        if (request.Role == Roles.Admin && !needsSecond && await HadTwoAdminsAsync())
+        {
+            return Conflict(new ErrorResponse(AloneAgain));
+        }
+
         string password = TemporaryPassword();
         AppUser user = new()
         {
@@ -109,7 +115,13 @@ public sealed class UsersController(UserManager<AppUser> users) : ControllerBase
         }
 
         Named(user);
-        if (request.Role == Roles.Admin && !await users.IsInRoleAsync(user, Roles.Admin) && await OtherAdminsAsync() > 0)
+        bool promoting = request.Role == Roles.Admin && !await users.IsInRoleAsync(user, Roles.Admin);
+        if (promoting && await OtherAdminsAsync() == 0 && await HadTwoAdminsAsync())
+        {
+            return Conflict(new ErrorResponse(AloneAgain));
+        }
+
+        if (promoting && await OtherAdminsAsync() > 0)
         {
             // Put forward only: the person keeps their role until another administrator agrees.
             user.AdminProposedBy = User.Identity?.Name;
@@ -240,9 +252,28 @@ public sealed class UsersController(UserManager<AppUser> users) : ControllerBase
     /// <summary>Tells the audit trail whose account this was done to.</summary>
     private void Named(AppUser user) => HttpContext.Items[AuditFilter.SubjectItem] = user.Email;
 
+    private const string TwoAdminsSeen = "users.two-admins-seen";
+    private const string AloneAgain =
+        "You are the only administrator left. A second one is appointed from the server (the command \"jobs make-admin\" with their email), not from here: "
+        + "otherwise one administrator could remove the other and appoint a replacement alone.";
+
     /// <summary>Administrators who can sign in, not counting whoever is asking.</summary>
-    private async Task<int> OtherAdminsAsync() =>
-        (await users.GetUsersInRoleAsync(Roles.Admin)).Count(a => !IsSelf(a) && (a.LockoutEnd is null || a.LockoutEnd <= DateTimeOffset.UtcNow));
+    private async Task<int> OtherAdminsAsync()
+    {
+        int others = (await users.GetUsersInRoleAsync(Roles.Admin)).Count(a => !IsSelf(a) && (a.LockoutEnd is null || a.LockoutEnd <= DateTimeOffset.UtcNow));
+        // Remembered for good the first time it is seen: from then on a single administrator can no longer appoint
+        // another one alone, however the second one came to be missing.
+        if (others > 0 && !await HadTwoAdminsAsync())
+        {
+            database.SystemSettings.Add(new KatalepsisFT.Domain.Execution.SystemSetting { Name = TwoAdminsSeen, Value = DateTimeOffset.UtcNow.ToString("O") });
+            await database.SaveChangesAsync();
+        }
+
+        return others;
+    }
+
+    /// <summary>Whether this system has ever had two administrators at once.</summary>
+    private Task<bool> HadTwoAdminsAsync() => database.SystemSettings.AnyAsync(s => s.Name == TwoAdminsSeen);
 
     /// <summary>True when this user is the only administrator who can still sign in and would stop being one.</summary>
     private async Task<bool> IsLastAdminAsync(AppUser user, string newRole)
