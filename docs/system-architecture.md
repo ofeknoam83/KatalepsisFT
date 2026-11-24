@@ -19,7 +19,63 @@ Paths are relative to this repository. Paths that start with `Katalepsis:` are i
 
 ## The Katalepsis foundation
 
+```mermaid
+%%{init: {"flowchart": {"rankSpacing": 34, "nodeSpacing": 14}}}%%
+flowchart LR
+    subgraph UI["Screens — 173 components"]
+        direction TB
+        u1[Eight bot consoles] ~~~ u2[Portfolios and balances] ~~~ u3[Wallets and trade history] ~~~ u4[Positions and options] ~~~ u5[RIA platform] ~~~ u6[Client portal] ~~~ u7[Strategy research] ~~~ u8[Analytics, PnL, reports]
+    end
+    subgraph EP["Entry points"]
+        direction TB
+        e1[Rest API<br/>40 controllers<br/>236 endpoints] ~~~ e2[171 MediatR<br/>handlers] ~~~ e3[Horizen.Auth<br/>OpenIddict server] ~~~ e4[23 scheduled jobs<br/>PnL, metrics,<br/>reports, alarms]
+    end
+    subgraph WK["Worker containers"]
+        direction TB
+        w1[TradingEngine] ~~~ w2[MarketBot] ~~~ w3[TradeAnalytics] ~~~ w4[WalletEventProcessor] ~~~ w5[PerpetualPositionsWatcher] ~~~ w6[RiaExecutionWorker] ~~~ w7[StrategyResearchWorker] ~~~ w8[Kaiko sync Lambda] ~~~ w9[CoinMarketCap scraper]
+    end
+    subgraph BOT["Bots — 16,700 lines"]
+        direction TB
+        b1[Avellaneda market making] ~~~ b2[Cross-exchange market making] ~~~ b3[AMM arbitrage] ~~~ b4[Triangle arbitrage] ~~~ b5[Veto arbitrage] ~~~ b6[DAO rebalancing] ~~~ b7[DIAMM market making] ~~~ b8[DIAMM V2]
+    end
+    subgraph SV["Application services"]
+        direction TB
+        s1[Markets — 15,100 lines<br/>one trading service per<br/>venue and market type] ~~~ s2[Metrics — 8,500] ~~~ s3[Positions watchers — 7,100] ~~~ s4[Portfolio and fix-balance — 5,300] ~~~ s5[Balance and history — 2,400] ~~~ s6[Announcements] ~~~ s7[Market info and data] ~~~ s8[Options watcher] ~~~ s9[Wallet credentials] ~~~ s10[News and newsletter]
+    end
+    subgraph RIA["Horizen.Ria — 19,600 lines"]
+        direction TB
+        r1[Target engine and models] ~~~ r2[Proposals and execution] ~~~ r3[Account valuation] ~~~ r4[Backtests] ~~~ r5[Firms, accounts, platform] ~~~ r6[Venue and wallet gateways]
+    end
+    subgraph VC["Venue, chain and custody clients"]
+        direction TB
+        v1[Binance · spot, perp, testnet] ~~~ v2[Bybit · spot, perp, demo] ~~~ v3[OKX · spot, perp, demo] ~~~ v4[KuCoin · spot, perp] ~~~ v5[Coinbase · Exchange, Prime, Pro] ~~~ v6[MEXC · Bitstamp] ~~~ v7[Deribit · options] ~~~ v8[Uniswap · Uniswap v4 · Aerodrome] ~~~ v9[On-chain reader] ~~~ v10[Fireblocks · Utila]
+    end
+    subgraph EXT["Data and outside services"]
+        direction TB
+        x1[Kaiko] ~~~ x2[CoinMarketCap] ~~~ x3[CoinGecko] ~~~ x4[OpenAI] ~~~ x5[Twitter · RSS] ~~~ x6[Google Drive] ~~~ x7[Email · Slack]
+    end
+    subgraph ST["Stores and AWS"]
+        direction TB
+        t1[(MySQL<br/>83 tables<br/>103 migrations)] ~~~ t2[(Redis)] ~~~ t3[SQS queues] ~~~ t4[SNS] ~~~ t5[S3] ~~~ t6[DynamoDB] ~~~ t7[Athena] ~~~ t8[KMS] ~~~ t9[Secrets Manager] ~~~ t10[ECS]
+    end
+    UI --> EP --> RIA
+    RIA ~~~ WK
+    WK --> BOT --> SV --> VC
+    VC ~~~ EXT ~~~ ST
+```
+
+*What Katalepsis does, as building blocks. Read left to right: screens call the API and the RIA platform; worker containers run the bots, which trade through the application services and their venue clients; everything rests on the stores and AWS services at the right. The API also calls the application services directly, and every block uses the stores; those arrows are left out to keep the map readable.*
+
 **Katalepsis FT stands on Katalepsis.** It has no runtime link to it — separate repository, database and hosting, with code copied rather than referenced (`docs/plan.md` §1) — but what made this system possible is the accumulated work inside Katalepsis: a very large, very intricate trading platform whose calculations, venue knowledge and hard-won lessons were carried over. The measurements below show how much is in there, and why it had to be distilled into a new system rather than extended.
+
+**What Katalepsis does.** It is a full trading platform, and the map above shows 72 of its building blocks in nine groups:
+
+- **Eight kinds of trading bot** (`Katalepsis:Domain/Enums/BotTypeCode.cs`): Avellaneda, cross-exchange and two generations of DIAMM market making; AMM, triangle and veto arbitrage; DAO rebalancing.
+- **Trading on centralised and decentralised venues**: Binance, Bybit, OKX, KuCoin, Coinbase (Exchange, Prime and Pro), MEXC, Bitstamp and Deribit, plus Uniswap, Uniswap v4 and Aerodrome, with custody through Fireblocks and Utila.
+- **Portfolio, balance, position and options tracking**, with metrics, PnL and scheduled reports.
+- **An RIA platform** (`Katalepsis:Horizen.Ria/`) with model portfolios, proposals, execution, account valuation and backtests.
+- **Strategy research, market data, announcements and news**, drawing on Kaiko, CoinMarketCap, CoinGecko and OpenAI.
+- **Seven worker containers, a Lambda function and a scraper**, on eight AWS services, behind its own sign-in server.
 
 **How large and intricate Katalepsis is.** Measured at commit `9847e4f`, next to this system:
 
@@ -62,6 +118,44 @@ It is equally the reason this is a new system. A change of this size inside a 23
 | Order calls for two of the ten gateways: Coinbase Exchange and MEXC spot | `src/KatalepsisFT.Venues/Coinbase/CoinbaseOrderGateway.cs`, `Mexc/MexcOrderGateway.cs` |
 | Stack and conventions: library versions, layering, 8-decimal precision, NGXS, display rules | Decisions D1, A7, A9, A10 in `docs/plan.md` §12 and `docs/architecture.md` §11 |
 | Design rules learned from its weak points: a failed read is an error and never an empty book; positions always signed; one bulk read per account; venues registered by name, never switched on | `docs/architecture.md` §1 (the Katalepsis facts) and §4 (the rules drawn from them) |
+
+```mermaid
+flowchart LR
+    subgraph K["Katalepsis"]
+        k1[Backtest metrics calculator<br/>return, volatility, Sharpe, drawdown]
+        k2[Indicators<br/>covariance, shrinkage]
+        k3[Account valuation rules]
+        k4[Daily return with cash flows]
+        k5[Venue clients<br/>Binance, Bybit, OKX, KuCoin,<br/>MEXC, Deribit, Coinbase]
+        k6[Coinbase and MEXC<br/>order calls]
+        k7[Public market-data client]
+        k8[Chart component<br/>and display pipes]
+        k9[Stack and conventions<br/>.NET 8, Angular 21, NGXS, 8 decimals]
+        k10[Failure modes<br/>zero on failed read, unsigned sizes,<br/>venue switch statements]
+    end
+    subgraph F["Katalepsis FT"]
+        f1[Analytics: performance]
+        f2[Analytics: statistics and risk]
+        f3[Position valuer]
+        f4[Return calculator]
+        f5[Seven venue adapters]
+        f6[Two order gateways]
+        f7[Daily and live prices]
+        f8[Shared client components]
+        f9[Solution layout and data types]
+        f10[Design rules of adapters<br/>and the execution engine]
+    end
+    k1 -->|copied with tests| f1
+    k2 -->|copied with tests| f2
+    k3 -->|rules followed| f3
+    k4 -->|formula followed| f4
+    k5 -->|read calls followed| f5
+    k6 -->|calls followed| f6
+    k7 -->|copied| f7
+    k8 -->|copied| f8
+    k9 -->|adopted| f9
+    k10 -->|designed against| f10
+```
 
 **What was written new**, with no Katalepsis source to follow: the fund → sleeve → manager model; the execution engine, paper matcher and consolidated book; the order gateways for KuCoin, Binance, Bybit, OKX, Bitget, Deribit, Gate and Kraken (from each venue's documentation); readers for Bitget, Gate, Kraken, Hyperliquid, wallets and pools; two-person approval, the sealed vault, the kill switch and the audit trail.
 
