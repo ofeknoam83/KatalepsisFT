@@ -68,7 +68,10 @@ public sealed class DemoFundSeeder(IFtDbContext database)
 
         List<ManagerAccount> managers = await database.ManagerAccounts.Where(m => m.Sleeve.FundId == fund.Id).ToListAsync(cancellationToken);
         Dictionary<(string Asset, InstrumentType Type), Instrument> instruments = await database
+            // Only the kinds the demo fund holds. Real funds may hold several options or futures of one asset, and
+            // those would be two entries under one key.
             .Instruments.Include(i => i.Asset)
+            .Where(i => i.Type == InstrumentType.Spot || i.Type == InstrumentType.Perp || i.Type == InstrumentType.Cash)
             .ToDictionaryAsync(i => (i.Asset.Symbol, i.Type), cancellationToken);
         Dictionary<int, DateOnly> lastSnapshot = await database
             .NavSnapshots.Where(n => n.ManagerAccount.Sleeve.FundId == fund.Id)

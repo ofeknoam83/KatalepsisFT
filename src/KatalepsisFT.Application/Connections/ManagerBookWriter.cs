@@ -69,12 +69,17 @@ public sealed class ManagerBookWriter(IFtDbContext database)
                     Quantity = quantity,
                     Mark = Weighted(p => p.MarkPrice),
                     Entry = g.All(p => p.EntryPrice is not null) ? Weighted(p => p.EntryPrice) : (decimal?)null,
-                    Unsettled = g.All(p => p.UnsettledPnlUsd is not null) ? g.Sum(p => p.UnsettledPnlUsd!.Value) : (decimal?)null,
+                    // Each source's own profit or loss, added up: the venue's figure where it gives one, otherwise worked
+                    // out from that source's own entry price. A blended entry price over a long here and a short there
+                    // would give the wrong answer.
+                    Unsettled = g.All(p => p.UnsettledPnlUsd is not null || p.EntryPrice is not null) ? g.Sum(p => p.UnsettledPnlUsd ?? p.Quantity * (p.MarkPrice - p.EntryPrice!.Value)) : (decimal?)null,
                     Underlying = g.All(p => p.UnderlyingPrice is not null) ? Weighted(p => p.UnderlyingPrice) : (decimal?)null,
                     Delta = g.All(p => p.Delta is not null) ? Weighted(p => p.Delta) : (decimal?)null,
                 };
             })
-            .Where(l => l.Quantity != 0m)
+            // A long on one venue and an equal short on another net to nothing held, but what they have made or lost
+            // is still part of the manager's value, so such a line stays.
+            .Where(l => l.Quantity != 0m || (l.Key.Type is InstrumentType.Perp or InstrumentType.Future && l.Unsettled is decimal open && open != 0m))
             .ToList();
 
         database.PositionSnapshots.RemoveRange(await database.PositionSnapshots.Where(p => p.ManagerAccountId == managerAccountId && p.Date == day).ToListAsync(cancellationToken));

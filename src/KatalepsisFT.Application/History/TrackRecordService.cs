@@ -261,20 +261,27 @@ public sealed class TrackRecordService(IFtDbContext database, AlertEvaluator ale
             List<string> cells = Cells(lines[i], separator);
             string Cell(int at) => at >= 0 && at < cells.Count ? cells[at].Trim() : string.Empty;
             int line = i + 1;
+            if (cells.Count > header.Count)
+            {
+                // Usually an amount written with thousands separators and no quotes: 1,250,000.00 is three cells.
+                errors.Add($"Line {line} has {cells.Count} values but the heading has {header.Count}. An amount with thousands separators has to be in double quotes, or written without them.");
+                continue;
+            }
+
             if (!DateOnly.TryParseExact(Cell(dateAt), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateOnly date))
             {
                 errors.Add($"Line {line}: \"{Cell(dateAt)}\" is not a date written as year-month-day, like 2025-03-31.");
                 continue;
             }
 
-            if (!Number(Cell(navAt), out decimal nav))
+            if (!Number(Cell(navAt), separator, out decimal nav))
             {
                 errors.Add($"Line {line}: \"{Cell(navAt)}\" is not a NAV in USD.");
                 continue;
             }
 
             decimal flow = 0m;
-            if (Cell(flowAt).Length > 0 && !Number(Cell(flowAt), out flow))
+            if (Cell(flowAt).Length > 0 && !Number(Cell(flowAt), separator, out flow))
             {
                 errors.Add($"Line {line}: \"{Cell(flowAt)}\" is not an amount. Leave the flow empty when no money moved.");
                 continue;
@@ -286,8 +293,16 @@ public sealed class TrackRecordService(IFtDbContext database, AlertEvaluator ale
         return (rows.OrderBy(r => r.Item2).ToList(), errors);
     }
 
-    private static bool Number(string text, out decimal value) =>
-        decimal.TryParse(text.Replace(",", string.Empty, StringComparison.Ordinal).Replace("$", string.Empty, StringComparison.Ordinal).Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out value);
+    /// <summary>
+    /// Reads an amount. In a file separated by semicolons the comma is the decimal mark, as European spreadsheets write
+    /// it (1.234.567,89); otherwise the comma separates thousands (1,234,567.89).
+    /// </summary>
+    private static bool Number(string text, char separator, out decimal value)
+    {
+        string plain = text.Replace("$", string.Empty, StringComparison.Ordinal).Replace(" ", string.Empty, StringComparison.Ordinal).Trim();
+        plain = separator == ';' && plain.Contains(',') ? plain.Replace(".", string.Empty, StringComparison.Ordinal).Replace(',', '.') : plain.Replace(",", string.Empty, StringComparison.Ordinal);
+        return decimal.TryParse(plain, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
+    }
 
     /// <summary>Splits one line, keeping a separator that sits inside double quotes.</summary>
     private static List<string> Cells(string line, char separator)

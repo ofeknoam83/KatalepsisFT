@@ -24,15 +24,29 @@ public class ReturnCalculatorTests
     }
 
     [Fact]
-    public void DailyReturns_FlowArrivesBeforeTheDaysMove_AsInKatalepsis()
+    public void DailyReturns_MoneyInArrivesBeforeTheDaysMove_AsInKatalepsis()
     {
         // 100 + 100 deposited, then +10% on the 200: NAV 220.
         double[] withDeposit = ReturnCalculator.DailyReturns([100m, 220m], [0m, 100m]);
-        // 100 − 40 withdrawn, then −5% on the 60: NAV 57.
-        double[] withWithdrawal = ReturnCalculator.DailyReturns([100m, 57m], [0m, -40m]);
 
         withDeposit[0].ShouldBe(0.10, 1e-12);
-        withWithdrawal[0].ShouldBe(-0.05, 1e-12);
+    }
+
+    [Fact]
+    public void DailyReturns_MoneyOutLeavesAfterTheDaysMove()
+    {
+        // 100 loses 3% to 97, then 40 is withdrawn: NAV 57.
+        double[] withWithdrawal = ReturnCalculator.DailyReturns([100m, 57m], [0m, -40m]);
+        // A manager retired at 98 after starting the day at 100: the whole book leaves at what it was worth.
+        double[] retiredDown = ReturnCalculator.DailyReturns([100m, 0m], [0m, -98m]);
+        double[] retiredUp = ReturnCalculator.DailyReturns([100m, 0m], [0m, -102m]);
+        // 100 gains 10% to 110, then 90 is withdrawn. Counted as leaving in the morning this would read +100%.
+        double[] largeWithdrawal = ReturnCalculator.DailyReturns([100m, 20m], [0m, -90m]);
+
+        withWithdrawal[0].ShouldBe(-0.03, 1e-12);
+        retiredDown[0].ShouldBe(-0.02, 1e-12);
+        retiredUp[0].ShouldBe(0.02, 1e-12);
+        largeWithdrawal[0].ShouldBe(0.10, 1e-12);
     }
 
     [Fact]

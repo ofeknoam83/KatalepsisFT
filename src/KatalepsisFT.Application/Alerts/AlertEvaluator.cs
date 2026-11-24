@@ -70,7 +70,15 @@ public sealed class AlertEvaluator(IFtDbContext database, RiskService risk, Venu
 
             if (figure is null)
             {
-                // No figure, no verdict: an alert is neither raised nor closed on missing data.
+                // No figure, no verdict: an alert is neither raised nor closed on missing data. The exception is a
+                // sleeve or manager that the figures were worked out without, because it holds nothing any more (a
+                // retired manager, an emptied sleeve): its alert would otherwise stay open for ever.
+                if (metrics is not null && scope is null && latest is { IsActive: true })
+                {
+                    Close(latest, now, "Nothing is held there any more.");
+                    recovered++;
+                }
+
                 continue;
             }
 

@@ -105,7 +105,9 @@ public sealed class FundBookReader(IFtDbContext database)
     {
         const int VolumeWindowDays = 30;
         DateOnly yearStart = new DateOnly(asOf.Year, 1, 1).AddDays(-1);
-        DateOnly from = yearStart < asOf.AddDays(-VolumeWindowDays) ? yearStart : asOf.AddDays(-VolumeWindowDays);
+        // A week earlier than strictly needed: the change over a period starts from the last close on or before its
+        // first day, and for a share that day may be a weekend or a holiday.
+        DateOnly from = (yearStart < asOf.AddDays(-VolumeWindowDays) ? yearStart : asOf.AddDays(-VolumeWindowDays)).AddDays(-7);
         var assets = await database.Assets.AsNoTracking().Where(a => symbols.Contains(a.Symbol)).Select(a => new { a.Id, a.Symbol, a.Name }).ToListAsync(cancellationToken);
         int[] ids = assets.Select(a => a.Id).ToArray();
         var bars = await database

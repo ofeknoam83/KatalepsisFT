@@ -307,6 +307,11 @@ public sealed class ManualPositionService(IFtDbContext database, ManagerBookServ
                     {
                         Fail("an option's delta is between −1 and 1.");
                     }
+                    else if ((r.OptionRight == OptionRight.Put && r.Delta > 0m) || (r.OptionRight == OptionRight.Call && r.Delta < 0m))
+                    {
+                        // Many sources quote a put's delta without its sign; taken as written, a long put would show as long exposure.
+                        Fail("a put's delta is zero or negative and a call's zero or positive. Give the delta of one option; whether the position is long or short is in its quantity.");
+                    }
 
                     if (r.UnderlyingPrice is null && !hasFeed)
                     {
@@ -433,6 +438,11 @@ public static class ManualCsv
             string Cell(string name) => header.IndexOf(name) is int index and >= 0 && index < cells.Count ? cells[index].Trim() : string.Empty;
             int line = i + 1;
             List<string> problems = [];
+            if (cells.Count > header.Count)
+            {
+                // A stray comma shifts every value after it into the wrong column: 1,500 shares would load as 1 share at 500.
+                problems.Add($"it has {cells.Count} values but the heading has {header.Count} (a number must not contain a comma)");
+            }
 
             decimal? Number(string name)
             {
@@ -451,7 +461,8 @@ public static class ManualCsv
                 return null;
             }
 
-            if (!Enum.TryParse(Cell("type"), ignoreCase: true, out InstrumentType type) || !Enum.IsDefined(type) || int.TryParse(Cell("type"), out _))
+            // A cell holding two names with a comma between them would be read as a mix of both.
+            if (!Enum.TryParse(Cell("type"), ignoreCase: true, out InstrumentType type) || !Enum.IsDefined(type) || int.TryParse(Cell("type"), out _) || Cell("type").Contains(','))
             {
                 problems.Add($"\"{Cell("type")}\" is not a type (Spot, Perp, Future, Option, Equity or Cash)");
             }

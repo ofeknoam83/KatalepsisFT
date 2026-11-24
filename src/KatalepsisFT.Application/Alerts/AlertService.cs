@@ -236,6 +236,20 @@ public sealed class AlertService(IFtDbContext database, AlertEvaluator evaluator
                 return AlertChange<AlertRuleDto>.Refused("That fund, sleeve or manager is not part of this fund.");
             }
 
+            // A rule that now measures something else, or somewhere else, starts afresh: its open alert belongs to
+            // what it measured before, and carrying its peak over would show 12.3 days as a peak of 1,230%.
+            if (rule.ScopeKind != request.ScopeKind || rule.ScopeId != request.ScopeId || rule.Metric != request.Metric || rule.Operator != request.Operator)
+            {
+                DateTimeOffset changedAt = clock.GetUtcNow();
+                foreach (Alert open in await database.Alerts.Where(a => a.RuleId == rule.Id && a.ResolvedAt == null).ToListAsync(cancellationToken))
+                {
+                    open.Status = AlertStatus.Resolved;
+                    open.ResolvedAt = changedAt;
+                    open.SnoozedUntil = null;
+                    open.Record(AlertActionKind.Recovered, changedAt, null, null, "The rule was changed to measure something else.");
+                }
+            }
+
             rule.ScopeKind = request.ScopeKind;
             rule.ScopeId = request.ScopeId;
             rule.Metric = request.Metric;

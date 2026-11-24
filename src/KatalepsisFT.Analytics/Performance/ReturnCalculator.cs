@@ -3,8 +3,10 @@ namespace KatalepsisFT.Analytics.Performance;
 /// <summary>
 /// Time-weighted returns from a daily NAV series and the money that moved in or out.
 /// The daily return is the one Katalepsis uses (Application/Services/Balance/BalanceHistoryService.cs:103-119):
-/// r = NAV / (previous NAV + deposits − withdrawals) − 1, that is, a flow is taken to arrive before the day's move.
-/// Unlike that service, returns are compounded unrounded.
+/// r = NAV / (previous NAV + deposits) − 1, that is, money coming in is taken to arrive before the day's move.
+/// Two things differ from that service. Money going out is taken to leave after the day's move,
+/// r = (NAV + withdrawals) / previous NAV − 1, because what leaves is sized at what the book was worth when it left.
+/// And returns are compounded unrounded.
 /// </summary>
 public static class ReturnCalculator
 {
@@ -21,7 +23,17 @@ public static class ReturnCalculator
         double[] returns = new double[Math.Max(0, navs.Count - 1)];
         for (int t = 1; t < navs.Count; t++)
         {
-            decimal invested = navs[t - 1] + (netFlows?[t] ?? 0m);
+            decimal flow = netFlows?[t] ?? 0m;
+            if (flow < 0m)
+            {
+                // Money taken out is sized at what the book was worth when it left, so it is counted as leaving at the
+                // end of the day: the day's return is earned on what was there in the morning. Counted as leaving in
+                // the morning, a manager retired at 98 after starting the day at 100 would show a return of -100%.
+                returns[t - 1] = navs[t - 1] > 0m ? (double)((navs[t] - flow) / navs[t - 1]) - 1.0 : 0.0;
+                continue;
+            }
+
+            decimal invested = navs[t - 1] + flow;
             returns[t - 1] = invested > 0m ? (double)(navs[t] / invested) - 1.0 : 0.0;
         }
 
