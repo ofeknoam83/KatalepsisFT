@@ -17,6 +17,58 @@ Paths are relative to this repository. Paths that start with `Katalepsis:` are i
 
 ---
 
+## The Katalepsis foundation
+
+**Katalepsis FT stands on Katalepsis.** It has no runtime link to it — separate repository, database and hosting, with code copied rather than referenced (`docs/plan.md` §1) — but what made this system possible is the accumulated work inside Katalepsis: a very large, very intricate trading platform whose calculations, venue knowledge and hard-won lessons were carried over. The measurements below show how much is in there, and why it had to be distilled into a new system rather than extended.
+
+**How large and intricate Katalepsis is.** Measured at commit `9847e4f`, next to this system:
+
+| Measure | Katalepsis | Katalepsis FT |
+|---|---|---|
+| Projects in the solution | 44 (`Katalepsis:Horizen.sln`) | 15 (`KatalepsisFT.sln`) |
+| C# outside migrations | about 237,500 lines in 1,755 files | about 32,100 lines |
+| – of which tests | about 72,700 lines, 2,048 test methods | about 7,900 lines, 370 test methods |
+| Angular client | about 62,300 lines; 173 components in 38 modules | about 9,400 lines; 42 components |
+| C# files over 1,000 lines | 42 | 1 (`TradingService.cs`) |
+| C# product files over 500 lines | 65 | 7 |
+| Database | three contexts, 83 tables, 103 migrations (MySQL) | one context, 29 tables, 13 migrations (Postgres) |
+| API | 40 controllers, 236 endpoints, 171 MediatR handlers | 12 controllers, 101 endpoints |
+| Background processing | 24 hosted services and 23 scheduled jobs, in 7 separately built containers | 6 hosted services in one image |
+| Enumerations | 82 | 38 |
+| Service registrations | 283 | — |
+| Distinct packages referenced | 119 | 35 |
+| Hosting | AWS: ECS, SQS, SNS, S3, DynamoDB, Athena, KMS, Secrets Manager; a separate OpenIddict sign-in server | Render; built-in sign-in |
+
+Katalepsis is roughly seven times this system in code, three times in tables and eight times in schema history, and it is denser as well as larger:
+
+- **One project holds most of it.** `Katalepsis:Application/` is about 105,000 lines; its `Services` folder alone is about 62,200 lines in 200 files, an average of over 300 lines a file.
+- **Each venue is implemented many times over.** There is one trading service per venue and market type, each 800–1,170 lines: `Katalepsis:Application/Services/Markets/V2/Spot/CoinbaseExchangeMarketServiceV2.cs` (1,169), `MexcMarketServiceV2.cs` (1,114), `CoinbasePrimeMarketServiceV2.cs` (1,102), `KucoinMarketServiceV2.cs` (1,068), `BinanceMarketServiceV2.cs` (1,028), `BybitMarketServiceV2.cs` (1,011) — fourteen spot services and more for perpetuals and options. `Katalepsis:Application/Services/Markets/` is about 15,000 lines, on top of about 16,300 in `Katalepsis:Infrastructure/` for the venue clients underneath. The same venue appears again in the position watchers, the balance service and the RIA gateway.
+- **The venue is a branch in the code, everywhere.** `MarketCode.` is referenced 654 times in 101 files, and the product code contains 261 `switch` statements. Adding a venue means finding and editing those places; in the position worker alone it is a `switch` with one near-identical method per venue (`Katalepsis:PerpetualPositionsWatcher/PerpetualPositionsWatcherWorker.cs:129-185`, `:250-374`).
+- **Business logic sits in very large classes.** `Katalepsis:Application/Services/Bots/DiammV2/DiammMarketMakingV2Service.cs` (2,394 lines), `TriangleArbitrageService.cs` (2,319), `Katalepsis:Application/Services/Balance/BalanceService.cs` (2,205), `Katalepsis:Application/Services/Bots/DaoRebalancing/DaoRebalancingService.cs` (2,097), `CrossExchangeMarketMakingService.cs` (1,956), `AMMArbitrageService.cs` (1,908), `Katalepsis:Application/Services/Positions/PositionsWatcher.cs` (1,629). The tests mirror them: `Katalepsis:Application.Tests/Services/Bots/DiammMarketMakingV2ServiceTests.cs` is 2,479 lines.
+- **It runs as many moving parts.** Seven worker containers, queues, a document store, a key service and a separate sign-in server have to be deployed and kept in step; the schema has been changed 103 times.
+- **Its failure handling carries known traps.** Venue clients answer zero when a balance or position request fails, so a failed read looks like an empty account (`Katalepsis:Horizen.Ria/Integration/Venues/ExchangeVenueGateway.cs:60-61`, `:104-105`); some venues' position sizes arrive without a sign (`:136`); alert de-duplication lives in memory and is lost on restart (`Katalepsis:Application/Services/Positions/Perpetual/PerpetualPositionsWatcher.cs:34`).
+
+**Why that matters here.** Every one of those numbers is also knowledge. The 14 spot services and their tests record how each venue really behaves; the 103 migrations record what a trading platform's data turns out to need; the large bot and balance services record the edge cases those strategies ran into. A team starting from an empty repository would have had to rediscover all of it. Katalepsis FT did not: it read Katalepsis, took what was sound, and designed around what was not. That is the reason a system of this breadth exists two days after its first commit (22 to 23 November 2026).
+
+It is equally the reason this is a new system. A change of this size inside a 237,000-line codebase with 654 venue branch points, 83 tables and seven deployed workers could not have been made at this speed or with this isolation of risk.
+
+**What Katalepsis FT takes from it.**
+
+| Taken | Evidence in this repository |
+|---|---|
+| Code copied unchanged, with its tests: return, volatility, Sharpe, Sortino, drawdown; covariance and shrinkage; the chart component; the decimal pipe; the public market-data client | Header comments naming the source file and commit in `src/KatalepsisFT.Analytics/Performance/BacktestMetricsCalculator.cs`, `src/KatalepsisFT.Analytics/Statistics/Indicators.cs`, `src/KatalepsisFT.Web/ClientApp/src/app/shared/ria-chart.component.ts`, `shared/dynamic-decimal.pipe.ts`, `src/KatalepsisFT.Infrastructure/MarketData/BinancePublicClient.cs`, `tests/KatalepsisFT.Analytics.Tests/Statistics/IndicatorTests.cs` |
+| Valuation and return rules: how spot, perpetuals and options add up to NAV; daily return with cash flows | `src/KatalepsisFT.Analytics/Valuation/PositionValuer.cs`, `src/KatalepsisFT.Analytics/Performance/ReturnCalculator.cs` |
+| Which venue calls to make and how to sign them, for seven of the eleven read connections: Binance, Bybit, OKX, KuCoin, MEXC, Deribit, Coinbase | Class comments in `src/KatalepsisFT.Venues/Binance/BinanceAdapter.cs`, `Bybit/BybitAdapter.cs`, `Okx/OkxAdapter.cs`, `Kucoin/KucoinAdapter.cs`, `Mexc/MexcAdapter.cs`, `Deribit/DeribitAdapter.cs`, `Coinbase/CoinbaseHttp.cs` |
+| Order calls for two of the ten gateways: Coinbase Exchange and MEXC spot | `src/KatalepsisFT.Venues/Coinbase/CoinbaseOrderGateway.cs`, `Mexc/MexcOrderGateway.cs` |
+| Stack and conventions: library versions, layering, 8-decimal precision, NGXS, display rules | Decisions D1, A7, A9, A10 in `docs/plan.md` §12 and `docs/architecture.md` §11 |
+| Design rules learned from its weak points: a failed read is an error and never an empty book; positions always signed; one bulk read per account; venues registered by name, never switched on | `docs/architecture.md` §1 (the Katalepsis facts) and §4 (the rules drawn from them) |
+
+**What was written new**, with no Katalepsis source to follow: the fund → sleeve → manager model; the execution engine, paper matcher and consolidated book; the order gateways for KuCoin, Binance, Bybit, OKX, Bitget, Deribit, Gate and Kraken (from each venue's documentation); readers for Bitget, Gate, Kraken, Hyperliquid, wallets and pools; two-person approval, the sealed vault, the kill switch and the audit trail.
+
+**What the evidence supports.** Without Katalepsis this system would not exist in its present form or on this timescale. The calculators arrived already tested; seven of the eleven venue readers and two of the order gateways started from calls Katalepsis already makes; the stack and conventions were settled; and the rules that make the new engine safe — a failed read is never an empty book, positions are always signed, venues are registered and never switched on — are direct answers to Katalepsis' own failure modes. The parts listed above as written new (the execution engine and eight of the ten gateways among them) have no Katalepsis source, and this document does not claim otherwise; they were designed with Katalepsis' lessons as their starting rules.
+
+---
+
 ## 1. Executive summary
 
 **Business goal.** An allocator runs a master fund split into sleeves, each run by several managers, on many crypto venues. They need one place that shows what the fund holds and how it performs at every level (fund, sleeve, manager, asset), raises alerts, and lets authorised people send orders to the managers' venue accounts under limits, two-person approval and a kill switch.
@@ -72,7 +124,7 @@ flowchart LR
 - *Real money, small team, no staging.* The risky capability (sending orders, opening keys) is confined to one small process with its own secret; everything else is unable to trade by construction.
 - *Many venues that each behave differently.* All venue differences sit behind two narrow contracts (`IVenueAdapter` for reading, `IOrderGateway` for trading); the engine has no venue-specific code.
 - *An order must never be sent twice.* The order is written down as sent before it is sent, and an unclear answer is resolved by asking the venue, never by sending again (section 4).
-- *Built on Katalepsis.* Katalepsis is about seven times the size of this system (237,500 lines of C#, 83 tables, 103 migrations, seven worker containers) and far more intricate. Its calculators, venue knowledge, conventions and lessons were carried over, which is why this system exists two days after its first commit and could not have without it (section 2.4).
+- *Built on Katalepsis.* Katalepsis is about seven times the size of this system (237,500 lines of C#, 83 tables, 103 migrations, seven worker containers) and far more intricate. Its calculators, venue knowledge, conventions and lessons were carried over, which is why this system exists two days after its first commit and could not have without it (see "The Katalepsis foundation" above).
 
 **The most important open decision.** Where the execution service runs. It is in Frankfurt with the database; measured round trips from there are about 230–330 ms to Binance, Bybit, OKX, KuCoin, Bitget, Gate, MEXC and Hyperliquid, about 105 ms to Coinbase and 30–40 ms to Kraken and Deribit. Moving it close to the Asian venues cuts the venue leg but puts the order log a continent away from the engine, or forces the database to move too. Section 8, decision 9, and section 10, question 1.
 
@@ -115,56 +167,6 @@ Not in scope today: Hyperliquid orders (needs wallet signing), MEXC perpetual or
 | Secrets held as Render environment secrets | Decision A5 | Two master keys, the trading one given to one process only (`render.yaml`) |
 | Same stack as Katalepsis | Decision D1 | .NET 8, Angular 21, ng-zorro, NGXS; copied code needs no translation |
 | The build environment cannot reach Binance or Bybit | Observed (HTTP 451 and 403) | Those two gateways are tested on recorded answers only |
-
-### 2.4 The Katalepsis foundation
-
-**Katalepsis FT stands on Katalepsis.** It has no runtime link to it — separate repository, database and hosting, with code copied rather than referenced (`docs/plan.md` §1) — but what made this system possible is the accumulated work inside Katalepsis: a very large, very intricate trading platform whose calculations, venue knowledge and hard-won lessons were carried over. The measurements below show how much is in there, and why it had to be distilled into a new system rather than extended.
-
-**How large and intricate Katalepsis is.** Measured at commit `9847e4f`, next to this system:
-
-| Measure | Katalepsis | Katalepsis FT |
-|---|---|---|
-| Projects in the solution | 44 (`Katalepsis:Horizen.sln`) | 15 (`KatalepsisFT.sln`) |
-| C# outside migrations | about 237,500 lines in 1,755 files | about 32,100 lines |
-| – of which tests | about 72,700 lines, 2,048 test methods | about 7,900 lines, 370 test methods |
-| Angular client | about 62,300 lines; 173 components in 38 modules | about 9,400 lines; 42 components |
-| C# files over 1,000 lines | 42 | 1 (`TradingService.cs`) |
-| C# product files over 500 lines | 65 | 7 |
-| Database | three contexts, 83 tables, 103 migrations (MySQL) | one context, 29 tables, 13 migrations (Postgres) |
-| API | 40 controllers, 236 endpoints, 171 MediatR handlers | 12 controllers, 101 endpoints |
-| Background processing | 24 hosted services and 23 scheduled jobs, in 7 separately built containers | 6 hosted services in one image |
-| Enumerations | 82 | 38 |
-| Service registrations | 283 | — |
-| Distinct packages referenced | 119 | 35 |
-| Hosting | AWS: ECS, SQS, SNS, S3, DynamoDB, Athena, KMS, Secrets Manager; a separate OpenIddict sign-in server | Render; built-in sign-in |
-
-Katalepsis is roughly seven times this system in code, three times in tables and eight times in schema history, and it is denser as well as larger:
-
-- **One project holds most of it.** `Katalepsis:Application/` is about 105,000 lines; its `Services` folder alone is about 62,200 lines in 200 files, an average of over 300 lines a file.
-- **Each venue is implemented many times over.** There is one trading service per venue and market type, each 800–1,170 lines: `Katalepsis:Application/Services/Markets/V2/Spot/CoinbaseExchangeMarketServiceV2.cs` (1,169), `MexcMarketServiceV2.cs` (1,114), `CoinbasePrimeMarketServiceV2.cs` (1,102), `KucoinMarketServiceV2.cs` (1,068), `BinanceMarketServiceV2.cs` (1,028), `BybitMarketServiceV2.cs` (1,011) — fourteen spot services and more for perpetuals and options. `Katalepsis:Application/Services/Markets/` is about 15,000 lines, on top of about 16,300 in `Katalepsis:Infrastructure/` for the venue clients underneath. The same venue appears again in the position watchers, the balance service and the RIA gateway.
-- **The venue is a branch in the code, everywhere.** `MarketCode.` is referenced 654 times in 101 files, and the product code contains 261 `switch` statements. Adding a venue means finding and editing those places; in the position worker alone it is a `switch` with one near-identical method per venue (`Katalepsis:PerpetualPositionsWatcher/PerpetualPositionsWatcherWorker.cs:129-185`, `:250-374`).
-- **Business logic sits in very large classes.** `Katalepsis:Application/Services/Bots/DiammV2/DiammMarketMakingV2Service.cs` (2,394 lines), `TriangleArbitrageService.cs` (2,319), `Katalepsis:Application/Services/Balance/BalanceService.cs` (2,205), `Katalepsis:Application/Services/Bots/DaoRebalancing/DaoRebalancingService.cs` (2,097), `CrossExchangeMarketMakingService.cs` (1,956), `AMMArbitrageService.cs` (1,908), `Katalepsis:Application/Services/Positions/PositionsWatcher.cs` (1,629). The tests mirror them: `Katalepsis:Application.Tests/Services/Bots/DiammMarketMakingV2ServiceTests.cs` is 2,479 lines.
-- **It runs as many moving parts.** Seven worker containers, queues, a document store, a key service and a separate sign-in server have to be deployed and kept in step; the schema has been changed 103 times.
-- **Its failure handling carries known traps.** Venue clients answer zero when a balance or position request fails, so a failed read looks like an empty account (`Katalepsis:Horizen.Ria/Integration/Venues/ExchangeVenueGateway.cs:60-61`, `:104-105`); some venues' position sizes arrive without a sign (`:136`); alert de-duplication lives in memory and is lost on restart (`Katalepsis:Application/Services/Positions/Perpetual/PerpetualPositionsWatcher.cs:34`).
-
-**Why that matters here.** Every one of those numbers is also knowledge. The 14 spot services and their tests record how each venue really behaves; the 103 migrations record what a trading platform's data turns out to need; the large bot and balance services record the edge cases those strategies ran into. A team starting from an empty repository would have had to rediscover all of it. Katalepsis FT did not: it read Katalepsis, took what was sound, and designed around what was not. That is the reason a system of this breadth exists two days after its first commit (22 to 23 November 2026).
-
-It is equally the reason this is a new system. A change of this size inside a 237,000-line codebase with 654 venue branch points, 83 tables and seven deployed workers could not have been made at this speed or with this isolation of risk.
-
-**What Katalepsis FT takes from it.**
-
-| Taken | Evidence in this repository |
-|---|---|
-| Code copied unchanged, with its tests: return, volatility, Sharpe, Sortino, drawdown; covariance and shrinkage; the chart component; the decimal pipe; the public market-data client | Header comments naming the source file and commit in `src/KatalepsisFT.Analytics/Performance/BacktestMetricsCalculator.cs`, `src/KatalepsisFT.Analytics/Statistics/Indicators.cs`, `src/KatalepsisFT.Web/ClientApp/src/app/shared/ria-chart.component.ts`, `shared/dynamic-decimal.pipe.ts`, `src/KatalepsisFT.Infrastructure/MarketData/BinancePublicClient.cs`, `tests/KatalepsisFT.Analytics.Tests/Statistics/IndicatorTests.cs` |
-| Valuation and return rules: how spot, perpetuals and options add up to NAV; daily return with cash flows | `src/KatalepsisFT.Analytics/Valuation/PositionValuer.cs`, `src/KatalepsisFT.Analytics/Performance/ReturnCalculator.cs` |
-| Which venue calls to make and how to sign them, for seven of the eleven read connections: Binance, Bybit, OKX, KuCoin, MEXC, Deribit, Coinbase | Class comments in `src/KatalepsisFT.Venues/Binance/BinanceAdapter.cs`, `Bybit/BybitAdapter.cs`, `Okx/OkxAdapter.cs`, `Kucoin/KucoinAdapter.cs`, `Mexc/MexcAdapter.cs`, `Deribit/DeribitAdapter.cs`, `Coinbase/CoinbaseHttp.cs` |
-| Order calls for two of the ten gateways: Coinbase Exchange and MEXC spot | `src/KatalepsisFT.Venues/Coinbase/CoinbaseOrderGateway.cs`, `Mexc/MexcOrderGateway.cs` |
-| Stack and conventions: library versions, layering, 8-decimal precision, NGXS, display rules | Decisions D1, A7, A9, A10 in `docs/plan.md` §12 and `docs/architecture.md` §11 |
-| Design rules learned from its weak points: a failed read is an error and never an empty book; positions always signed; one bulk read per account; venues registered by name, never switched on | `docs/architecture.md` §1 (the Katalepsis facts) and §4 (the rules drawn from them) |
-
-**What was written new**, with no Katalepsis source to follow: the fund → sleeve → manager model; the execution engine, paper matcher and consolidated book; the order gateways for KuCoin, Binance, Bybit, OKX, Bitget, Deribit, Gate and Kraken (from each venue's documentation); readers for Bitget, Gate, Kraken, Hyperliquid, wallets and pools; two-person approval, the sealed vault, the kill switch and the audit trail.
-
-**What the evidence supports.** Without Katalepsis this system would not exist in its present form or on this timescale. The calculators arrived already tested; seven of the eleven venue readers and two of the order gateways started from calls Katalepsis already makes; the stack and conventions were settled; and the rules that make the new engine safe — a failed read is never an empty book, positions are always signed, venues are registered and never switched on — are direct answers to Katalepsis' own failure modes. The parts listed above as written new (the execution engine and eight of the ten gateways among them) have no Katalepsis source, and this document does not claim otherwise; they were designed with Katalepsis' lessons as their starting rules.
 
 ---
 
@@ -536,7 +538,7 @@ Not built (**proposed**): alerts pushed to people when the execution service has
 
 | # | Choice | Rationale | Credible alternative | Trade-off | Revisit when |
 |---|---|---|---|---|---|
-| 1 | A new system on Katalepsis' stack and conventions, with code copied in | Katalepsis' size (section 2.4) makes it slow to change; its calculators and venue knowledge are reusable | Extend Katalepsis in place | Two codebases; fixes to copied code do not flow back | The two products need to share live data |
+| 1 | A new system on Katalepsis' stack and conventions, with code copied in | Katalepsis' size (see "The Katalepsis foundation" above) makes it slow to change; its calculators and venue knowledge are reusable | Extend Katalepsis in place | Two codebases; fixes to copied code do not flow back | The two products need to share live data |
 | 2 | One execution process is the only actor on orders; the web service only records requests | One place to reason about "sent once"; the trading secret lives in one process | Web service sends orders directly | An extra hop of a few milliseconds; the engine must be up to trade | Never for safety; measure if latency matters |
 | 3 | Write-ahead, never resend, resolve by client id | A duplicate order costs money; a lost order costs an opportunity | Retry on timeout with the venue's idempotency | An order can be reported "never arrived" after 30 s | A venue is shown to guarantee idempotent placement by client id |
 | 4 | Postgres as system of record and as leader lock | One durable store; no extra coordination service | A queue (SQS, as in Katalepsis) plus a lock service | The engine polls every 100 ms and depends on the database being close | Order volume makes row polling a bottleneck |
