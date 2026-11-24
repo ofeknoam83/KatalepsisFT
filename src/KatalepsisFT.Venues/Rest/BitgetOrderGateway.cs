@@ -23,7 +23,7 @@ public sealed class BitgetOrderGateway(HttpClient http, TimeProvider clock) : Re
     private const string Family = "USDT-FUTURES";
 
     /// <summary>Busy, timed out, being upgraded or limited.</summary>
-    private static readonly string[] NotAnswers = ["429", "40010", "40015", "40200", "40725", "40808", "45001"];
+    private static readonly string[] NotAnswers = ["429", "40010", "40015", "40200", "40725", "40808", "45001", "50031", "80002"];
     private static readonly string[] OrderUnknown = ["40109", "43001", "45057", "31007"];
     private readonly ConcurrentDictionary<(string Key, string Symbol), (int Leverage, MarginMode Mode)> _set = new();
 
@@ -229,6 +229,7 @@ public sealed class BitgetOrderGateway(HttpClient http, TimeProvider clock) : Re
         }
 
         decimal? futuresEquity = null;
+        bool perpsRead = true;
         try
         {
             JsonElement accounts = await SendAsync(credentials, HttpMethod.Get, $"/api/v2/mix/account/accounts?productType={Family}", null, cancellationToken);
@@ -250,10 +251,13 @@ public sealed class BitgetOrderGateway(HttpClient http, TimeProvider clock) : Re
         }
         catch (VenueRefusedException)
         {
-            // The key may not use futures, or the account has none. The spot side stands on its own.
+            // The key may not use futures, or the account has none: the spot side stands on its own. But a refusal can
+            // also be a passing one (a late timestamp, a limit), so the report says the futures side was not read, and
+            // perpetuals already on record are then left as they are rather than taken to be gone.
+            perpsRead = false;
         }
 
-        return new VenueAccountReport(cash, futuresEquity, holdings);
+        return new VenueAccountReport(cash, futuresEquity, holdings, perpsRead);
     }
 
     private async Task<JsonElement> SendAsync(VenueCredentials? credentials, HttpMethod method, string pathAndQuery, object? body, CancellationToken cancellationToken)

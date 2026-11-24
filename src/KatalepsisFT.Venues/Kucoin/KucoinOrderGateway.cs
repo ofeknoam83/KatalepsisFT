@@ -314,6 +314,7 @@ public sealed class KucoinOrderGateway(HttpClient http, TimeProvider clock) : IO
         }
 
         decimal? futuresEquity = null;
+        bool perpsRead = true;
         try
         {
             futuresEquity = NumberOr(await SendAsync(credentials, FuturesHost, HttpMethod.Get, "/api/v1/account-overview?currency=USDT", null, cancellationToken), "accountEquity");
@@ -330,10 +331,13 @@ public sealed class KucoinOrderGateway(HttpClient http, TimeProvider clock) : IO
         }
         catch (VenueRefusedException)
         {
-            // The key may not use futures, or the account has none. The spot side stands on its own.
+            // The key may not use futures, or the account has none: the spot side stands on its own. But a refusal can
+            // also be a passing one (a late timestamp, a limit), so the report says the futures side was not read, and
+            // perpetuals already on record are then left as they are rather than taken to be gone.
+            perpsRead = false;
         }
 
-        return new VenueAccountReport(cash, futuresEquity, holdings);
+        return new VenueAccountReport(cash, futuresEquity, holdings, perpsRead);
     }
 
     // ---------------------------------------------------------------- one request
@@ -353,6 +357,13 @@ public sealed class KucoinOrderGateway(HttpClient http, TimeProvider clock) : IO
                 _keyVersion[credentials.ApiKey] = "2";
                 return second.Data;
             }
+
+            // If the second attempt was refused for the same reason, the first refusal stands. Anything else it said
+            // is the answer that counts: a broken or busy reply to it means the request may have been carried out.
+            if (second.Code is not ("400003" or "400004" or "400005"))
+            {
+                (status, code, message, data) = second;
+            }
         }
 
         if (code == "200000")
@@ -367,7 +378,7 @@ public sealed class KucoinOrderGateway(HttpClient http, TimeProvider clock) : IO
 
         string reason = $"{(string.IsNullOrWhiteSpace(message) ? "no reason given" : message)} (code {(code.Length == 0 ? ((int)status).ToString(CultureInfo.InvariantCulture) : code)})";
         // Busy, rate-limited or broken: not an answer about the request itself.
-        if ((int)status >= 500 || status is HttpStatusCode.TooManyRequests or HttpStatusCode.RequestTimeout || code is "429000" or "230005" or "200002" || code.Length == 0)
+        if ((int)status >= 500 || status is HttpStatusCode.TooManyRequests or HttpStatusCode.RequestTimeout || code is "429000" or "230005" or "200002" or "500000" || code.Length == 0)
         {
             throw new VenueUnclearException(reason);
         }

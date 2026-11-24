@@ -274,15 +274,21 @@ public static class PreTradeChecks
             // The position this order could leave if every order working on its side filled as well.
             decimal worst = order.Side == OrderSide.Buy ? context.PositionQuantity + context.OpenBuyQuantity + order.Quantity : context.PositionQuantity - context.OpenSellQuantity - order.Quantity;
             decimal worstNotional = Math.Max(Math.Abs(after), Math.Abs(worst)) * mid;
-            if (worstNotional > account.MaxPositionNotionalUsd && Math.Abs(after) > Math.Abs(context.PositionQuantity))
+            // An order that can only bring the position closer to nothing is let through even above the limit. That is
+            // judged on the worst case too: a sell that reduces by itself may, with the sells already working, turn the
+            // position round and build it up on the other side.
+            if (worstNotional > account.MaxPositionNotionalUsd && Math.Max(Math.Abs(after), Math.Abs(worst)) > Math.Abs(context.PositionQuantity))
             {
                 return $"With this order the {order.Asset} position could reach {worstNotional:N2} USD; this account's largest position is {account.MaxPositionNotionalUsd:N2} USD.";
             }
         }
 
-        if (order.InstrumentType == InstrumentType.Spot && order.Side == OrderSide.Sell && after < 0m)
+        // Sells already working count: two sells of everything held would, both filled, leave the account short.
+        if (order.InstrumentType == InstrumentType.Spot && order.Side == OrderSide.Sell && context.PositionQuantity - context.OpenSellQuantity - order.Quantity < 0m)
         {
-            return $"The account holds {context.PositionQuantity:0.########} {order.Asset}; spot cannot be sold short.";
+            return context.OpenSellQuantity > 0m
+                ? $"The account holds {context.PositionQuantity:0.########} {order.Asset} and {context.OpenSellQuantity:0.########} is already being sold; spot cannot be sold short."
+                : $"The account holds {context.PositionQuantity:0.########} {order.Asset}; spot cannot be sold short.";
         }
 
         return null;

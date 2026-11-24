@@ -24,7 +24,7 @@ public sealed class BybitOrderGateway(HttpClient http, TimeProvider clock) : Res
     private const string Window = "5000";
 
     /// <summary>Busy, timed out or limited.</summary>
-    private static readonly string[] NotAnswers = ["10000", "10006", "10016", "10018", "110079", "170001", "170007"];
+    private static readonly string[] NotAnswers = ["10000", "10006", "10016", "10018", "110079", "170001", "170007", "170146", "170147"];
     private static readonly string[] Final = ["Filled", "Cancelled", "PartiallyFilledCanceled", "Rejected", "Deactivated"];
     private readonly ConcurrentDictionary<(string Key, string Symbol), int> _leverage = new();
 
@@ -52,17 +52,20 @@ public sealed class BybitOrderGateway(HttpClient http, TimeProvider clock) : Res
                 return null;
             }
 
-            if (!result.TryGetProperty("list", out JsonElement list) || list.GetArrayLength() == 0 || Text(list[0], "status") != "Trading")
+            if (!result.TryGetProperty("list", out JsonElement list) || list.GetArrayLength() == 0)
             {
                 return null;
             }
+
+            // Suspended or being delisted: still listed, so its orders can be asked about and cancelled.
+            bool trading = Text(list[0], "status") == "Trading";
 
             JsonElement lot = list[0].GetProperty("lotSizeFilter");
             decimal tick = Number(list[0].GetProperty("priceFilter"), "tickSize");
             // Spot calls its quantity step "basePrecision" and its smallest order by value "minOrderAmt".
             decimal step = type == InstrumentType.Spot ? Number(lot, "basePrecision") : Number(lot, "qtyStep");
             decimal notional = type == InstrumentType.Spot ? Number(lot, "minOrderAmt") : Number(lot, "minNotionalValue");
-            return step > 0m && tick > 0m ? new VenueInstrument(symbol, step, tick, Number(lot, "minOrderQty"), notional) : null;
+            return step > 0m && tick > 0m ? new VenueInstrument(symbol, step, tick, Number(lot, "minOrderQty"), notional, trading) : null;
         });
     }
 
@@ -145,7 +148,8 @@ public sealed class BybitOrderGateway(HttpClient http, TimeProvider clock) : Res
         decimal filled = Number(o, "cumExecQty");
         decimal value = Number(o, "cumExecValue");
         decimal? fees = null;
-        if (o.TryGetProperty("cumFeeDetail", out JsonElement detail) && detail.ValueKind == JsonValueKind.Object)
+        // An empty list of fees means "not known yet", not "nothing was charged".
+        if (o.TryGetProperty("cumFeeDetail", out JsonElement detail) && detail.ValueKind == JsonValueKind.Object && detail.EnumerateObject().Any())
         {
             fees = FeesInDollars(detail.EnumerateObject().Select(f => (Number(f.Value), (string?)f.Name)), instrument.Symbol[..^4], filled > 0m ? value / filled : 0m);
         }

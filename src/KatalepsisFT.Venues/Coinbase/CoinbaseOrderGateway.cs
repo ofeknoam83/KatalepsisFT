@@ -198,7 +198,10 @@ public sealed class CoinbaseOrderGateway(HttpClient http, TimeProvider clock) : 
         }
 
         string reason = $"{Limited(answer is { ValueKind: JsonValueKind.Object } said ? Text(said, "message") : null)} (code {((int)status).ToString(CultureInfo.InvariantCulture)})";
-        if (NotAnAnswer(status) || (int)status is >= 200 and < 300)
+        // A page from something in front of Coinbase (a block, a missing route) carries no message of Coinbase's own
+        // and says nothing about the order.
+        bool inItsOwnWords = answer is { ValueKind: JsonValueKind.Object } own && Text(own, "message") is { Length: > 0 };
+        if (NotAnAnswer(status) || (int)status is >= 200 and < 300 || !inItsOwnWords)
         {
             throw new VenueUnclearException(reason);
         }

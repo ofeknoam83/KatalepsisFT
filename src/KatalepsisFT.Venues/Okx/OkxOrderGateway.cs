@@ -52,10 +52,13 @@ public sealed class OkxOrderGateway(HttpClient http, TimeProvider clock) : RestO
                 return null;
             }
 
-            if (data.ValueKind != JsonValueKind.Array || data.GetArrayLength() == 0 || Text(data[0], "state") != "live")
+            if (data.ValueKind != JsonValueKind.Array || data.GetArrayLength() == 0)
             {
                 return null;
             }
+
+            // Suspended or being delisted: still listed, so its orders can be asked about and cancelled.
+            bool trading = Text(data[0], "state") == "live";
 
             // A swap's steps are in contracts; one contract is "ctVal" units of the asset.
             decimal contract = type == InstrumentType.Spot ? 1m : Number(data[0], "ctVal");
@@ -67,7 +70,7 @@ public sealed class OkxOrderGateway(HttpClient http, TimeProvider clock) : RestO
             }
 
             _contractSize[symbol] = contract;
-            return new VenueInstrument(symbol, step, tick, Number(data[0], "minSz") * contract, 0m);
+            return new VenueInstrument(symbol, step, tick, Number(data[0], "minSz") * contract, 0m, trading);
         });
     }
 

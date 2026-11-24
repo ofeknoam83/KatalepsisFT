@@ -23,7 +23,7 @@ public sealed class BinanceOrderGateway(HttpClient http, TimeProvider clock) : R
     public const string FuturesHost = "https://fapi.binance.com";
 
     /// <summary>Busy, timed out or limited: Binance's codes that do not say whether the request was carried out.</summary>
-    private static readonly string[] NotAnswers = ["-1000", "-1001", "-1003", "-1007", "-1008", "-1015", "-1016"];
+    private static readonly string[] NotAnswers = ["-1000", "-1001", "-1003", "-1006", "-1007", "-1008", "-1015", "-1016"];
     private static readonly string[] Final = ["FILLED", "CANCELED", "REJECTED", "EXPIRED", "EXPIRED_IN_MATCH"];
     private readonly ConcurrentDictionary<(string Key, string Symbol), (int Leverage, MarginMode Mode)> _set = new();
 
@@ -73,11 +73,8 @@ public sealed class BinanceOrderGateway(HttpClient http, TimeProvider clock) : R
 
     private static VenueInstrument? Rules(JsonElement listed, string notionalField)
     {
-        if (Text(listed, "status") != "TRADING")
-        {
-            return null;
-        }
-
+        // A symbol on a break or being settled is still listed: its orders can be asked about and cancelled.
+        bool trading = Text(listed, "status") == "TRADING";
         decimal step = 0m,
             tick = 0m,
             smallest = 0m,
@@ -99,7 +96,7 @@ public sealed class BinanceOrderGateway(HttpClient http, TimeProvider clock) : R
             }
         }
 
-        return step > 0m && tick > 0m ? new VenueInstrument(Text(listed, "symbol")!, step, tick, smallest, notional) : null;
+        return step > 0m && tick > 0m ? new VenueInstrument(Text(listed, "symbol")!, step, tick, smallest, notional, trading) : null;
     }
 
     public async Task<string?> PlaceAsync(VenueCredentials credentials, VenueInstrument instrument, VenueOrderRequest order, CancellationToken cancellationToken)
@@ -248,6 +245,7 @@ public sealed class BinanceOrderGateway(HttpClient http, TimeProvider clock) : R
         }
 
         decimal? futuresEquity = null;
+        bool perpsRead = true;
         try
         {
             futuresEquity = Number(await SendAsync(credentials, FuturesHost, HttpMethod.Get, "/fapi/v3/account", string.Empty, cancellationToken), "totalMarginBalance");
@@ -266,10 +264,13 @@ public sealed class BinanceOrderGateway(HttpClient http, TimeProvider clock) : R
         }
         catch (VenueRefusedException)
         {
-            // The key may not use futures, or the account has none. The spot side stands on its own.
+            // The key may not use futures, or the account has none: the spot side stands on its own. But a refusal can
+            // also be a passing one (a late timestamp, a limit), so the report says the futures side was not read, and
+            // perpetuals already on record are then left as they are rather than taken to be gone.
+            perpsRead = false;
         }
 
-        return new VenueAccountReport(cash, futuresEquity, holdings);
+        return new VenueAccountReport(cash, futuresEquity, holdings, perpsRead);
     }
 
     /// <summary>One request. Everything travels in the address, signed as it is sent.</summary>

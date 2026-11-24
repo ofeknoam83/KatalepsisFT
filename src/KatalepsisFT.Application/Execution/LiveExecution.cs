@@ -129,8 +129,19 @@ public sealed class LiveExecution(IFtDbContext database, IEnumerable<IOrderGatew
             {
                 Close(order, OrderStatus.Rejected, OrderEventKind.Rejected, now, $"Real orders cannot be sent to {venue} yet.");
             }
-            else if (!keys.Ready || account.EncryptedKey is null)
+            else if (account.EncryptedKey is null)
             {
+                Close(order, OrderStatus.Rejected, OrderEventKind.Rejected, now, "The account's trading key cannot be opened, so the order was not sent.");
+            }
+            else if (!keys.Ready)
+            {
+                // Just after a start the key vault may still be opening. Nothing has been sent, so the order waits a
+                // moment for it rather than being turned away; but it must not sit unsent for long.
+                if (now - order.CreatedAt <= RulesWait)
+                {
+                    return false;
+                }
+
                 Close(order, OrderStatus.Rejected, OrderEventKind.Rejected, now, "The account's trading key cannot be opened, so the order was not sent.");
             }
             else
@@ -202,6 +213,12 @@ public sealed class LiveExecution(IFtDbContext database, IEnumerable<IOrderGatew
         if (instrument is null)
         {
             Close(order, OrderStatus.Rejected, OrderEventKind.Rejected, now, $"{venue} does not list {order.Asset} as {(order.InstrumentType == InstrumentType.Spot ? "spot against USDT" : "a USDT perpetual")}.");
+            return;
+        }
+
+        if (!instrument.Tradable)
+        {
+            Close(order, OrderStatus.Rejected, OrderEventKind.Rejected, now, $"{venue} is not taking orders for {order.Asset} at the moment: it is suspended or being delisted there.");
             return;
         }
 
@@ -377,8 +394,11 @@ public sealed class LiveExecution(IFtDbContext database, IEnumerable<IOrderGatew
     private async Task ApplyAsync(Order order, TradingAccount account, VenueOrderReport report, string venue, bool halted, DateTimeOffset now, CancellationToken cancellationToken)
     {
         decimal traded = report.FilledQuantity - order.FilledQuantity;
+        // Fees are kept to six decimals, so the venue's figure is compared at that precision: otherwise a fee of
+        // 0.03306787 would look different from the 0.033068 on record at every look, for ever.
+        decimal? venueFee = report.FeeUsd is decimal stated ? Math.Round(stated, 6) : null;
         TradingPosition? position = null;
-        if (traded > 0m || (report.FeeUsd is decimal known && known != order.FeesUsd))
+        if (traded > 0m || (venueFee is decimal known && known != order.FeesUsd))
         {
             position = await database.TradingPositions.FirstOrDefaultAsync(p => p.TradingAccountId == account.Id && p.Asset == order.Asset && p.InstrumentType == order.InstrumentType, cancellationToken);
         }
@@ -388,7 +408,9 @@ public sealed class LiveExecution(IFtDbContext database, IEnumerable<IOrderGatew
             decimal value = report.FilledValue - order.AverageFillPrice * order.FilledQuantity;
             decimal price = value > 0m ? value / traded : report.FilledQuantity > 0m ? report.FilledValue / report.FilledQuantity : order.LimitPrice ?? 0m;
             // The venue's own figure where it gives one; until then the venue's usual rate, corrected later.
-            decimal fee = report.FeeUsd is decimal total ? Math.Max(0m, total - order.FeesUsd) : Math.Round(traded * price * VenueFees.Of(account.Venue, order.InstrumentType).Taker, 6);
+            // Where the venue's total is lower than what was estimated for earlier fills, this fill carries the
+            // correction, so the order always ends on the venue's own total.
+            decimal fee = venueFee is decimal total ? total - order.FeesUsd : Math.Round(traded * price * VenueFees.Of(account.Venue, order.InstrumentType).Taker, 6);
             order.AverageFillPrice = report.FilledValue > 0m ? report.FilledValue / report.FilledQuantity : price;
             order.FilledQuantity = report.FilledQuantity;
             order.FeesUsd += fee;
@@ -403,7 +425,7 @@ public sealed class LiveExecution(IFtDbContext database, IEnumerable<IOrderGatew
             position.UpdatedAt = now;
             order.Status = OrderStatus.PartlyFilled;
         }
-        else if (report.FeeUsd is decimal total && total != order.FeesUsd)
+        else if (venueFee is decimal total && total != order.FeesUsd)
         {
             if (position is not null)
             {
@@ -456,9 +478,24 @@ public sealed class LiveExecution(IFtDbContext database, IEnumerable<IOrderGatew
             }
 
             VenueAccountReport report = await gateway.AccountAsync(OpenKey(account), cancellationToken);
+            // The reading took a moment. If the account was taken back to paper meanwhile, what the venue holds is no
+            // longer this account's business and must not be written onto it.
+            if (!await database.TradingAccounts.AsNoTracking().AnyAsync(a => a.Id == accountId && a.Mode == TradingMode.Live, cancellationToken))
+            {
+                return;
+            }
+
             List<TradingPosition> positions = await database.TradingPositions.Where(p => p.TradingAccountId == accountId).ToListAsync(cancellationToken);
+            if (!report.PerpsRead && positions.Any(p => p.InstrumentType == InstrumentType.Perp && p.Quantity != 0m))
+            {
+                // Without the futures side the perpetuals on record can be neither confirmed nor cleared. Treating
+                // them as gone would open the position limit and break reduce-only orders, so nothing is changed.
+                throw new VenueUnclearException("the futures side of the account could not be read");
+            }
+
+            List<VenueHolding> holdings = Netted(report.Holdings);
             decimal equity = report.CashUsd + (report.DerivativesEquityUsd ?? 0m);
-            foreach (VenueHolding holding in report.Holdings)
+            foreach (VenueHolding holding in holdings)
             {
                 decimal? mark = books.Of(account.Venue, holding.Asset, holding.Type)?.Mid ?? holding.PriceUsd ?? holding.AveragePrice;
                 if (holding.Type == InstrumentType.Spot)
@@ -490,7 +527,7 @@ public sealed class LiveExecution(IFtDbContext database, IEnumerable<IOrderGatew
                 position.LiquidationPrice = holding.LiquidationPrice;
             }
 
-            foreach (TradingPosition gone in positions.Where(p => p.Quantity != 0m && !report.Holdings.Any(h => h.Asset == p.Asset && h.Type == p.InstrumentType)))
+            foreach (TradingPosition gone in positions.Where(p => p.Quantity != 0m && !holdings.Any(h => h.Asset == p.Asset && h.Type == p.InstrumentType)))
             {
                 gone.Quantity = 0m;
                 gone.LiquidationPrice = null;
@@ -510,6 +547,27 @@ public sealed class LiveExecution(IFtDbContext database, IEnumerable<IOrderGatew
 
         await database.SaveChangesAsync(cancellationToken);
     }
+
+    /// <summary>
+    /// One holding per asset and type. An account in hedge mode has a long and a short leg of the same perpetual; our
+    /// record has one position, so the two are added up: the net quantity, at the larger leg's entry price. The
+    /// liquidation price of either leg alone would mislead, so it is left out.
+    /// </summary>
+    private static List<VenueHolding> Netted(IReadOnlyList<VenueHolding> holdings) =>
+        holdings
+            .GroupBy(h => (h.Asset, h.Type))
+            .Select(g =>
+            {
+                List<VenueHolding> legs = g.ToList();
+                if (legs.Count == 1)
+                {
+                    return legs[0];
+                }
+
+                VenueHolding larger = legs.OrderByDescending(l => Math.Abs(l.Quantity)).First();
+                return new VenueHolding(g.Key.Asset, g.Key.Type, legs.Sum(l => l.Quantity), larger.AveragePrice, null, larger.PriceUsd);
+            })
+            .ToList();
 
     /// <summary>
     /// The name the venue knows the order by: ours, the same every time for the same order, and different for

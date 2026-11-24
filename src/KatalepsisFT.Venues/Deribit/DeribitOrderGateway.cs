@@ -132,6 +132,17 @@ public sealed class DeribitOrderGateway(HttpClient http, TimeProvider clock) : R
             }
         }
 
+        if (found is null)
+        {
+            // Deribit forgets a closed order after thirty minutes; from then on it is only in the history. Without this
+            // an order that filled while nobody was looking would be taken for one that was never there.
+            JsonElement history = await SendAsync(credentials, $"private/get_order_history_by_instrument?instrument_name={Uri.EscapeDataString(instrument.Symbol)}&count=200&include_old=true&include_unfilled=true&historical=true", cancellationToken);
+            if (history.ValueKind == JsonValueKind.Array)
+            {
+                found = history.EnumerateArray().Where(past => order.VenueId is { } wanted ? Text(past, "order_id") == wanted : Text(past, "label") == order.ClientId).OrderByDescending(past => Number(past, "creation_timestamp")).Cast<JsonElement?>().FirstOrDefault();
+            }
+        }
+
         if (found is not { } o)
         {
             return new VenueOrderReport(VenueOrderState.NotFound, 0m, 0m, null, null);

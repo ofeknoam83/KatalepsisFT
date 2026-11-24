@@ -846,8 +846,13 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
             return TradingChange<OrderDto>.Refused("This strategy key is not allowed to trade that account.");
         }
 
-        // The same name on the same account is the same order: a retry after a lost answer must not trade twice.
-        Order? existing = await database.Orders.AsNoTracking().Include(o => o.TradingAccount).ThenInclude(a => a.ManagerAccount).Include(o => o.Events).FirstOrDefaultAsync(o => o.TradingAccountId == account.Id && o.ClientOrderId == clientOrderId, cancellationToken);
+        // The same name on the same account is the same order: a retry after a lost answer must not trade twice. An
+        // order sent to a manager rather than to one account is looked for on all of that manager's accounts, because
+        // the retry may be routed to a different venue than the first attempt was.
+        int managerId = account.ManagerAccountId;
+        bool anyOfTheManagers = request.TradingAccountId is null;
+        Order? existing = await database.Orders.AsNoTracking().Include(o => o.TradingAccount).ThenInclude(a => a.ManagerAccount).Include(o => o.Events)
+            .FirstOrDefaultAsync(o => o.ClientOrderId == clientOrderId && (o.TradingAccountId == account.Id || (anyOfTheManagers && o.TradingAccount.ManagerAccountId == managerId)), cancellationToken);
         if (existing is not null)
         {
             return TradingChange<OrderDto>.Ok(Dto(existing), "An order with this name already exists; it is returned unchanged.");
@@ -896,26 +901,40 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
     /// <summary>Asks for an order to be cancelled. The execution service does the cancelling.</summary>
     public async Task<TradingChange<OrderDto>> CancelAsync(long orderId, Actor actor, StrategyKey? strategy, CancellationToken cancellationToken)
     {
-        Order? order = await database.Orders.Include(o => o.TradingAccount).ThenInclude(a => a.ManagerAccount).Include(o => o.Events).FirstOrDefaultAsync(o => o.Id == orderId, cancellationToken);
-        if (order is null || (strategy is not null && !AccountIds(strategy).Contains(order.TradingAccountId)))
+        // The execution service may be writing a fill onto the same order at this very moment. Then this save loses,
+        // and the order is read again and the request made on what it has become.
+        for (int attempt = 1; ; attempt++)
         {
-            return TradingChange<OrderDto>.Missing;
-        }
+            Order? order = await database.Orders.Include(o => o.TradingAccount).ThenInclude(a => a.ManagerAccount).Include(o => o.Events).FirstOrDefaultAsync(o => o.Id == orderId, cancellationToken);
+            if (order is null || (strategy is not null && !AccountIds(strategy).Contains(order.TradingAccountId)))
+            {
+                return TradingChange<OrderDto>.Missing;
+            }
 
-        if (!order.IsOpen)
-        {
-            return TradingChange<OrderDto>.Refused($"The order is already {order.Status.ToString().ToLowerInvariant()}.");
-        }
+            if (!order.IsOpen)
+            {
+                return TradingChange<OrderDto>.Refused($"The order is already {order.Status.ToString().ToLowerInvariant()}.");
+            }
 
-        if (!order.CancelRequested)
-        {
-            order.CancelRequested = true;
-            order.Events.Add(new OrderEvent { At = clock.GetUtcNow(), Kind = OrderEventKind.CancelRequested, Detail = $"Asked for by {(strategy is null ? actor.Name : "strategy " + strategy.Name)}." });
-            await database.SaveChangesAsync(cancellationToken);
-            await signal.WakeAsync(cancellationToken);
-        }
+            if (!order.CancelRequested)
+            {
+                order.CancelRequested = true;
+                order.Events.Add(new OrderEvent { At = clock.GetUtcNow(), Kind = OrderEventKind.CancelRequested, Detail = $"Asked for by {(strategy is null ? actor.Name : "strategy " + strategy.Name)}." });
+                try
+                {
+                    await database.SaveChangesAsync(cancellationToken);
+                }
+                catch (DbUpdateConcurrencyException) when (attempt < 5)
+                {
+                    database.DiscardChanges();
+                    continue;
+                }
 
-        return TradingChange<OrderDto>.Ok(Dto(order));
+                await signal.WakeAsync(cancellationToken);
+            }
+
+            return TradingChange<OrderDto>.Ok(Dto(order));
+        }
     }
 
     /// <summary>The account an order goes to: the one named, or the manager's account showing the best price for this side.</summary>

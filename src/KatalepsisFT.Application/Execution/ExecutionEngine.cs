@@ -79,8 +79,9 @@ public sealed class ExecutionEngine(IFtDbContext database, ConsolidatedBook book
         {
             await AdmitAsync(order, account, position, book, halted, now, cancellationToken);
         }
-
-        if (order.Status is OrderStatus.Working or OrderStatus.PartlyFilled)
+        // Not in the same look: an order that has just taken what the book showed must not be filled again, as a
+        // resting order, against the very same quantities.
+        else if (order.Status is OrderStatus.Working or OrderStatus.PartlyFilled)
         {
             if (halted)
             {

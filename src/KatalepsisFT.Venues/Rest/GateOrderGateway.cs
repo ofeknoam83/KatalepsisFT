@@ -65,19 +65,20 @@ public sealed class GateOrderGateway(HttpClient http, TimeProvider clock) : Rest
             {
                 // Spot gives numbers of decimals, not steps.
                 decimal spotStep = Step(Number(listed, "amount_precision"));
-                return Text(listed, "trade_status") != "tradable" ? null : new VenueInstrument(pair, spotStep, Step(Number(listed, "precision")), Math.Max(spotStep, Number(listed, "min_base_amount")), Number(listed, "min_quote_amount"));
+                return new VenueInstrument(pair, spotStep, Step(Number(listed, "precision")), Math.Max(spotStep, Number(listed, "min_base_amount")), Number(listed, "min_quote_amount"), Text(listed, "trade_status") == "tradable");
             }
 
             decimal contract = Number(listed, "quanto_multiplier");
             decimal tick = Number(listed, "order_price_round");
             bool leaving = listed.TryGetProperty("in_delisting", out JsonElement delisting) && delisting.ValueKind == JsonValueKind.True;
-            if (leaving || contract <= 0m || tick <= 0m)
+            if (contract <= 0m || tick <= 0m)
             {
                 return null;
             }
 
             _contractSize[pair] = contract;
-            return new VenueInstrument(pair, contract, tick, Math.Max(1m, Number(listed, "order_size_min")) * contract, 0m);
+            // A contract being delisted takes no new orders, but a position in it is still there to be read and closed.
+            return new VenueInstrument(pair, contract, tick, Math.Max(1m, Number(listed, "order_size_min")) * contract, 0m, !leaving);
         });
     }
 
@@ -280,6 +281,7 @@ public sealed class GateOrderGateway(HttpClient http, TimeProvider clock) : Rest
         }
 
         decimal? futuresEquity = null;
+        bool perpsRead = true;
         try
         {
             JsonElement futures = await SendAsync(credentials, HttpMethod.Get, "/futures/usdt/accounts", string.Empty, null, cancellationToken);
@@ -309,10 +311,13 @@ public sealed class GateOrderGateway(HttpClient http, TimeProvider clock) : Rest
         }
         catch (VenueRefusedException)
         {
-            // The key may not use futures, or the account has none. The spot side stands on its own.
+            // The key may not use futures, or the account has none: the spot side stands on its own. But a refusal can
+            // also be a passing one (a late timestamp, a limit), so the report says the futures side was not read, and
+            // perpetuals already on record are then left as they are rather than taken to be gone.
+            perpsRead = false;
         }
 
-        return new VenueAccountReport(cash, futuresEquity, holdings);
+        return new VenueAccountReport(cash, futuresEquity, holdings, perpsRead);
     }
 
     private async Task<JsonElement> SendAsync(VenueCredentials? credentials, HttpMethod method, string path, string query, object? body, CancellationToken cancellationToken)

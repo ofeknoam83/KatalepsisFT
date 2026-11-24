@@ -9,7 +9,8 @@ namespace KatalepsisFT.Application.Execution;
 /// <param name="Symbol">The venue's own name for the instrument.</param>
 /// <param name="QuantityStep">Quantities are whole multiples of this, in units of the asset. For a perpetual it is the size of one contract.</param>
 /// <param name="MinNotional">The smallest order by value, in the quote currency; zero when the venue has no such rule.</param>
-public sealed record VenueInstrument(string Symbol, decimal QuantityStep, decimal PriceStep, decimal MinQuantity, decimal MinNotional)
+/// <param name="Tradable">False while the venue lists the instrument but takes no new orders for it (suspended, being delisted). Orders already there can still be asked about and cancelled.</param>
+public sealed record VenueInstrument(string Symbol, decimal QuantityStep, decimal PriceStep, decimal MinQuantity, decimal MinNotional, bool Tradable = true)
 {
     /// <summary>The quantity cut down to a whole number of steps: never more than was asked for.</summary>
     public decimal FloorQuantity(decimal quantity) => QuantityStep <= 0m ? quantity : Math.Floor(quantity / QuantityStep) * QuantityStep;
@@ -46,7 +47,8 @@ public sealed record VenueHolding(string Asset, InstrumentType Type, decimal Qua
 
 /// <param name="CashUsd">Dollar currencies in the spot account.</param>
 /// <param name="DerivativesEquityUsd">What the futures account is worth, open profit and loss included; null when it could not be read.</param>
-public sealed record VenueAccountReport(decimal CashUsd, decimal? DerivativesEquityUsd, IReadOnlyList<VenueHolding> Holdings);
+/// <param name="PerpsRead">False when the futures side of the account could not be read, so the holdings say nothing about perpetuals either way.</param>
+public sealed record VenueAccountReport(decimal CashUsd, decimal? DerivativesEquityUsd, IReadOnlyList<VenueHolding> Holdings, bool PerpsRead = true);
 
 /// <summary>
 /// The two names of an order at a venue: ours, which is known before it is sent, and the venue's own, which is known
