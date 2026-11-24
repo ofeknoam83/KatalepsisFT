@@ -1,9 +1,10 @@
 # Katalepsis FT
 
-Multi-manager portfolio monitor: a master fund split into sleeves, each run by several managers, across spot, perps, options and traditional instruments. Monitoring and reporting; no trading.
+Multi-manager portfolio monitor and order execution: a master fund split into sleeves, each run by several managers, across spot, perps, options and traditional instruments.
 
 - What it does and the delivery phases: [docs/plan.md](docs/plan.md)
-- How it is put together: [docs/architecture.md](docs/architecture.md)
+- The system as built, including order execution: [docs/system-architecture.md](docs/system-architecture.md)
+- The original monitoring design and its decisions: [docs/architecture.md](docs/architecture.md)
 
 ## Status
 
