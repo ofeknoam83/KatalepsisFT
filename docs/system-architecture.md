@@ -378,9 +378,9 @@ sequenceDiagram
 stateDiagram-v2
     [*] --> Received: web writes the request
     Received --> Rejected: a check fails, or the venue refuses
-    Received --> Accepted: checks pass (real: written before sending)
-    Accepted --> Working: venue acknowledged / resting on paper
-    Accepted --> Rejected: never arrived (30 s)
+    Received --> Accepted: checks pass, and for a real order written before sending
+    Accepted --> Working: venue acknowledged, or resting on paper
+    Accepted --> Rejected: never arrived after 30 s
     Accepted --> Filled
     Working --> PartlyFilled
     PartlyFilled --> Filled
