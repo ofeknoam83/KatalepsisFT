@@ -480,7 +480,7 @@ public sealed class BookStreamRunner(BookStream stream, ConsolidatedBook books, 
             }
             finally
             {
-                books.Clear(stream.Venue);
+                books.Clear(stream.Venue, stream.Type);
             }
 
             // A connection that lasted is not a failing one: start the waits over.

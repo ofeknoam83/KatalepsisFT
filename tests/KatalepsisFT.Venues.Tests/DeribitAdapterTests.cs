@@ -118,7 +118,9 @@ public class DeribitAdapterTests
     [Theory]
     [InlineData("account:read trade:read wallet:none", false, false)]
     [InlineData("account:read trade:read_write wallet:read", true, false)]
-    [InlineData("account:read_write trade:read wallet:read_write", false, true)]
+    // A key that may change what keys may do can make itself a trading key.
+    [InlineData("account:read_write trade:read wallet:read_write", true, true)]
+    [InlineData("account:read trade:read wallet:read_write", false, true)]
     [InlineData("account:read trade:read block_trade:read_write wallet:read_write", true, true)]
     public async Task CheckCredentials_ReadsWhatTheKeyMayDo_FromItsScopes(string scope, bool canTrade, bool canWithdraw)
     {

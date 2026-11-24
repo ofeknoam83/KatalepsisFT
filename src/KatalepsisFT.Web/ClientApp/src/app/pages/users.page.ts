@@ -26,6 +26,8 @@ interface User {
   isDisabled: boolean;
   mustChangePassword: boolean;
   createdAt: string;
+  /** Who put this person forward as an administrator, while a second administrator has not yet agreed. */
+  adminProposedBy: string | null;
 }
 
 const ROLE_NOTE: Record<Role, string> = {
@@ -72,11 +74,23 @@ const ROLE_NOTE: Record<Role, string> = {
                     <nz-option [nzValue]="r" [nzLabel]="r" />
                   }
                 </nz-select>
+                @if (u.adminProposedBy) {
+                  <div class="hint" style="margin-top:4px;max-width:260px" [attr.data-testid]="'awaiting-' + u.id">
+                    Put forward as Admin by {{ u.adminProposedBy }}.
+                    @if (u.adminProposedBy.toLowerCase() !== me().toLowerCase() && u.email !== me()) {
+                      <a (click)="run(http.post('/api/users/' + u.id + '/confirm-admin', {}))">Agree</a>
+                    } @else {
+                      Another administrator has to agree.
+                    }
+                  </div>
+                }
               </td>
               <td class="nowrap">{{ u.createdAt | date: 'd MMM y' }}</td>
               <td class="nowrap" style="text-align:right">
                 @if (u.email !== me()) {
-                  <a nz-popconfirm nzPopconfirmTitle="Give this person a new temporary password?" nzOkText="Reset" (nzOnConfirm)="reset(u)">Reset password</a>
+                  @if (u.role !== 'Admin') {
+                    <a nz-popconfirm nzPopconfirmTitle="Give this person a new temporary password?" nzOkText="Reset" (nzOnConfirm)="reset(u)">Reset password</a>
+                  }
                   <a style="margin-left:12px" (click)="run(http.post('/api/users/' + u.id + '/disabled', { disabled: !u.isDisabled }))">{{ u.isDisabled ? 'Switch on' : 'Switch off' }}</a>
                 } @else {
                   <span class="hint">You</span>

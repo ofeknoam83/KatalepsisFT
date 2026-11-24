@@ -39,9 +39,10 @@ public sealed class ConsolidatedBook(TimeProvider clock)
     public void Update(VenueBook book) => _books[(book.Asset.ToUpperInvariant(), book.Type, book.Venue)] = book;
 
     /// <summary>Forgets a venue, for example when its stream drops: its last prices must not be traded on.</summary>
-    public void Clear(Venue venue)
+    /// <param name="type">Only this kind of market; a venue's spot stream dropping says nothing about its perpetuals.</param>
+    public void Clear(Venue venue, InstrumentType? type = null)
     {
-        foreach ((string Asset, InstrumentType Type, Venue Venue) key in _books.Keys.Where(k => k.Venue == venue).ToList())
+        foreach ((string Asset, InstrumentType Type, Venue Venue) key in _books.Keys.Where(k => k.Venue == venue && (type is null || k.Type == type)).ToList())
         {
             _books.TryRemove(key, out _);
         }

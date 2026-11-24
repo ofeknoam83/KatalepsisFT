@@ -51,6 +51,9 @@ public sealed class AuditFilter(AuditLog audit, ILogger<AuditFilter> logger) : I
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
 
+    /// <summary>Where an action puts the name of what it changed, for the entry's "to what".</summary>
+    public const string SubjectItem = "audit.subject";
+
     /// <summary>Never written down, whatever the request.</summary>
     private static readonly HashSet<string> Secret = new(StringComparer.OrdinalIgnoreCase) { "apiSecret", "passphrase", "password", "currentPassword", "newPassword" };
 
@@ -87,6 +90,12 @@ public sealed class AuditFilter(AuditLog audit, ILogger<AuditFilter> logger) : I
             if (mark.FundFromResult && done.Result is ObjectResult { Value: { } created } && created.GetType().GetProperty("Id")?.GetValue(created) is int fundId)
             {
                 target = await audit.FundAsync(fundId, cancellationToken);
+            }
+
+            // An action on something the lookups above do not know (a user) names it itself.
+            if (target == AuditTarget.None && context.HttpContext.Items[SubjectItem] is string named)
+            {
+                target = new AuditTarget(null, null, named);
             }
 
             await audit.RecordAsync(context.HttpContext.User.Identity?.Name ?? "Unknown", mark.Action, target, Describe(body), cancellationToken);
@@ -255,7 +264,7 @@ public static class Csv
             return string.Empty;
         }
 
-        if (text[0] is '=' or '+' or '-' or '@')
+        if (text[0] is '=' or '+' or '-' or '@' or '\t' or '\r')
         {
             text = "'" + text;
         }

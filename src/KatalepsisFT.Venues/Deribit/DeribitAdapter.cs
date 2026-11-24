@@ -42,7 +42,9 @@ public sealed class DeribitAdapter(HttpClient http, TimeProvider clock) : IVenue
             throw new VenueException(VenueFailure.Rejected, "the key needs the scopes account:read and trade:read to show balances and positions.");
         }
 
-        return new CredentialCheck(Has("trade", "read_write") || Has("block_trade", "read_write"), Has("wallet", "read_write"));
+        // "account:read_write" lets a key change what keys may do, its own included, and "block_rfq:read_write" trades;
+        // both count as being able to trade.
+        return new CredentialCheck(Has("trade", "read_write") || Has("block_trade", "read_write") || Has("block_rfq", "read_write") || Has("account", "read_write"), Has("wallet", "read_write"));
     }
 
     public async Task<VenueSnapshot> GetSnapshotAsync(VenueCredentials credentials, CancellationToken cancellationToken)

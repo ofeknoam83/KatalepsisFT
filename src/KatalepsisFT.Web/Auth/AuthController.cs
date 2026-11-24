@@ -36,7 +36,8 @@ public sealed class AuthController(
         AppUser? user = await users.FindByEmailAsync(request.Email.Trim());
         if (user is null)
         {
-            await NoteAsync(request.Email.Trim(), "Sign-in refused", "unknown email", cancellationToken);
+            // What was typed is not written down: anyone can send anything here, and the audit trail is not theirs to fill.
+            await NoteAsync("(unknown email)", "Sign-in refused", "unknown email", cancellationToken);
             return Unauthorized(new ErrorResponse(WrongCredentials));
         }
 

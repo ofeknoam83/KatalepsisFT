@@ -648,3 +648,128 @@ code,
     flex-wrap: wrap;
   }
 }
+
+/*
+ * Type size. ng-zorro sets 14px on each of its parts; the app runs a step smaller. Changing the size of everything
+ * is done here and nowhere else.
+ */
+@kft-text: 13px;
+@kft-small: 12px;
+
+body,
+.ant-table,
+.ant-btn,
+.ant-input,
+.ant-input-number,
+.ant-input-number-input,
+.ant-select,
+.ant-select-item,
+.ant-picker,
+.ant-picker-input > input,
+.ant-form,
+.ant-form-item,
+.ant-form-item-label > label,
+.ant-menu,
+.ant-dropdown,
+.ant-dropdown-menu-item,
+.ant-tabs,
+.ant-tabs-tab,
+.ant-segmented,
+.ant-alert,
+.ant-modal,
+.ant-popover,
+.ant-checkbox-wrapper,
+.ant-radio-wrapper,
+.ant-switch,
+.ant-tooltip,
+.ant-message,
+.ant-popconfirm,
+.ant-descriptions,
+.ant-list,
+.ant-collapse,
+.ant-upload {
+  font-size: @kft-text;
+}
+
+.ant-table.ant-table-small {
+  font-size: @kft-text;
+}
+
+.ant-btn-sm,
+.ant-tag,
+.ant-breadcrumb,
+.ant-select-sm,
+.ant-input-sm {
+  font-size: @kft-small;
+}
+
+.ant-table-thead > tr > th {
+  font-size: 11px;
+}
+
+.ant-modal-title {
+  font-size: 15px;
+}
+
+.ant-alert-with-description .ant-alert-message {
+  font-size: 14px;
+}
+
+.page-head {
+  h1 {
+    font-size: 22px;
+  }
+
+  .sub {
+    font-size: 12.5px;
+  }
+}
+
+.tile {
+  .k {
+    font-size: 12px;
+  }
+
+  .v {
+    font-size: 25px;
+  }
+
+  .x,
+  .d {
+    font-size: 11.5px;
+  }
+}
+
+.panel h3 {
+  font-size: 14.5px;
+
+  .hint {
+    font-size: 12px;
+  }
+}
+
+.chip {
+  font-size: 11.5px;
+}
+
+.auth-page h1 {
+  font-size: 17px;
+}
+
+.matrix {
+  font-size: 11.5px;
+}
+
+@media (max-width: 1500px) {
+  .page-head h1 {
+    font-size: 20px;
+  }
+
+  .tile .v {
+    font-size: 22px;
+  }
+
+  .ant-table.ant-table-small {
+    font-size: 12.5px;
+  }
+}

@@ -1697,6 +1697,10 @@ namespace KatalepsisFT.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("access_failed_count");
 
+                    b.Property<string>("AdminProposedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("admin_proposed_by");
+
                     b.Property<string>("ConcurrencyStamp")
                         .IsConcurrencyToken()
                         .HasColumnType("text")

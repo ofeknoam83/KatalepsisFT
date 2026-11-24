@@ -114,6 +114,11 @@ public sealed class AlertsController(
     public async Task<IActionResult> BreachesAsync(int fundId, DateOnly? from = null, DateOnly? to = null, string? format = null, CancellationToken cancellationToken = default)
     {
         DateOnly last = to ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        if (last.Year is < 2000 or > 2200 || from is { Year: < 2000 or > 2200 })
+        {
+            return BadRequest(new KatalepsisFT.Application.Auth.ErrorResponse("Choose days between the years 2000 and 2200."));
+        }
+
         DateOnly first = from ?? last.AddDays(-90);
         if (first > last || last.DayNumber - first.DayNumber > 3660)
         {

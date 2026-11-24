@@ -20,7 +20,7 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
       padding: 10px 0 11px;
       color: var(--kft-text-2);
       font-weight: 500;
-      font-size: 14px;
+      font-size: 13px;
       margin-bottom: -1px;
     }
     a.on {

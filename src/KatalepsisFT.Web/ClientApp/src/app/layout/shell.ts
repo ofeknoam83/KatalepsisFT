@@ -78,7 +78,7 @@ import { LoadFunds, ViewState } from '../funds/view.state';
     .who b {
       display: block;
       font-weight: 600;
-      font-size: 13.5px;
+      font-size: 13px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -89,7 +89,7 @@ import { LoadFunds, ViewState } from '../funds/view.state';
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      font-size: 12px;
+      font-size: 11.5px;
       color: var(--kft-text-3);
     }
     .group {
@@ -114,6 +114,7 @@ import { LoadFunds, ViewState } from '../funds/view.state';
       border-radius: 8px;
       color: #344054;
       font-weight: 500;
+      font-size: 13px;
     }
     .links a:hover {
       background: #f5f6f8;
@@ -152,7 +153,7 @@ import { LoadFunds, ViewState } from '../funds/view.state';
       gap: 7px;
       align-self: flex-start;
       margin-left: 6px;
-      font-size: 12.5px;
+      font-size: 12px;
       font-weight: 500;
       color: var(--kft-text-2);
       background: var(--kft-fill);

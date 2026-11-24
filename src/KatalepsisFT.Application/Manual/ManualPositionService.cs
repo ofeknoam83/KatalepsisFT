@@ -65,6 +65,9 @@ public sealed record ManualChange(bool Done, IReadOnlyList<string> Errors, bool 
 /// <summary>Hand-entered positions and cash flows of a manager: entry, upload of a whole book, and what follows for the fund's figures.</summary>
 public sealed class ManualPositionService(IFtDbContext database, ManagerBookService books, PriceBackfillService prices, TimeProvider clock)
 {
+    private const decimal MaxPrice = 1_000_000_000m;
+    private const decimal MaxQuantity = 1_000_000_000_000m;
+    private const decimal MaxValueUsd = 100_000_000_000m;
     public const int MaxUploadLines = 2_000;
     /// <summary>History loaded for an asset first seen through a manual position.</summary>
     private const int HistoryDays = 400;
@@ -288,6 +291,13 @@ public sealed class ManualPositionService(IFtDbContext database, ManagerBookServ
             if (r.Quantity == 0m || Math.Abs(r.Quantity) > 1_000_000_000_000_000m)
             {
                 Fail("the quantity cannot be zero; a short position is negative.");
+            }
+
+            // Beyond what the columns hold. Without this the position is refused by the database with no explanation,
+            // or worse, saved and then stops the manager's book from being written at all.
+            if (r.Price is > MaxPrice || r.EntryPrice is > MaxPrice || r.UnderlyingPrice is > MaxPrice || r.Strike is > MaxPrice || Math.Abs(r.Quantity) > MaxQuantity || Math.Abs(r.Quantity) * (r.Price ?? r.UnderlyingPrice ?? 0m) > MaxValueUsd)
+            {
+                Fail("the numbers are too large: a price up to 1,000,000,000, a quantity up to 1,000,000,000,000 and a value up to 100,000,000,000 USD.");
             }
 
             if (r.Price is <= 0m || r.EntryPrice is <= 0m || r.UnderlyingPrice is <= 0m || r.Strike is <= 0m)

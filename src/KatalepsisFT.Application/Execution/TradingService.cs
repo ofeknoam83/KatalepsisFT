@@ -435,8 +435,14 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
         }
 
         account.Label = request.Label.Trim();
-        account.MarginMode = request.MarginMode;
-        bool looser = request.Leverage > account.Leverage || request.MaxOrderNotionalUsd > account.MaxOrderNotionalUsd || request.MaxPositionNotionalUsd > account.MaxPositionNotionalUsd || request.PriceBandBps > account.PriceBandBps;
+        // Cross margin puts the whole account behind every position, so going to it is a loosening like a higher limit.
+        bool toCross = request.MarginMode == MarginMode.Cross && account.MarginMode != MarginMode.Cross;
+        if (!toCross)
+        {
+            account.MarginMode = request.MarginMode;
+        }
+
+        bool looser = toCross || request.Leverage > account.Leverage || request.MaxOrderNotionalUsd > account.MaxOrderNotionalUsd || request.MaxPositionNotionalUsd > account.MaxPositionNotionalUsd || request.PriceBandBps > account.PriceBandBps;
         // Whatever gets tighter is applied now, also when the rest has to wait.
         account.Leverage = Math.Min(account.Leverage, request.Leverage);
         account.MaxOrderNotionalUsd = Math.Min(account.MaxOrderNotionalUsd, request.MaxOrderNotionalUsd);
@@ -446,8 +452,8 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
         if (looser)
         {
             string summary =
-                $"Raise limits of {account.ManagerAccount.Name} on {VenueExposureService.NameOf(account.Venue)}: leverage {request.Leverage:0.##}×, largest order {request.MaxOrderNotionalUsd:N0} USD, largest position {request.MaxPositionNotionalUsd:N0} USD, price band {request.PriceBandBps / 100m:0.##}%";
-            Ask(ApprovalKind.RaiseLimits, account.ManagerAccount.Sleeve.FundId, account.Id, null, summary, new { request.Leverage, request.MaxOrderNotionalUsd, request.MaxPositionNotionalUsd, request.PriceBandBps }, actor);
+                $"Raise limits of {account.ManagerAccount.Name} on {VenueExposureService.NameOf(account.Venue)}: leverage {request.Leverage:0.##}×, largest order {request.MaxOrderNotionalUsd:N0} USD, largest position {request.MaxPositionNotionalUsd:N0} USD, price band {request.PriceBandBps / 100m:0.##}%{(toCross ? ", cross margin" : string.Empty)}";
+            Ask(ApprovalKind.RaiseLimits, account.ManagerAccount.Sleeve.FundId, account.Id, null, summary, new { request.Leverage, request.MaxOrderNotionalUsd, request.MaxPositionNotionalUsd, request.PriceBandBps, ToCross = toCross }, actor);
             notice = "Limits that got tighter apply now. The higher ones wait for a second person's approval.";
         }
 
@@ -635,7 +641,8 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
         request.Status = approve ? ApprovalStatus.Approved : ApprovalStatus.Rejected;
         request.DecidedBy = actor.Name;
         request.DecidedAt = now;
-        request.Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+        // The column holds a thousand characters; a longer note is cut, not allowed to fail the decision.
+        request.Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim() is { Length: > 1000 } longNote ? longNote[..1000] : note.Trim();
         if (approve)
         {
             using JsonDocument payload = JsonDocument.Parse(request.PayloadJson);
@@ -652,6 +659,11 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
                     account.MaxOrderNotionalUsd = p.GetProperty("maxOrderNotionalUsd").GetDecimal();
                     account.MaxPositionNotionalUsd = p.GetProperty("maxPositionNotionalUsd").GetDecimal();
                     account.PriceBandBps = p.GetProperty("priceBandBps").GetInt32();
+                    if (p.TryGetProperty("toCross", out JsonElement cross) && cross.ValueKind == JsonValueKind.True)
+                    {
+                        account.MarginMode = MarginMode.Cross;
+                    }
+
                     break;
                 case ApprovalKind.GoLive when account is not null:
                     if (account.EncryptedKey is null)

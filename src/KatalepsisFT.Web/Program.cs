@@ -105,6 +105,10 @@ else
 builder.Services.AddScoped<KatalepsisFT.Web.Audit.AuditFilter>();
 builder.Services.AddControllers(options => options.Filters.AddService<KatalepsisFT.Web.Audit.AuditFilter>()).AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
+// A session is checked against the account once a minute rather than every half hour, so switching someone off,
+// changing their role or their password takes hold almost at once on everything they have open.
+builder.Services.Configure<Microsoft.AspNetCore.Identity.SecurityStampValidatorOptions>(options => options.ValidationInterval = TimeSpan.FromMinutes(1));
+
 // Render terminates HTTPS in front of the service; trust its forwarded scheme so the app knows the request was secure.
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
@@ -121,7 +125,9 @@ builder.Services.AddRateLimiter(options =>
         "strategy",
         // Generous for a strategy that trades, tight enough that a runaway loop cannot flood the order log.
         context => System.Threading.RateLimiting.RateLimitPartition.GetTokenBucketLimiter(
-            context.Request.Headers[KatalepsisFT.Web.Execution.StrategyController.KeyHeader].FirstOrDefault() is { Length: > 12 } key ? key[..12] : context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            // Counted per caller address, not per key sent: the key has not been checked yet at this point, so a
+            // caller could otherwise get a fresh allowance with every made-up key, or use up a real key's allowance.
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
             _ => new System.Threading.RateLimiting.TokenBucketRateLimiterOptions { TokenLimit = 100, TokensPerPeriod = 50, ReplenishmentPeriod = TimeSpan.FromSeconds(1), QueueLimit = 0 }
         )
     );
