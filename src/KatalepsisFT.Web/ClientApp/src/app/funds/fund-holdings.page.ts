@@ -33,8 +33,8 @@ import { InstrumentType, SLEEVE_COLORS } from './models';
       </div>
 
       <div class="panel">
-        <h3>Holdings by asset <span class="hint">Exposure is delta-adjusted · click an asset to see where it sits across sleeves</span></h3>
-        <nz-table #assets [nzData]="d.assets" [nzShowPagination]="false" [nzFrontPagination]="false" nzSize="small" [nzScroll]="{ x: '1680px' }">
+        <h3>Holdings by asset <span class="hint">Exposure is delta-adjusted · hover over an amount for the exact figure · click an asset to see where it sits across sleeves</span></h3>
+        <nz-table #assets [nzData]="d.assets" [nzShowPagination]="false" [nzFrontPagination]="false" nzSize="small" [nzScroll]="{ x: '1180px' }">
           <thead>
             <tr>
               <th nzWidth="200px">Asset</th><th class="num">Price</th><th class="num">1D</th><th class="num">30D</th><th class="num">YTD</th>
@@ -58,12 +58,12 @@ import { InstrumentType, SLEEVE_COLORS } from './models';
                 <td class="num"><span class="chip" [class]="row.asset.change30D | tone">{{ row.asset.change30D | pct }}</span></td>
                 <td class="num"><span class="chip" [class]="row.asset.changeYtd | tone">{{ row.asset.changeYtd | pct }}</span></td>
                 @for (type of types(); track type) {
-                  <td class="num" [class]="row.netByType[type] | tone">{{ row.netByType[type] === undefined ? '–' : (row.netByType[type] | usd) }}</td>
+                  <td class="num" [class]="row.netByType[type] | tone" [title]="row.netByType[type] === undefined ? '' : (row.netByType[type] | usd)">{{ row.netByType[type] === undefined ? '–' : (row.netByType[type] | compact) }}</td>
                 }
-                <td class="num">{{ row.longUsd | usd }}</td>
-                <td class="num">{{ row.shortUsd | usd }}</td>
-                <td class="num">{{ row.grossUsd | usd }}</td>
-                <td class="num" [class]="row.netUsd | tone">{{ row.netUsd | usd }}</td>
+                <td class="num" [title]="row.longUsd | usd">{{ row.longUsd | compact }}</td>
+                <td class="num" [title]="row.shortUsd | usd">{{ row.shortUsd | compact }}</td>
+                <td class="num" [title]="row.grossUsd | usd">{{ row.grossUsd | compact }}</td>
+                <td class="num" [class]="row.netUsd | tone" [title]="row.netUsd | usd">{{ row.netUsd | compact }}</td>
                 <td class="num">{{ row.grossUsd | share: d.totals.navUsd }}</td>
                 <td class="num">{{ row.holders.length }}</td>
                 <td>

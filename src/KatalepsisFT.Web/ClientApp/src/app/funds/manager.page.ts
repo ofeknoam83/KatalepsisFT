@@ -49,8 +49,8 @@ import { FundsApi } from './funds.api';
       <nz-tabs [nzAnimated]="false" [nzSelectedIndex]="startTab">
         <nz-tab nzTitle="Positions">
       <div class="panel">
-        <h3>Positions <span class="hint">Click an instrument to see the asset across the fund</span></h3>
-        <nz-table #positions [nzData]="shown()" [nzShowPagination]="false" [nzFrontPagination]="false" nzSize="small" [nzScroll]="{ x: '1500px' }">
+        <h3>Positions <span class="hint">Hover over an amount for the exact figure · click an instrument to see the asset across the fund</span></h3>
+        <nz-table #positions [nzData]="shown()" [nzShowPagination]="false" [nzFrontPagination]="false" nzSize="small" [nzScroll]="{ x: '1180px' }">
           <thead>
             <tr>
               <th nzWidth="150px">Instrument</th><th>Type</th><th>Side</th><th class="num">Quantity</th><th class="num">Entry</th><th class="num">Mark</th><th class="num">Exposure</th>
@@ -77,9 +77,9 @@ import { FundsApi } from './funds.api';
                 <td class="num">{{ abs(row.quantity) | number: (abs(row.quantity) >= 1000 ? '1.0-0' : '1.0-4') }}</td>
                 <td class="num">{{ row.type === 'Cash' ? '' : (row.entryPrice | price) }}</td>
                 <td class="num">{{ row.markPrice | price }}</td>
-                <td class="num" [class]="row.exposureUsd | tone">{{ row.type === 'Cash' ? '–' : (row.exposureUsd | usd: 2) }}</td>
-                <td class="num">{{ row.marketValueUsd | usd: 2 }}</td>
-                <td class="num" [class]="row.unrealizedPnlUsd | tone">{{ row.type === 'Cash' ? '' : (row.unrealizedPnlUsd | usd: 2) }}</td>
+                <td class="num" [class]="row.exposureUsd | tone" [title]="row.type === 'Cash' ? '' : (row.exposureUsd | usd)">{{ row.type === 'Cash' ? '–' : (row.exposureUsd | compact) }}</td>
+                <td class="num" [title]="row.marketValueUsd | usd">{{ row.marketValueUsd | compact }}</td>
+                <td class="num" [class]="row.unrealizedPnlUsd | tone" [title]="row.type === 'Cash' ? '' : (row.unrealizedPnlUsd | usd)">{{ row.type === 'Cash' ? '' : (row.unrealizedPnlUsd | compact) }}</td>
                 <td class="num">{{ exposureOrValue(row) | share: d.totals.navUsd }}</td>
                 <td class="num">{{ exposureOrValue(row) | share: d.sleeveNavUsd }}</td>
                 <td class="num">{{ exposureOrValue(row) | share: d.fundNavUsd }}</td>
@@ -87,7 +87,7 @@ import { FundsApi } from './funds.api';
             }
             <tr class="total-row">
               <td>Total</td><td></td><td></td><td></td><td></td><td></td>
-              <td class="num">{{ d.totals.netUsd | usd: 2 }}</td><td class="num">{{ d.totals.navUsd | usd: 2 }}</td><td class="num">{{ unrealised() | usd: 2 }}</td>
+              <td class="num" [title]="d.totals.netUsd | usd">{{ d.totals.netUsd | compact }}</td><td class="num" [title]="d.totals.navUsd | usd">{{ d.totals.navUsd | compact }}</td><td class="num" [title]="unrealised() | usd">{{ unrealised() | compact }}</td>
               <td class="num">{{ d.totals.grossUsd | share: d.totals.navUsd }}</td><td class="num">{{ d.totals.grossUsd | share: d.sleeveNavUsd }}</td><td class="num">{{ d.totals.grossUsd | share: d.fundNavUsd }}</td>
             </tr>
           </tbody>
@@ -103,8 +103,8 @@ import { FundsApi } from './funds.api';
             @for (row of assets.data; track row.asset.symbol) {
               <tr>
                 <td><app-coin [symbol]="row.asset.symbol" />{{ row.asset.symbol }}</td>
-                <td class="num">{{ row.longUsd | usd }}</td><td class="num">{{ row.shortUsd | usd }}</td>
-                <td class="num" [class]="row.netUsd | tone">{{ row.netUsd | usd }}</td>
+                <td class="num" [title]="row.longUsd | usd">{{ row.longUsd | compact }}</td><td class="num" [title]="row.shortUsd | usd">{{ row.shortUsd | compact }}</td>
+                <td class="num" [class]="row.netUsd | tone" [title]="row.netUsd | usd">{{ row.netUsd | compact }}</td>
                 <td><app-exposure-bar [long]="row.longUsd" [short]="row.shortUsd" [scale]="scale()" /></td>
               </tr>
             }
