@@ -323,7 +323,7 @@ import { LoadFunds, ViewState } from '../funds/view.state';
   `,
   template: `
     <nav aria-label="Main" [class.open]="menuOpen()" (click)="closeOnLink($event)">
-      <a class="brand" routerLink="/"><img class="mark" src="/favicon.svg" alt="" />Katalepsis <small>FT</small></a>
+      <a class="brand" routerLink="/"><img class="mark" src="/favicon.svg" alt="" /><span class="name">Katalepsis<small>Fund Terminal</small></span></a>
       <button type="button" class="toggle" [attr.aria-expanded]="menuOpen()" aria-label="Menu" (click)="menuOpen.set(!menuOpen())">
         <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 6h14M3 10h14M3 14h14" /></svg>
       </button>

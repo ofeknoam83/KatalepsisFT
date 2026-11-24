@@ -1,4 +1,4 @@
-# Katalepsis FT
+# Katalepsis Fund Terminal (FT)
 
 Multi-manager portfolio monitor and order execution: a master fund split into sleeves, each run by several managers, across spot, perps, options and traditional instruments.
 

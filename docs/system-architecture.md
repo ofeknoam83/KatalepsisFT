@@ -1,4 +1,4 @@
-# Katalepsis FT — system architecture
+# Katalepsis Fund Terminal (FT) — system architecture
 
 Written 24 November 2026 against commit `68546d4`. Audience: the client's technical leadership, and the engineers who will build on, integrate with and operate the system.
 

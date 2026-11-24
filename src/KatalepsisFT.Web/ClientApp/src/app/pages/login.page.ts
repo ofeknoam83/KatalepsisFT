@@ -23,7 +23,7 @@ interface LoginForm {
   template: `
     <div class="auth-page">
       <form class="box" nz-form nzLayout="vertical" [formGroup]="form" (ngSubmit)="submit()">
-        <div class="brand"><img class="mark" src="/favicon.svg" alt="" />Katalepsis <small>FT</small></div>
+        <div class="brand"><img class="mark" src="/favicon.svg" alt="" /><span class="name">Katalepsis<small>Fund Terminal</small></span></div>
         <h1>Sign in</h1>
         <p class="hint">Multi-manager portfolio monitor</p>
 
