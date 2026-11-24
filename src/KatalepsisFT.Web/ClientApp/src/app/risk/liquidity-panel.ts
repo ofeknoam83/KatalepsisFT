@@ -33,6 +33,8 @@ interface Bucket {
     </div>
     @if (failed()) {
       <nz-alert nzType="error" nzMessage="Could not load the liquidity figures." nzShowIcon />
+    } @else if (missing()) {
+      <nz-alert nzType="info" nzMessage="Nothing to show here yet. Liquidity figures need positions to work from." nzShowIcon data-testid="nothing-yet" />
     } @else if (data() === null) {
       <nz-spin nzSimple style="display:block;margin:60px auto" />
     }
@@ -176,6 +178,7 @@ export class LiquidityPanel {
     ([scope, id]) => `${scope}:${id}`,
   );
   protected readonly failed = this.loaded.failed;
+  protected readonly missing = this.loaded.missing;
   protected readonly data = this.loaded.data;
 
   protected rows(d: NonNullable<ReturnType<typeof this.data>>): { name: string; ladder: Ladder; link: unknown[] | null }[] {

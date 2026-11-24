@@ -26,6 +26,8 @@ const CHILD_COLORS = ['#2a78d6', '#e08a00', '#1f9d74', '#8a4fd3', '#c2417a', '#5
   template: `
     @if (failed()) {
       <nz-alert nzType="error" nzMessage="Could not load the risk figures." nzShowIcon />
+    } @else if (missing()) {
+      <nz-alert nzType="info" nzMessage="Nothing to show here yet. Risk figures need positions to work from." nzShowIcon data-testid="nothing-yet" />
     } @else if (data() === null) {
       <nz-spin nzSimple style="display:block;margin:60px auto" />
     }
@@ -208,6 +210,7 @@ export class RiskPanel {
     ([scope, id]) => `${scope}:${id}`,
   );
   protected readonly failed = this.loaded.failed;
+  protected readonly missing = this.loaded.missing;
   protected readonly data = this.loaded.data;
 
   protected readonly breaches = computed(() => (this.data()?.mandate ?? []).filter((m) => m.withinLimit === false).length);

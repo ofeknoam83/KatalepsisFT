@@ -1,4 +1,5 @@
-import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import { COIN_ICONS } from './coin-list';
 
 /**
  * A token's own logo, from the icon files served under /coins (the web3icons set, MIT licence). A symbol the set
@@ -30,18 +31,28 @@ import { ChangeDetectionStrategy, Component, computed, input, signal } from '@an
     }
   `,
   template: `
-    @if (missing() === symbol()) {
-      <span aria-hidden="true">{{ letters() }}</span>
+    @if (file(); as name) {
+      <img [src]="'/coins/' + name + '.svg'" alt="" loading="lazy" />
     } @else {
-      <img [src]="'/coins/' + file() + '.svg'" alt="" loading="lazy" (error)="missing.set(symbol())" />
+      <span aria-hidden="true">{{ letters() }}</span>
     }
   `,
 })
 export class Coin {
   readonly symbol = input.required<string>();
 
-  /** The symbol whose icon failed to load; kept by name so a row reused for another asset tries again. */
-  protected readonly missing = signal<string | null>(null);
-  protected readonly file = computed(() => encodeURIComponent(this.symbol().toUpperCase()));
+  /**
+   * The icon file for this symbol, or null when there is none. Hyperliquid quotes some coins per thousand and puts
+   * a "k" in front (kSHIB, kBONK); those take the coin's own icon.
+   */
+  protected readonly file = computed(() => {
+    const symbol = this.symbol().toUpperCase();
+    if (COIN_ICONS.has(symbol)) {
+      return symbol;
+    }
+
+    // Only a small k followed by capitals is read this way, so KAVA or KAITO are never mistaken for it.
+    return /^k[A-Z0-9]{2,}$/.test(this.symbol()) && COIN_ICONS.has(symbol.slice(1)) ? symbol.slice(1) : null;
+  });
   protected readonly letters = computed(() => this.symbol().slice(0, 4).toUpperCase());
 }

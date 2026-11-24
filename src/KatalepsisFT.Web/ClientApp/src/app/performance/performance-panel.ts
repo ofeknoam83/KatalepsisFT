@@ -27,6 +27,8 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
   template: `
     @if (failed()) {
       <nz-alert nzType="error" nzMessage="Could not load the performance figures." nzShowIcon />
+    } @else if (missing()) {
+      <nz-alert nzType="info" nzMessage="Nothing to show here yet. Returns need at least two days of recorded positions." nzShowIcon data-testid="nothing-yet" />
     } @else if (data() === null) {
       <nz-spin nzSimple style="display:block;margin:60px auto" />
     }
@@ -202,6 +204,7 @@ export class PerformancePanel {
     ([scope, id]) => `${scope}:${id}`,
   );
   protected readonly failed = this.loaded.failed;
+  protected readonly missing = this.loaded.missing;
   protected readonly data = this.loaded.data;
 
   protected readonly lines = computed<RiaChartSeries[]>(() => {

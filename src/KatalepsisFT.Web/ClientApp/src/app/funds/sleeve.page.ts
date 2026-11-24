@@ -46,7 +46,7 @@ function heat(value: number, max: number): Record<string, string> {
         [crumbs]="[{ label: d.fund.name, link: ['/funds', d.fund.id] }, { label: d.sleeve.name }]"
         [title]="d.sleeve.name" [renameUrl]="'/api/sleeves/' + d.sleeve.id + '/name'" renameWhat="the sleeve"
         [demo]="d.fund.isDemo"
-        [sub]="'Sleeve · ' + (d.sleeve.mandateType | label) + ' · ' + d.managers.length + ' managers'"
+        [sub]="'Sleeve · ' + (d.sleeve.mandateType | label) + ' · ' + d.managers.length + (d.managers.length === 1 ? ' manager' : ' managers')"
         [asOf]="d.asOf"
       />
 

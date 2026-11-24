@@ -10,6 +10,8 @@ import { ViewState } from '../funds/view.state';
 export interface PageData<T> {
   data: Signal<T | null>;
   failed: Signal<boolean>;
+  /** True when the server answered that there is nothing here: no such thing, or no figures for it yet. */
+  missing: Signal<boolean>;
 }
 
 /**
@@ -25,6 +27,7 @@ export interface PageData<T> {
 export function keptData<K, T>(key: Observable<K>, reload: Observable<unknown>, load: (key: K) => Observable<T>, scope?: (key: K) => unknown): PageData<T> {
   const data = signal<T | null>(null);
   const failed = signal(false);
+  const missing = signal(false);
   const none = {};
   // The key the data on screen was loaded for, and the scope last asked for.
   let shown: unknown = none;
@@ -44,6 +47,7 @@ export function keptData<K, T>(key: Observable<K>, reload: Observable<unknown>, 
       shown = none;
       data.set(null);
       failed.set(false);
+      missing.set(false);
     }
 
     asked = next;
@@ -60,12 +64,16 @@ export function keptData<K, T>(key: Observable<K>, reload: Observable<unknown>, 
         shown = k;
         data.set(value);
         failed.set(false);
+        missing.set(false);
       },
-      error: () => {
+      error: (error: unknown) => {
         if (shown !== k) {
           shown = none;
           data.set(null);
-          failed.set(true);
+          // "Not found" is an answer, not a failure: it is shown as nothing to see, not as an error.
+          const notFound = (error as { status?: number } | null)?.status === 404;
+          missing.set(notFound);
+          failed.set(!notFound);
         }
 
         finish();
@@ -90,7 +98,7 @@ export function keptData<K, T>(key: Observable<K>, reload: Observable<unknown>, 
     changes.unsubscribe();
     running?.unsubscribe();
   });
-  return { data: data.asReadonly(), failed: failed.asReadonly() };
+  return { data: data.asReadonly(), failed: failed.asReadonly(), missing: missing.asReadonly() };
 }
 
 /** Loads a page's data again whenever its route parameters or the instrument filter change, or the fund's figures do. */
