@@ -189,7 +189,7 @@ const CHILD_COLORS = ['#2a78d6', '#e08a00', '#1f9d74', '#8a4fd3', '#c2417a', '#5
       padding: 6px 4px;
     }
     .note {
-      color: #8c8c8c;
+      color: var(--kft-text-3);
       font-size: 12px;
       margin: 8px 0 0;
     }
@@ -220,11 +220,11 @@ export class RiskPanel {
     let child = 0;
     return d.rollingVolatility.map((s, i) => {
       if (i === 0) {
-        return { label: s.name, data: s.values, color: '#0d366b', width: 2.4 };
+        return { label: s.name, data: s.values, color: '#4338ca', width: 2.4 };
       }
 
       return s.name === d.scenario.referenceAsset && i === d.rollingVolatility.length - 1
-        ? { label: s.name, data: s.values, color: '#898781', dash: [5, 4] }
+        ? { label: s.name, data: s.values, color: '#98a2b3', dash: [5, 4] }
         : { label: s.name, data: s.values, color: CHILD_COLORS[child++ % CHILD_COLORS.length], width: 1.4 };
     });
   });

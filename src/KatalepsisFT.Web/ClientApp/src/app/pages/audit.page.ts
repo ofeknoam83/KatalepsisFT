@@ -84,7 +84,7 @@ function day(back: number): string {
               </tr>
             }
             @if (list.entries.length === 0) {
-              <tr><td colspan="6" style="text-align:center;color:#8c8c8c;padding:28px">Nothing was changed in this period.</td></tr>
+              <tr><td colspan="6" style="text-align:center;color:var(--kft-text-3);padding:28px">Nothing was changed in this period.</td></tr>
             }
           </tbody>
         </nz-table>
@@ -100,12 +100,12 @@ function day(back: number): string {
       flex-wrap: wrap;
       margin-bottom: 10px;
       font-size: 13px;
-      color: #595959;
+      color: var(--kft-text-2);
 
       input {
         margin-left: 4px;
         padding: 2px 6px;
-        border: 1px solid #d9d9d9;
+        border: 1px solid #d5d9e0;
         border-radius: 4px;
         font: inherit;
       }
@@ -116,14 +116,14 @@ function day(back: number): string {
     }
 
     .detail {
-      color: #595959;
+      color: var(--kft-text-2);
       font-size: 12px;
       max-width: 380px;
       overflow-wrap: anywhere;
     }
 
     .note {
-      color: #8c8c8c;
+      color: var(--kft-text-3);
       font-size: 12px;
       margin: 10px 0 0;
     }

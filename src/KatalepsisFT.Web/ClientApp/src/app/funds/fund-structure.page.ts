@@ -70,7 +70,7 @@ interface SleeveDraft {
     }
     .label {
       font-size: 12px;
-      color: #8c8c8c;
+      color: var(--kft-text-3);
       margin-bottom: 4px;
     }
     .limit {
@@ -83,7 +83,7 @@ interface SleeveDraft {
     }
     .limit small {
       display: block;
-      color: #8c8c8c;
+      color: var(--kft-text-3);
       font-size: 11px;
     }
     .manager {
@@ -171,7 +171,7 @@ interface SleeveDraft {
                     <nz-input-number [(ngModel)]="sleeve.limits[limit.kind]" [nzDisabled]="!s.canEdit" [nzPlaceHolder]="limit.unit === 'days' ? 'days' : '%'" style="width:100%" [attr.data-testid]="'limit-' + limit.kind" />
                   </div>
                 }
-                <p style="color:#8c8c8c;font-size:12px;margin:8px 0 0">Each limit has a critical alert rule that follows it.</p>
+                <p style="color:var(--kft-text-3);font-size:12px;margin:8px 0 0">Each limit has a critical alert rule that follows it.</p>
               </div>
               <div>
                 <div class="label">Managers — name and allocated capital in USD</div>

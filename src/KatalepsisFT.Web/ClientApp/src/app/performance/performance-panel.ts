@@ -55,14 +55,14 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
               @for (row of d.periods; track row.label) {
                 <tr>
                   <td>{{ row.label }}</td>
-                  <td class="num" [class]="row.portfolio | tone">{{ row.portfolio | pct: 2 }}</td>
-                  <td class="num" [class]="row.benchmark | tone">{{ row.benchmark | pct: 2 }}</td>
-                  <td class="num" [class]="excess(row.portfolio, row.benchmark) | tone">{{ excess(row.portfolio, row.benchmark) | pct: 2 }}</td>
+                  <td class="num"><span class="chip" [class]="row.portfolio | tone">{{ row.portfolio | pct: 2 }}</span></td>
+                  <td class="num"><span class="chip" [class]="row.benchmark | tone">{{ row.benchmark | pct: 2 }}</span></td>
+                  <td class="num"><span class="chip" [class]="excess(row.portfolio, row.benchmark) | tone">{{ excess(row.portfolio, row.benchmark) | pct: 2 }}</span></td>
                 </tr>
               }
             </tbody>
           </nz-table>
-          <p style="color:#8c8c8c;font-size:12px;margin:8px 0 0">These rows always use their own window, whatever period is selected above.</p>
+          <p style="color:var(--kft-text-3);font-size:12px;margin:8px 0 0">These rows always use their own window, whatever period is selected above.</p>
         </div>
       </div>
 
@@ -88,10 +88,10 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
                   <td><a [routerLink]="[row.kind === 'Sleeve' ? '/sleeves' : '/managers', row.id]"><b>{{ row.name }}</b></a></td>
                   <td class="num">{{ row.navUsd | usd }}</td>
                   <td class="num">{{ row.averageWeight | pct: 0 : false }}</td>
-                  <td class="num" [class]="row.stats.totalReturn | tone">{{ row.stats.totalReturn | pct }}</td>
+                  <td class="num"><span class="chip" [class]="row.stats.totalReturn | tone">{{ row.stats.totalReturn | pct }}</span></td>
                   <td class="num" [class]="row.contribution | tone"><b>{{ row.contribution | pct: 2 }}</b></td>
                   <td class="num" [class]="row.pnlUsd | tone">{{ row.pnlUsd | usd }}</td>
-                  <td class="num" [class]="row.comparison.excessReturn | tone">{{ row.comparison.excessReturn | pct }}</td>
+                  <td class="num"><span class="chip" [class]="row.comparison.excessReturn | tone">{{ row.comparison.excessReturn | pct }}</span></td>
                   <td class="num">{{ row.comparison.beta === null ? '–' : (row.comparison.beta | number: '1.2-2') }}</td>
                   <td class="num">{{ row.comparison.correlation === null ? '–' : (row.comparison.correlation | number: '1.2-2') }}</td>
                   <td class="num">{{ row.comparison.trackingError | pct: 1 : false }}</td>
@@ -134,7 +134,7 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
             <ng-container *ngTemplateOutlet="pnl; context: { rows: d.attribution.byAsset, start: d.attribution.startNavUsd }" />
           </div>
         </div>
-        <p style="color:#8c8c8c;font-size:12px;margin:10px 0 0">Each position earns the quantity held at the previous close times the day's price move. Points are the profit as a share of NAV at the start of the period.</p>
+        <p style="color:var(--kft-text-3);font-size:12px;margin:10px 0 0">Each position earns the quantity held at the previous close times the day's price move. Points are the profit as a share of NAV at the start of the period.</p>
       </div>
 
       <div class="panel" style="overflow-x:auto">
@@ -171,10 +171,10 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
     <ng-template #pnl let-rows="rows" let-start="start">
       <table style="width:100%;font-size:12.5px;border-collapse:collapse">
         @for (row of rows; track row.key) {
-          <tr style="border-bottom:1px solid #f0f0f0">
+          <tr style="border-bottom:1px solid var(--kft-line)">
             <td style="padding:5px 0">{{ row.key }}</td>
             <td class="num" [class]="row.pnlUsd | tone" style="padding:5px 0 5px 12px">{{ row.pnlUsd | usd: 2 }}</td>
-            <td class="num" style="padding:5px 0 5px 12px;color:#8c8c8c;width:70px">{{ points(row, start) }}</td>
+            <td class="num" style="padding:5px 0 5px 12px;color:var(--kft-text-3);width:70px">{{ points(row, start) }}</td>
           </tr>
         }
       </table>
@@ -183,7 +183,7 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
   styles: `
     .sub-head {
       font-size: 12px;
-      color: #8c8c8c;
+      color: var(--kft-text-3);
       margin-bottom: 4px;
     }
   `,
@@ -208,14 +208,14 @@ export class PerformancePanel {
     const d = this.data();
     return d
       ? [
-          { label: d.scope.name, data: d.portfolio, color: '#0d366b', width: 2.2 },
-          { label: d.benchmark.name, data: d.benchmarkSeries, color: '#898781', dash: [5, 4] },
+          { label: d.scope.name, data: d.portfolio, color: '#4338ca', width: 2.2 },
+          { label: d.benchmark.name, data: d.benchmarkSeries, color: '#98a2b3', dash: [5, 4] },
         ]
       : [];
   });
   protected readonly drawdownLines = computed<RiaChartSeries[]>(() => {
     const d = this.data();
-    return d ? [{ label: 'Drawdown', data: d.drawdown, color: '#d03b3b', fill: true }] : [];
+    return d ? [{ label: 'Drawdown', data: d.drawdown, color: '#d9642b', fill: true }] : [];
   });
   protected readonly contributionTotal = computed(() => (this.data()?.children ?? []).reduce((sum, c) => sum + c.contribution, 0));
   protected readonly pnlTotal = computed(() => (this.data()?.children ?? []).reduce((sum, c) => sum + c.pnlUsd, 0));

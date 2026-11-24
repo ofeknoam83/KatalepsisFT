@@ -27,7 +27,7 @@ import { LoadFunds, ViewState } from '../funds/view.state';
     } @else if (funds() === null) {
       <nz-spin nzSimple style="display:block;margin:80px auto" />
     } @else if (funds()?.length === 0) {
-      <div style="background:#fff;border:1px solid #f0f0f0;border-radius:8px;padding:48px">
+      <div style="background:#fff;border:1px solid var(--kft-line);border-radius:8px;padding:48px">
         <nz-empty nzNotFoundContent="No funds yet." />
       </div>
     }

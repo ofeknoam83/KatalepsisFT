@@ -34,14 +34,14 @@ interface VenueExposure {
                   <td>
                     <b>{{ row.name }}</b>
                     @if (!row.isVenue) {
-                      <span style="color:#8c8c8c;font-size:12px"> · not on a connected venue</span>
+                      <span style="color:var(--kft-text-3);font-size:12px"> · not on a connected venue</span>
                     }
                   </td>
                   <td class="num">{{ row.navUsd | usd }}</td>
                   <td class="num">{{ row.share | pct: 1 : false }}</td>
                   <td><div class="bar"><i [style.width.%]="width(row.share)" [class.plain]="!row.isVenue"></i></div></td>
                   <td class="num">{{ row.accounts || '–' }}</td>
-                  <td style="color:#595959">{{ row.managers.join(', ') }}</td>
+                  <td style="color:var(--kft-text-2)">{{ row.managers.join(', ') }}</td>
                 </tr>
               }
             </tbody>
@@ -53,7 +53,7 @@ interface VenueExposure {
   styles: `
     .bar {
       height: 8px;
-      background: #f0f0f0;
+      background: var(--kft-line);
       border-radius: 2px;
 
       i {
@@ -63,7 +63,7 @@ interface VenueExposure {
         background: #2a78d6;
 
         &.plain {
-          background: #bfbfbf;
+          background: #98a2b3;
         }
       }
     }

@@ -71,7 +71,7 @@ const STATE_COLOR = { Live: 'green', Failed: 'red', Pending: 'blue', Disabled: '
             <tbody>
               @for (row of c.connections; track row.id) {
                 <tr>
-                  <td><b>{{ row.manager }}</b> <span style="color:#8c8c8c">· {{ row.sleeve }}</span></td>
+                  <td><b>{{ row.manager }}</b> <span style="color:var(--kft-text-3)">· {{ row.sleeve }}</span></td>
                   <td>{{ row.venueName }}</td>
                   <td><app-edit-name [value]="row.label" [url]="'/api/connections/' + row.id + '/label'" what="this key or wallet" [maxlength]="100" /></td>
                   <td class="nowrap">…{{ row.keyHint }} @if (!row.permissionsVerified) {<nz-tag nzColor="orange">Permissions unverified</nz-tag>}</td>
@@ -103,11 +103,11 @@ const STATE_COLOR = { Live: 'green', Failed: 'red', Pending: 'blue', Disabled: '
                 </tr>
               }
               @if (c.connections.length === 0) {
-                <tr><td colspan="10" style="text-align:center;color:#8c8c8c;padding:28px">No keys or wallets yet.</td></tr>
+                <tr><td colspan="10" style="text-align:center;color:var(--kft-text-3);padding:28px">No keys or wallets yet.</td></tr>
               }
             </tbody>
           </nz-table>
-          <p style="color:#8c8c8c;font-size:12px;margin:10px 0 0">The two values should be close. A red figure means they differ by more than 1%, so part of the account is not being read.</p>
+          <p style="color:var(--kft-text-3);font-size:12px;margin:10px 0 0">The two values should be close. A red figure means they differ by more than 1%, so part of the account is not being read.</p>
         </div>
 
         <nz-modal [nzVisible]="adding()" nzTitle="Add a read-only key or a wallet address" nzOkText="Check and save" [nzOkLoading]="saving()" [nzOkDisabled]="form.invalid || incomplete()" (nzOnOk)="submit()" (nzOnCancel)="adding.set(false)">
@@ -137,14 +137,14 @@ const STATE_COLOR = { Live: 'green', Failed: 'red', Pending: 'blue', Disabled: '
               <nz-form-item><nz-form-label>Label</nz-form-label><input nz-input formControlName="label" placeholder="Main account" maxlength="100" /></nz-form-item>
               @if (usesAddress()) {
                 <nz-form-item><nz-form-label>Wallet address</nz-form-label><input nz-input formControlName="apiKey" autocomplete="off" placeholder="Paste the address" data-testid="key-api-key" /></nz-form-item>
-                <p style="color:#8c8c8c;font-size:12px;margin:0">These accounts are public on their chain. Only the address is needed, and nothing can be traded or withdrawn through it.</p>
+                <p style="color:var(--kft-text-3);font-size:12px;margin:0">These accounts are public on their chain. Only the address is needed, and nothing can be traded or withdrawn through it.</p>
               } @else {
                 <nz-form-item><nz-form-label>API key</nz-form-label><input nz-input formControlName="apiKey" autocomplete="off" data-testid="key-api-key" /></nz-form-item>
                 <nz-form-item><nz-form-label>API secret</nz-form-label><input nz-input type="password" formControlName="apiSecret" autocomplete="new-password" data-testid="key-api-secret" /></nz-form-item>
                 @if (needsPassphrase()) {
                   <nz-form-item><nz-form-label>Passphrase</nz-form-label><input nz-input type="password" formControlName="passphrase" autocomplete="new-password" /></nz-form-item>
                 }
-                <p style="color:#8c8c8c;font-size:12px;margin:0">The key is checked with the venue before it is saved, stored encrypted, and never shown again.</p>
+                <p style="color:var(--kft-text-3);font-size:12px;margin:0">The key is checked with the venue before it is saved, stored encrypted, and never shown again.</p>
               }
             </form>
           </ng-container>

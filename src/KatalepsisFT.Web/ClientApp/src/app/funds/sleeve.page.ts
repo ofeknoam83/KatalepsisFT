@@ -120,7 +120,7 @@ function heat(value: number, max: number): Record<string, string> {
                   }
                 </tbody>
               </nz-table>
-              <p style="color:#8c8c8c;font-size:12px;margin:8px 0 0">Checked on positions. Limits on drawdown and time to liquidate are checked on the performance and liquidity pages.</p>
+              <p style="color:var(--kft-text-3);font-size:12px;margin:8px 0 0">Checked on positions. Limits on drawdown and time to liquidate are checked on the performance and liquidity pages.</p>
             </div>
             <div class="panel">
               <h3>By instrument type</h3>
@@ -154,8 +154,8 @@ function heat(value: number, max: number): Record<string, string> {
                   <tr>
                     <td class="nowrap"><app-coin [symbol]="row.asset.symbol" /><a [routerLink]="['/funds', d.fund.id, 'assets', row.asset.symbol]"><b>{{ row.asset.symbol }}</b></a></td>
                     <td class="num">{{ row.asset.price | price }}</td>
-                    <td class="num" [class]="row.asset.change30D | tone">{{ row.asset.change30D | pct }}</td>
-                    <td class="num" [class]="row.asset.changeYtd | tone">{{ row.asset.changeYtd | pct }}</td>
+                    <td class="num"><span class="chip" [class]="row.asset.change30D | tone">{{ row.asset.change30D | pct }}</span></td>
+                    <td class="num"><span class="chip" [class]="row.asset.changeYtd | tone">{{ row.asset.changeYtd | pct }}</span></td>
                     <td>
                       @for (holder of row.holders; track holder.managerId) {
                         <nz-tag [nzColor]="holder.netUsd > 0 ? 'green' : holder.netUsd < 0 ? 'geekblue' : 'default'">
@@ -183,7 +183,7 @@ function heat(value: number, max: number): Record<string, string> {
                 }
               </tbody>
             </nz-table>
-            <p style="color:#8c8c8c;font-size:12px;margin:8px 0 0">◆ a manager holding both sides of the asset, with no net exposure.</p>
+            <p style="color:var(--kft-text-3);font-size:12px;margin:8px 0 0">◆ a manager holding both sides of the asset, with no net exposure.</p>
           </div>
         </nz-tab>
 
@@ -203,7 +203,7 @@ function heat(value: number, max: number): Record<string, string> {
                   @for (asset of d.assets; track asset.asset.symbol) {
                     @let value = net(asset, manager.manager.id);
                     @if (value === null) {
-                      <td style="background:#fafafa;color:#bfbfbf">·</td>
+                      <td style="background:#fafbfc;color:#98a2b3">·</td>
                     } @else {
                       <td [style]="heatStyle(value)">{{ value >= 0 ? '+' : '−' }}{{ whole(value) }}</td>
                     }
@@ -223,7 +223,7 @@ function heat(value: number, max: number): Record<string, string> {
                 }
               </tr>
             </table>
-            <div style="margin-top:8px;font-size:12px;color:#595959">
+            <div style="margin-top:8px;font-size:12px;color:var(--kft-text-2)">
               <span class="swatch" style="background:#2a78d6"></span>Long <span class="swatch" style="background:#d03b3b;margin-left:12px"></span>Short
             </div>
           </div>
@@ -241,7 +241,7 @@ function heat(value: number, max: number): Record<string, string> {
                   <th class="row">{{ a.manager.name }}</th>
                   @for (b of d.managers; track b.manager.id) {
                     @if (a.manager.id === b.manager.id) {
-                      <td style="background:#fafafa;color:#bfbfbf">–</td>
+                      <td style="background:#fafbfc;color:#98a2b3">–</td>
                     } @else {
                       @let pair = overlap(d, a.manager.id, b.manager.id);
                       <td [style]="shareStyle(pair?.share ?? 0)">{{ (pair?.share ?? 0) * 100 | number: '1.0-0' }}%{{ (pair?.oppositeSides ?? 0) > 0 ? ' ⇄' : '' }}</td>

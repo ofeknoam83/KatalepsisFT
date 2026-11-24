@@ -73,8 +73,8 @@ import { SLEEVE_COLORS } from './models';
           <tbody>
             @for (row of sleeves.data; track row.sleeve.id; let i = $index) {
               <tr>
-                <td><span class="swatch" [style.background]="colors[i % colors.length]"></span><a [routerLink]="['/sleeves', row.sleeve.id]"><b>{{ row.sleeve.name }}</b></a></td>
-                <td>{{ row.sleeve.mandateType | label }}</td>
+                <td class="nowrap"><span class="swatch" [style.background]="colors[i % colors.length]"></span><a [routerLink]="['/sleeves', row.sleeve.id]"><b>{{ row.sleeve.name }}</b></a></td>
+                <td class="nowrap">{{ row.sleeve.mandateType | label }}</td>
                 <td class="num">{{ row.managers }}</td>
                 <td class="num">{{ row.totals.navUsd | usd }}</td>
                 <td class="num">{{ row.totals.navUsd | share: d.totals.navUsd : 0 }}</td>

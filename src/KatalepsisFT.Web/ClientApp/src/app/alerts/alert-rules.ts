@@ -126,7 +126,7 @@ const DAYS: AlertMetric = 'SlowestDaysToLiquidate';
             </nz-form-item>
           </div>
           <label style="display:flex;gap:10px;align-items:center"><nz-switch formControlName="isEnabled" nzSize="small" /> Switched on</label>
-          <p style="color:#8c8c8c;font-size:12px;margin:12px 0 0">Drawdowns and losses are negative: "below −25" raises when a manager is more than 25% under its peak.</p>
+          <p style="color:var(--kft-text-3);font-size:12px;margin:12px 0 0">Drawdowns and losses are negative: "below −25" raises when a manager is more than 25% under its peak.</p>
         </form>
       </ng-container>
     </nz-modal>
@@ -134,7 +134,7 @@ const DAYS: AlertMetric = 'SlowestDaysToLiquidate';
   styles: `
     .kind {
       margin-left: 6px;
-      color: #8c8c8c;
+      color: var(--kft-text-3);
       font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.04em;

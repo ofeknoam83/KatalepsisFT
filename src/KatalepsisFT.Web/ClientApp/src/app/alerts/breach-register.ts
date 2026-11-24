@@ -120,7 +120,7 @@ function day(back: number): string {
               </tr>
             }
             @if (r.rows.length === 0) {
-              <tr><td colspan="8" style="text-align:center;color:#8c8c8c;padding:28px">No rule or limit was broken in this period.</td></tr>
+              <tr><td colspan="8" style="text-align:center;color:var(--kft-text-3);padding:28px">No rule or limit was broken in this period.</td></tr>
             }
           </tbody>
         </nz-table>
@@ -135,12 +135,12 @@ function day(back: number): string {
       flex-wrap: wrap;
       margin-bottom: 10px;
       font-size: 13px;
-      color: #595959;
+      color: var(--kft-text-2);
 
       input {
         margin-left: 4px;
         padding: 2px 6px;
-        border: 1px solid #d9d9d9;
+        border: 1px solid #d5d9e0;
         border-radius: 4px;
         font: inherit;
       }
@@ -152,11 +152,11 @@ function day(back: number): string {
 
     .sum {
       margin: 0 0 10px;
-      color: #595959;
+      color: var(--kft-text-2);
     }
 
     .soft {
-      color: #8c8c8c;
+      color: var(--kft-text-3);
       font-size: 12px;
     }
 

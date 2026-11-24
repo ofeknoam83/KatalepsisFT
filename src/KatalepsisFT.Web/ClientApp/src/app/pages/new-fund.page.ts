@@ -22,11 +22,11 @@ type SleeveForm = FormGroup<{ name: FormControl<string>; mandateType: FormContro
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: `
     .sleeve {
-      border: 1px solid #f0f0f0;
+      border: 1px solid var(--kft-line);
       border-radius: 8px;
       padding: 14px 16px;
       margin-bottom: 14px;
-      background: #fafafa;
+      background: #fafbfc;
     }
     .row {
       display: grid;
@@ -36,7 +36,7 @@ type SleeveForm = FormGroup<{ name: FormControl<string>; mandateType: FormContro
     }
     .label {
       font-size: 12px;
-      color: #8c8c8c;
+      color: var(--kft-text-3);
       margin-bottom: 4px;
     }
   `,

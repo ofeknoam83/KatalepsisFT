@@ -103,7 +103,7 @@ interface TrackRecord {
             <a style="color:#cf1322" nz-popconfirm nzPopconfirmTitle="Remove the imported history? Live readings stay." nzOkText="Remove" (nzOnConfirm)="run(http.delete('/api/managers/' + managerId() + '/track-record'), 'The imported history was removed.')" data-testid="track-remove">Remove the imported history</a>
           }
         } @else {
-          <p style="color:#595959;margin:4px 0 10px">Nothing has been imported for this manager.</p>
+          <p style="color:var(--kft-text-2);margin:4px 0 10px">Nothing has been imported for this manager.</p>
         }
 
         <div class="how">
@@ -127,7 +127,7 @@ interface TrackRecord {
   `,
   styles: `
     .how {
-      color: #595959;
+      color: var(--kft-text-2);
       font-size: 12px;
       margin-top: 14px;
 

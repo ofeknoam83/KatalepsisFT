@@ -48,7 +48,7 @@ import { LoadFunds } from '../funds/view.state';
       padding: 3px;
       line-height: 0;
       border-radius: 4px;
-      color: #bfbfbf;
+      color: #98a2b3;
       cursor: pointer;
     }
 
@@ -88,11 +88,11 @@ import { LoadFunds } from '../funds/view.state';
     }
 
     .no {
-      color: #8c8c8c;
+      color: var(--kft-text-3);
     }
 
     .go[disabled] {
-      color: #bfbfbf;
+      color: #98a2b3;
       cursor: default;
     }
 

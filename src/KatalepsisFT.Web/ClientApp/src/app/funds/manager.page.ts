@@ -91,7 +91,7 @@ import { FundsApi } from './funds.api';
             </tr>
           </tbody>
         </nz-table>
-        <p style="color:#8c8c8c;font-size:12px;margin:8px 0 0">Shares are the position's exposure (its value for cash) against NAV. The total row shows gross exposure.</p>
+        <p style="color:var(--kft-text-3);font-size:12px;margin:8px 0 0">Shares are the position's exposure (its value for cash) against NAV. The total row shows gross exposure.</p>
       </div>
 
       <div class="panel" style="max-width:720px">

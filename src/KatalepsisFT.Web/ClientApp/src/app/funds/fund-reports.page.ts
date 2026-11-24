@@ -120,7 +120,7 @@ const WHEN_LABEL: Record<ReportFrequency, string> = { Daily: 'Every day', Weekly
                   </tr>
                 }
                 @if (s.schedules.length === 0) {
-                  <tr><td colspan="5" style="text-align:center;color:#8c8c8c;padding:22px">Nothing is sent by email yet.</td></tr>
+                  <tr><td colspan="5" style="text-align:center;color:var(--kft-text-3);padding:22px">Nothing is sent by email yet.</td></tr>
                 }
               </tbody>
             </nz-table>
@@ -157,12 +157,12 @@ const WHEN_LABEL: Record<ReportFrequency, string> = { Daily: 'Every day', Weekly
     }
 
     .card p {
-      color: #595959;
+      color: var(--kft-text-2);
       margin: 0 0 12px;
     }
 
     .note {
-      color: #8c8c8c !important;
+      color: var(--kft-text-3) !important;
       font-size: 12px;
       margin: 10px 0 0 !important;
     }

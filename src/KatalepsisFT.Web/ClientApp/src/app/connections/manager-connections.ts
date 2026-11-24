@@ -51,7 +51,7 @@ interface KeyForm {
           <button nz-button nzType="primary" nzSize="small" style="margin-left:12px" [disabled]="!c.canAddKeys" (click)="open()" data-testid="add-connection">Add a key or wallet</button>
         </h3>
         @if (!c.canAddKeys) {
-          <p style="color:#8c8c8c;font-size:12px">Keys cannot be stored on this server yet: its master key is not configured.</p>
+          <p style="color:var(--kft-text-3);font-size:12px">Keys cannot be stored on this server yet: its master key is not configured.</p>
         }
         <nz-table [nzData]="rows()" nzTemplateMode [nzShowPagination]="false" nzSize="small" data-testid="manager-connections">
           <thead>
@@ -87,7 +87,7 @@ interface KeyForm {
               </tr>
             }
             @if (rows().length === 0) {
-              <tr><td colspan="8" style="text-align:center;color:#8c8c8c;padding:28px">No keys or wallets yet. Add the first one, or enter positions by hand on the next tab.</td></tr>
+              <tr><td colspan="8" style="text-align:center;color:var(--kft-text-3);padding:28px">No keys or wallets yet. Add the first one, or enter positions by hand on the next tab.</td></tr>
             }
             @if (rows().length > 1) {
               <tr><td colspan="6"><b>All together</b></td><td class="num"><b>{{ total() | usd }}</b></td><td></td></tr>
@@ -118,14 +118,14 @@ interface KeyForm {
             </div>
             @if (usesAddress()) {
               <nz-form-item><nz-form-label>Wallet address</nz-form-label><input nz-input formControlName="apiKey" autocomplete="off" placeholder="Paste the address" data-testid="connection-key" /></nz-form-item>
-              <p style="color:#8c8c8c;font-size:12px;margin:0 0 10px">These accounts are public on their chain. Only the address is needed, and nothing can be traded or withdrawn through it.</p>
+              <p style="color:var(--kft-text-3);font-size:12px;margin:0 0 10px">These accounts are public on their chain. Only the address is needed, and nothing can be traded or withdrawn through it.</p>
             } @else {
               <nz-form-item><nz-form-label>API key (read-only)</nz-form-label><input nz-input formControlName="apiKey" autocomplete="off" data-testid="connection-key" /></nz-form-item>
               <nz-form-item><nz-form-label>API secret</nz-form-label><input nz-input type="password" formControlName="apiSecret" autocomplete="new-password" /></nz-form-item>
               @if (needsPassphrase()) {
                 <nz-form-item><nz-form-label>Passphrase</nz-form-label><input nz-input type="password" formControlName="passphrase" autocomplete="new-password" /></nz-form-item>
               }
-              <p style="color:#8c8c8c;font-size:12px;margin:0 0 10px">The key is checked with the venue before it is saved, stored encrypted, and never shown again.</p>
+              <p style="color:var(--kft-text-3);font-size:12px;margin:0 0 10px">The key is checked with the venue before it is saved, stored encrypted, and never shown again.</p>
             }
             <label style="font-size:13px"><input type="checkbox" [checked]="another()" (change)="another.set($any($event.target).checked)" data-testid="connection-another" /> Keep this open to add another after saving</label>
           </form>

@@ -137,7 +137,7 @@ const ACTION_TEXT: Record<AlertAction['kind'], string> = {
               </tr>
             }
             @if (d.alerts.length === 0) {
-              <tr><td colspan="7" style="text-align:center;color:#8c8c8c;padding:28px">{{ state() === 'Active' ? 'No active alerts. Every rule is within its limit.' : 'Nothing here yet.' }}</td></tr>
+              <tr><td colspan="7" style="text-align:center;color:var(--kft-text-3);padding:28px">{{ state() === 'Active' ? 'No active alerts. Every rule is within its limit.' : 'Nothing here yet.' }}</td></tr>
             }
           </tbody>
         </nz-table>
@@ -147,13 +147,13 @@ const ACTION_TEXT: Record<AlertAction['kind'], string> = {
   styles: `
     .kind {
       margin-left: 8px;
-      color: #8c8c8c;
+      color: var(--kft-text-3);
       font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.04em;
     }
     tr.muted td {
-      color: #8c8c8c;
+      color: var(--kft-text-3);
     }
     .detail {
       display: grid;
@@ -163,7 +163,7 @@ const ACTION_TEXT: Record<AlertAction['kind'], string> = {
     }
     .head {
       font-size: 12px;
-      color: #8c8c8c;
+      color: var(--kft-text-3);
       margin-bottom: 6px;
     }
     .line {
@@ -174,7 +174,7 @@ const ACTION_TEXT: Record<AlertAction['kind'], string> = {
       padding: 3px 0;
     }
     .when {
-      color: #8c8c8c;
+      color: var(--kft-text-3);
       font-variant-numeric: tabular-nums;
     }
     .buttons {
@@ -190,7 +190,7 @@ const ACTION_TEXT: Record<AlertAction['kind'], string> = {
       font-size: 12.5px;
     }
     .hint {
-      color: #8c8c8c;
+      color: var(--kft-text-3);
       font-size: 12px;
       margin: 8px 0 0;
     }

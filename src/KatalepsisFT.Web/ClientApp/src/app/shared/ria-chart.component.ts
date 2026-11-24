@@ -155,7 +155,12 @@ export class RiaChartComponent implements OnDestroy {
           },
         },
         plugins: {
-          legend: { display: datasets.length > 1, position: 'bottom' },
+          legend: {
+            display: datasets.length > 1,
+            position: 'bottom',
+            // A short line in each series' own colour and dash, instead of a filled box.
+            labels: { usePointStyle: true, pointStyle: 'line', boxWidth: 28, padding: 18, color: '#475467', font: { family: 'Inter Variable, Inter, system-ui, sans-serif', size: 12 } },
+          },
           tooltip: {
             callbacks: {
               title: (items): string => shortDay(items[0]?.label ?? ''),

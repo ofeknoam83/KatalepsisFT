@@ -27,14 +27,13 @@ const LATE_AFTER_SECONDS = 30;
   imports: [NzAlertModule, NzTableModule, NzTagModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <h2 style="margin:0 0 4px">System status</h2>
-    <p style="color:#8c8c8c;margin:0 0 16px">What this web instance can reach right now. Refreshes every 10 seconds.</p>
+    <div class="page-head"><h1>System status</h1><span class="sub">What this web instance can reach right now. Refreshes every 10 seconds.</span></div>
 
     @if (failed()) {
       <nz-alert nzType="error" nzMessage="Could not load the status. Retrying." nzShowIcon style="display:block;margin-bottom:16px" />
     }
 
-    <nz-table #table [nzData]="rows()" [nzShowPagination]="false" [nzLoading]="rows().length === 0 && !failed()" nzSize="middle" style="background:#fff">
+    <nz-table #table [nzData]="rows()" [nzShowPagination]="false" [nzLoading]="rows().length === 0 && !failed()" nzSize="small" class="panel">
       <thead>
         <tr>
           <th>Component</th>

@@ -248,6 +248,10 @@ import { LoadFunds, ViewState } from '../funds/view.state';
       font-size: 13px;
     }
 
+    .toggle {
+      display: none;
+    }
+
     /* Smaller laptops: the menu gives up some of its width to the figures. */
     @media (max-width: 1500px) {
       nav {
@@ -260,10 +264,68 @@ import { LoadFunds, ViewState } from '../funds/view.state';
         padding: 16px 18px 32px;
       }
     }
+
+    /* Tablets and phones: the menu becomes a bar across the top; the button at its right opens the rest. */
+    @media (max-width: 900px) {
+      :host {
+        flex-direction: column;
+      }
+
+      nav {
+        flex: 0 0 auto;
+        width: 100%;
+        height: auto;
+        position: static;
+        border-right: 0;
+        border-bottom: 1px solid var(--kft-line);
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .brand {
+        flex: 1 1 auto;
+      }
+
+      .toggle {
+        display: grid;
+        place-items: center;
+        width: 44px;
+        height: 44px;
+        border: 1px solid #e1e4ea;
+        border-radius: 10px;
+        background: #fff;
+        color: var(--kft-text);
+        cursor: pointer;
+      }
+
+      .switch,
+      .links,
+      .foot {
+        flex: 1 1 100%;
+      }
+
+      nav:not(.open) .links,
+      nav:not(.open) .foot {
+        display: none;
+      }
+
+      .foot {
+        margin-top: 0;
+      }
+
+      main {
+        padding: 14px 12px 28px;
+      }
+    }
   `,
   template: `
-    <nav aria-label="Main">
+    <nav aria-label="Main" [class.open]="menuOpen()" (click)="closeOnLink($event)">
       <a class="brand" routerLink="/"><span class="mark">K</span>Katalepsis <small>FT</small></a>
+      <button type="button" class="toggle" [attr.aria-expanded]="menuOpen()" aria-label="Menu" (click)="menuOpen.set(!menuOpen())">
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 6h14M3 10h14M3 14h14" /></svg>
+      </button>
 
       <button type="button" class="switch" nz-dropdown [nzDropdownMenu]="fundMenu" nzTrigger="click" [(nzVisible)]="switching" data-testid="fund-switcher">
         <span class="badge" aria-hidden="true">{{ fundInitials() }}</span>
@@ -374,6 +436,15 @@ export class Shell {
   /** What is typed in the fund switcher, and whether its list is open. */
   protected readonly search = signal('');
   protected switching = false;
+  /** On a narrow screen the links are folded away until the menu button is pressed. */
+  protected readonly menuOpen = signal(false);
+
+  /** Following a link in the opened menu folds it away again. */
+  protected closeOnLink(event: Event): void {
+    if ((event.target as HTMLElement).closest('a')) {
+      this.menuOpen.set(false);
+    }
+  }
 
   protected readonly current = computed(() => (this.funds() ?? []).find((fund) => fund.id === this.fundId()) ?? null);
   protected readonly otherCount = computed(() => Math.max(0, (this.funds() ?? []).length - (this.current() ? 1 : 0)));

@@ -442,7 +442,7 @@ interface Depth {
               }
             }
             @if (d.accounts.length === 0) {
-              <tr><td colspan="8" style="text-align:center;color:#8c8c8c;padding:22px">No trading account yet. {{ d.canAdmin ? 'Add one to start paper trading.' : 'An administrator adds them.' }}</td></tr>
+              <tr><td colspan="8" style="text-align:center;color:var(--kft-text-3);padding:22px">No trading account yet. {{ d.canAdmin ? 'Add one to start paper trading.' : 'An administrator adds them.' }}</td></tr>
             }
           </tbody>
         </nz-table>
@@ -501,7 +501,7 @@ interface Depth {
               }
             }
             @if ((orders.data() ?? []).length === 0) {
-              <tr><td colspan="10" style="text-align:center;color:#8c8c8c;padding:22px">{{ openOnly() ? 'No open orders.' : 'No orders yet.' }}</td></tr>
+              <tr><td colspan="10" style="text-align:center;color:var(--kft-text-3);padding:22px">{{ openOnly() ? 'No open orders.' : 'No orders yet.' }}</td></tr>
             }
           </tbody>
         </nz-table>
@@ -527,7 +527,7 @@ interface Depth {
       align-items: center;
       gap: 6px;
       font-size: 12px;
-      color: #8c8c8c;
+      color: var(--kft-text-3);
     }
 
     .venue i {
@@ -546,7 +546,7 @@ interface Depth {
     }
 
     .venue small {
-      color: #8c8c8c;
+      color: var(--kft-text-3);
     }
 
     h3 {
@@ -576,7 +576,7 @@ interface Depth {
     .field label {
       display: block;
       font-size: 12px;
-      color: #8c8c8c;
+      color: var(--kft-text-3);
       margin-bottom: 3px;
     }
 
@@ -588,7 +588,7 @@ interface Depth {
 
     .est {
       margin: 10px 0;
-      color: #595959;
+      color: var(--kft-text-2);
     }
 
     .buy,
@@ -613,12 +613,12 @@ interface Depth {
     .start ol {
       margin: 0 0 14px;
       padding-left: 20px;
-      color: #595959;
+      color: var(--kft-text-2);
       line-height: 1.9;
     }
 
     .note {
-      color: #8c8c8c;
+      color: var(--kft-text-3);
       font-size: 12px;
       margin: 8px 0 0;
     }
@@ -628,8 +628,8 @@ interface Depth {
       gap: 10px;
       flex-wrap: wrap;
       align-items: flex-start;
-      background: #fafafa;
-      border: 1px solid #f0f0f0;
+      background: #fafbfc;
+      border: 1px solid var(--kft-line);
       border-radius: 8px;
       padding: 12px;
       margin-bottom: 12px;
@@ -640,7 +640,7 @@ interface Depth {
     }
 
     .pos td {
-      background: #fafafa;
+      background: #fafbfc;
     }
 
     .best {
@@ -680,7 +680,7 @@ interface Depth {
 
     .lvl.bid span:first-of-type {
       text-align: left;
-      color: #8c8c8c;
+      color: var(--kft-text-3);
     }
 
     .lvl.bid i {
@@ -694,7 +694,7 @@ interface Depth {
 
     .lvl.ask span:last-of-type {
       text-align: right;
-      color: #8c8c8c;
+      color: var(--kft-text-3);
     }
 
     .lvl.ask span:first-of-type {

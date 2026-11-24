@@ -54,9 +54,9 @@ import { InstrumentType, SLEEVE_COLORS } from './models';
                   }
                 </td>
                 <td class="num">{{ row.asset.price | price }}</td>
-                <td class="num" [class]="row.asset.change1D | tone">{{ row.asset.change1D | pct }}</td>
-                <td class="num" [class]="row.asset.change30D | tone">{{ row.asset.change30D | pct }}</td>
-                <td class="num" [class]="row.asset.changeYtd | tone">{{ row.asset.changeYtd | pct }}</td>
+                <td class="num"><span class="chip" [class]="row.asset.change1D | tone">{{ row.asset.change1D | pct }}</span></td>
+                <td class="num"><span class="chip" [class]="row.asset.change30D | tone">{{ row.asset.change30D | pct }}</span></td>
+                <td class="num"><span class="chip" [class]="row.asset.changeYtd | tone">{{ row.asset.changeYtd | pct }}</span></td>
                 @for (type of types(); track type) {
                   <td class="num" [class]="row.netByType[type] | tone">{{ row.netByType[type] === undefined ? '–' : (row.netByType[type] | usd) }}</td>
                 }
@@ -77,7 +77,7 @@ import { InstrumentType, SLEEVE_COLORS } from './models';
             }
           </tbody>
         </nz-table>
-        <div style="margin-top:10px;font-size:12px;color:#595959">
+        <div style="margin-top:10px;font-size:12px;color:var(--kft-text-2)">
           @for (sleeve of d.sleeves; track sleeve.id; let i = $index) {
             <span style="margin-right:16px"><span class="swatch" [style.background]="colors[i % colors.length]"></span>{{ sleeve.name }}</span>
           }

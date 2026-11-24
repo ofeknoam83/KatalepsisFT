@@ -28,7 +28,7 @@ interface Bucket {
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-      <span style="color:#595959;font-size:13px">Share of average daily volume we trade</span>
+      <span style="color:var(--kft-text-2);font-size:13px">Share of average daily volume we trade</span>
       <nz-segmented [nzOptions]="options" [ngModel]="participation()" (nzValueChange)="participation.set(+$event)" data-testid="participation" />
     </div>
     @if (failed()) {
@@ -140,7 +140,7 @@ interface Bucket {
       gap: 18px;
       margin-top: 10px;
       font-size: 12px;
-      color: #595959;
+      color: var(--kft-text-2);
     }
     .legend i {
       display: inline-block;
@@ -150,7 +150,7 @@ interface Bucket {
       margin-right: 6px;
     }
     .note {
-      color: #8c8c8c;
+      color: var(--kft-text-3);
       font-size: 12px;
       margin: 8px 0 0;
     }
@@ -184,11 +184,11 @@ export class LiquidityPanel {
 
   protected buckets(ladder: Ladder): Bucket[] {
     return [
-      { label: 'Within 1 day', usd: ladder.withinOneDayUsd, color: '#1f6fd0' },
-      { label: '1 to 5 days', usd: ladder.oneToFiveDaysUsd, color: '#6aa5e8' },
-      { label: '5 to 20 days', usd: ladder.fiveToTwentyDaysUsd, color: '#e08a00' },
-      { label: 'More than 20 days', usd: ladder.beyondTwentyDaysUsd, color: '#d03b3b' },
-      { label: 'No volume data', usd: ladder.unknownUsd, color: '#a3a19c' },
+      { label: 'Within 1 day', usd: ladder.withinOneDayUsd, color: '#4338ca' },
+      { label: '1 to 5 days', usd: ladder.oneToFiveDaysUsd, color: '#a5a8f0' },
+      { label: '5 to 20 days', usd: ladder.fiveToTwentyDaysUsd, color: '#f0b46a' },
+      { label: 'More than 20 days', usd: ladder.beyondTwentyDaysUsd, color: '#d9642b' },
+      { label: 'No volume data', usd: ladder.unknownUsd, color: '#c8cdd6' },
     ];
   }
 

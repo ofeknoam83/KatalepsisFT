@@ -67,7 +67,7 @@ interface StrategyKey {
               </tr>
             }
             @if (d.keys.length === 0) {
-              <tr><td colspan="6" style="text-align:center;color:#8c8c8c;padding:22px">No strategy has a key yet.</td></tr>
+              <tr><td colspan="6" style="text-align:center;color:var(--kft-text-3);padding:22px">No strategy has a key yet.</td></tr>
             }
           </tbody>
         </nz-table>
@@ -106,7 +106,7 @@ interface StrategyKey {
     }
 
     .note {
-      color: #8c8c8c;
+      color: var(--kft-text-3);
       font-size: 12px;
       margin: 8px 0 0;
     }

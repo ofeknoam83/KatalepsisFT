@@ -131,7 +131,7 @@ const TEMPLATE =
                 <td class="num">{{ p.entryPrice | price }}</td>
                 <td class="nowrap">{{ details(p) }}</td>
                 <td>{{ p.note }}</td>
-                <td class="nowrap" style="color:#8c8c8c">{{ p.updatedAt | date: 'MM-dd-yyyy HH:mm' : 'UTC' }}</td>
+                <td class="nowrap" style="color:var(--kft-text-3)">{{ p.updatedAt | date: 'MM-dd-yyyy HH:mm' : 'UTC' }}</td>
                 @if (d.canEdit) {
                   <td class="nowrap">
                     <a (click)="open(p)">Edit</a>
@@ -141,7 +141,7 @@ const TEMPLATE =
               </tr>
             }
             @if (d.positions.length === 0) {
-              <tr><td colspan="9" style="text-align:center;color:#8c8c8c;padding:28px">No positions entered by hand.</td></tr>
+              <tr><td colspan="9" style="text-align:center;color:var(--kft-text-3);padding:28px">No positions entered by hand.</td></tr>
             }
           </tbody>
         </nz-table>
@@ -177,7 +177,7 @@ const TEMPLATE =
               </tr>
             }
             @if (d.cashFlows.length === 0) {
-              <tr><td colspan="5" style="text-align:center;color:#8c8c8c;padding:20px">No cash flows.</td></tr>
+              <tr><td colspan="5" style="text-align:center;color:var(--kft-text-3);padding:20px">No cash flows.</td></tr>
             }
           </tbody>
         </nz-table>
@@ -227,7 +227,7 @@ const TEMPLATE =
   `,
   styles: `
     .note {
-      color: #8c8c8c;
+      color: var(--kft-text-3);
       font-size: 12px;
       margin: 10px 0 0;
     }

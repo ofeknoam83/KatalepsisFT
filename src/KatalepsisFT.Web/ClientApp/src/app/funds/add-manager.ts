@@ -133,7 +133,7 @@ interface ManagerForm {
     }
 
     .note {
-      color: #8c8c8c;
+      color: var(--kft-text-3);
       font-size: 12px;
       margin: 0 0 8px;
     }

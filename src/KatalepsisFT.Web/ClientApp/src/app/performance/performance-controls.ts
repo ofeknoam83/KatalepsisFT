@@ -14,9 +14,9 @@ import { Benchmark, PERIODS, PerformancePeriod } from './models';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
-      <span style="color:#8c8c8c;font-size:12px">Period</span>
+      <span style="color:var(--kft-text-3);font-size:12px">Period</span>
       <nz-segmented [nzOptions]="periods" [ngModel]="period()" (nzValueChange)="setPeriod($event)" data-testid="period" />
-      <span style="color:#8c8c8c;font-size:12px;margin-left:8px">Benchmark</span>
+      <span style="color:var(--kft-text-3);font-size:12px;margin-left:8px">Benchmark</span>
       <nz-select [ngModel]="current().id" (ngModelChange)="setBenchmark($event)" style="width:200px" data-testid="benchmark">
         @for (benchmark of benchmarks(); track benchmark.id) {
           <nz-option [nzValue]="benchmark.id" [nzLabel]="benchmark.name" />
@@ -26,7 +26,7 @@ import { Benchmark, PERIODS, PerformancePeriod } from './models';
         <nz-tag nzColor="gold">Approximation, not the official index</nz-tag>
       }
       <span style="flex:1"></span>
-      <span style="color:#8c8c8c;font-size:12px">{{ range() }}</span>
+      <span style="color:var(--kft-text-3);font-size:12px">{{ range() }}</span>
     </div>
   `,
 })
