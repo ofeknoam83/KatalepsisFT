@@ -20,7 +20,7 @@ export const appConfig: ApplicationConfig = {
     provideAnimationsAsync(),
     provideNzI18n(en_US),
     // The brand colour for every ng-zorro component; the rest of the look is in styles.less.
-    provideNzConfig({ theme: { primaryColor: '#4338ca' } }),
+    provideNzConfig({ theme: { primaryColor: '#0e7f4c' } }),
     provideStore([SessionState, ViewState]),
   ],
 };

@@ -63,7 +63,7 @@ import { LoadFunds, ViewState } from '../funds/view.state';
       flex: 0 0 30px;
       height: 30px;
       border-radius: 8px;
-      background: #ececfb;
+      background: #dff0e7;
       color: var(--kft-brand);
       display: grid;
       place-items: center;

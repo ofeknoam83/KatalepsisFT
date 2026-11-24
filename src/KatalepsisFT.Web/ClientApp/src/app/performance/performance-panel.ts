@@ -211,7 +211,7 @@ export class PerformancePanel {
     const d = this.data();
     return d
       ? [
-          { label: d.scope.name, data: d.portfolio, color: '#4338ca', width: 2.2 },
+          { label: d.scope.name, data: d.portfolio, color: '#0e7f4c', width: 2.2 },
           { label: d.benchmark.name, data: d.benchmarkSeries, color: '#98a2b3', dash: [5, 4] },
         ]
       : [];

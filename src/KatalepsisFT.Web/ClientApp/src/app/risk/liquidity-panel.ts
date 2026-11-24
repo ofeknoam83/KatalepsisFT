@@ -187,8 +187,8 @@ export class LiquidityPanel {
 
   protected buckets(ladder: Ladder): Bucket[] {
     return [
-      { label: 'Within 1 day', usd: ladder.withinOneDayUsd, color: '#4338ca' },
-      { label: '1 to 5 days', usd: ladder.oneToFiveDaysUsd, color: '#a5a8f0' },
+      { label: 'Within 1 day', usd: ladder.withinOneDayUsd, color: '#0e7f4c' },
+      { label: '1 to 5 days', usd: ladder.oneToFiveDaysUsd, color: '#8fcbab' },
       { label: '5 to 20 days', usd: ladder.fiveToTwentyDaysUsd, color: '#f0b46a' },
       { label: 'More than 20 days', usd: ladder.beyondTwentyDaysUsd, color: '#d9642b' },
       { label: 'No volume data', usd: ladder.unknownUsd, color: '#c8cdd6' },

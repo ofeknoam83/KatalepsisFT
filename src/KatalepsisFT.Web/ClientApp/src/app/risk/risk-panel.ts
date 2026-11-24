@@ -227,7 +227,7 @@ export class RiskPanel {
     let child = 0;
     return d.rollingVolatility.map((s, i) => {
       if (i === 0) {
-        return { label: s.name, data: s.values, color: '#4338ca', width: 2.4 };
+        return { label: s.name, data: s.values, color: '#0e7f4c', width: 2.4 };
       }
 
       return s.name === d.scenario.referenceAsset && i === d.rollingVolatility.length - 1

@@ -155,7 +155,7 @@ export class AssetPage {
     const p = this.performance();
     return p
       ? [
-          { label: p.symbol, data: p.asset, color: '#4338ca', width: 2.2 },
+          { label: p.symbol, data: p.asset, color: '#0e7f4c', width: 2.2 },
           { label: p.benchmark.name, data: p.benchmarkSeries, color: '#98a2b3', dash: [5, 4] },
         ]
       : [];
