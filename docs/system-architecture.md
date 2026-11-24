@@ -20,55 +20,66 @@ Paths are relative to this repository. Paths that start with `Katalepsis:` are i
 ## The Katalepsis foundation
 
 ```mermaid
-%%{init: {"flowchart": {"rankSpacing": 34, "nodeSpacing": 14}}}%%
+%%{init: {"flowchart": {"rankSpacing": 30, "nodeSpacing": 14}}}%%
 flowchart LR
-    subgraph UI["Screens — 173 components"]
+    subgraph UI["Screens — Angular 21"]
         direction TB
-        u1[Eight bot consoles] ~~~ u2[Portfolios and balances] ~~~ u3[Wallets and trade history] ~~~ u4[Positions and options] ~~~ u5[RIA platform] ~~~ u6[Client portal] ~~~ u7[Strategy research] ~~~ u8[Analytics, PnL, reports]
+        u1[Eight bot consoles] ~~~ u2[Portfolios and balances] ~~~ u3[Wallets and trade history] ~~~ u4[Positions and options] ~~~ u5[RIA platform] ~~~ u6[Client portal] ~~~ u7[Strategy research] ~~~ u8[Analytics, PnL, reports] ~~~ u9[Shared by all screens<br/>ng-zorro 21 · NGXS 21 · Chart.js 4<br/>ethers 6 · OIDC client · RxJS 7]
     end
-    subgraph EP["Entry points"]
+    subgraph EP["Entry points — .NET 8"]
         direction TB
-        e1[Rest API<br/>40 controllers<br/>236 endpoints] ~~~ e2[171 MediatR<br/>handlers] ~~~ e3[Horizen.Auth<br/>OpenIddict server] ~~~ e4[23 scheduled jobs<br/>PnL, metrics,<br/>reports, alarms]
-    end
-    subgraph WK["Worker containers"]
-        direction TB
-        w1[TradingEngine] ~~~ w2[MarketBot] ~~~ w3[TradeAnalytics] ~~~ w4[WalletEventProcessor] ~~~ w5[PerpetualPositionsWatcher] ~~~ w6[RiaExecutionWorker] ~~~ w7[StrategyResearchWorker] ~~~ w8[Kaiko sync Lambda] ~~~ w9[CoinMarketCap scraper]
-    end
-    subgraph BOT["Bots — 16,700 lines"]
-        direction TB
-        b1[Avellaneda market making] ~~~ b2[Cross-exchange market making] ~~~ b3[AMM arbitrage] ~~~ b4[Triangle arbitrage] ~~~ b5[Veto arbitrage] ~~~ b6[DAO rebalancing] ~~~ b7[DIAMM market making] ~~~ b8[DIAMM V2]
-    end
-    subgraph SV["Application services"]
-        direction TB
-        s1[Markets — 15,100 lines<br/>one trading service per<br/>venue and market type] ~~~ s2[Metrics — 8,500] ~~~ s3[Positions watchers — 7,100] ~~~ s4[Portfolio and fix-balance — 5,300] ~~~ s5[Balance and history — 2,400] ~~~ s6[Announcements] ~~~ s7[Market info and data] ~~~ s8[Options watcher] ~~~ s9[Wallet credentials] ~~~ s10[News and newsletter]
+        e1[Rest API · 40 controllers, 236 endpoints<br/>ASP.NET Core 8 · Swagger · JWT] ~~~ e2[171 request handlers<br/>MediatR 12 · AutoMapper 14] ~~~ e3[Horizen.Auth sign-in server<br/>OpenIddict 5.8 · ASP.NET Identity · Google sign-in] ~~~ e4[23 scheduled jobs<br/>Quartz.NET 3.18] ~~~ e5[Logging<br/>Serilog · AWS.Logger]
     end
     subgraph RIA["Horizen.Ria — 19,600 lines"]
         direction TB
-        r1[Target engine and models] ~~~ r2[Proposals and execution] ~~~ r3[Account valuation] ~~~ r4[Backtests] ~~~ r5[Firms, accounts, platform] ~~~ r6[Venue and wallet gateways]
+        r1[Target engine and models] ~~~ r2[Proposals and execution] ~~~ r3[Account valuation] ~~~ r4[Backtests] ~~~ r5[Firms, accounts, platform] ~~~ r6[Venue and wallet gateways] ~~~ r7[Built on<br/>.NET 8 · MediatR 12<br/>EF Core 8 on MySQL]
     end
-    subgraph VC["Venue, chain and custody clients"]
+    subgraph WK["Workers — .NET 8 in Docker"]
         direction TB
-        v1[Binance · spot, perp, testnet] ~~~ v2[Bybit · spot, perp, demo] ~~~ v3[OKX · spot, perp, demo] ~~~ v4[KuCoin · spot, perp] ~~~ v5[Coinbase · Exchange, Prime, Pro] ~~~ v6[MEXC · Bitstamp] ~~~ v7[Deribit · options] ~~~ v8[Uniswap · Uniswap v4 · Aerodrome] ~~~ v9[On-chain reader] ~~~ v10[Fireblocks · Utila]
+        w1[TradingEngine<br/>SQS · DynamoDB · Redis · MySQL] ~~~ w2[MarketBot<br/>hosted service] ~~~ w3[TradeAnalytics<br/>SQS · EF Core] ~~~ w4[WalletEventProcessor<br/>SQS · DynamoDB] ~~~ w5[PerpetualPositionsWatcher<br/>venue WebSockets · Redis · Serilog] ~~~ w6[RiaExecutionWorker<br/>EF Core on MySQL] ~~~ w7[StrategyResearchWorker<br/>SQS · EF Core] ~~~ w8[Kaiko sync<br/>AWS Lambda · Athena · S3] ~~~ w9[CoinMarketCap scraper<br/>Selenium · ChromeDriver]
     end
-    subgraph EXT["Data and outside services"]
+    subgraph BOT["Bots — 16,700 lines of C#"]
         direction TB
-        x1[Kaiko] ~~~ x2[CoinMarketCap] ~~~ x3[CoinGecko] ~~~ x4[OpenAI] ~~~ x5[Twitter · RSS] ~~~ x6[Google Drive] ~~~ x7[Email · Slack]
+        b1[Avellaneda market making] ~~~ b2[Cross-exchange market making] ~~~ b3[AMM arbitrage] ~~~ b4[Triangle arbitrage] ~~~ b5[Veto arbitrage] ~~~ b6[DAO rebalancing] ~~~ b7[DIAMM market making] ~~~ b8[DIAMM V2] ~~~ b9[All in the Application project<br/>run by the<br/>MarketBot worker]
     end
-    subgraph ST["Stores and AWS"]
+    subgraph SV["Application services — C#, EF Core 8"]
         direction TB
-        t1[(MySQL<br/>83 tables<br/>103 migrations)] ~~~ t2[(Redis)] ~~~ t3[SQS queues] ~~~ t4[SNS] ~~~ t5[S3] ~~~ t6[DynamoDB] ~~~ t7[Athena] ~~~ t8[KMS] ~~~ t9[Secrets Manager] ~~~ t10[ECS]
+        s1[Markets — 15,100 lines<br/>one trading service per venue and market type] ~~~ s2[Metrics — 8,500] ~~~ s3[Positions watchers — 7,100<br/>venue WebSockets · Redis] ~~~ s4[Portfolio and fix-balance — 5,300] ~~~ s5[Balance and history — 2,400] ~~~ s6[Announcements<br/>HtmlAgilityPack · headless Chromium] ~~~ s7[Market info and data] ~~~ s8[Options watcher] ~~~ s9[Wallet credentials<br/>AWS KMS] ~~~ s10[News and newsletter<br/>OpenAI · RSS · Gmail] ~~~ s11[Reports and exports, in handlers and jobs<br/>ClosedXML · CsvHelper · PdfPig]
     end
     UI --> EP --> RIA
     RIA ~~~ WK
-    WK --> BOT --> SV --> VC
-    VC ~~~ EXT ~~~ ST
+    WK --> BOT --> SV
 ```
 
-*What Katalepsis does, as building blocks. Read left to right: screens call the API and the RIA platform; worker containers run the bots, which trade through the application services and their venue clients; everything rests on the stores and AWS services at the right. The API also calls the application services directly, and every block uses the stores; those arrows are left out to keep the map readable.*
+*Katalepsis, the application: what it does and what each block is built with. Read left to right: screens call the API and the RIA platform; worker containers run the bots, which trade through the application services. The API also calls the application services directly; that arrow is left out to keep the map readable. Technology is named on a block where it is particular to it, and once per group where the whole group shares it.*
+
+```mermaid
+%%{init: {"flowchart": {"rankSpacing": 30, "nodeSpacing": 14}}}%%
+flowchart LR
+    subgraph VC["Venue, chain and custody clients"]
+        direction TB
+        v1[Binance · spot, perp, testnet<br/>Binance.Net 12.11] ~~~ v2[Bybit · spot, perp, demo<br/>Bybit.Net 6.10] ~~~ v3[OKX · spot, perp, demo<br/>JK.OKX.Net 4.10] ~~~ v4[KuCoin · spot, perp<br/>Kucoin.Net 8.10] ~~~ v5[Coinbase · Exchange, Prime, Pro<br/>Coinbase.Pro 4.2 · hand-written REST] ~~~ v6[MEXC<br/>JK.Mexc.Net 4.9] ~~~ v7[Bitstamp<br/>hand-written REST] ~~~ v8[Deribit · options<br/>hand-written over WebSocket4Net] ~~~ v9[Uniswap · Uniswap v4 · Aerodrome<br/>Nethereum 5.8] ~~~ v10[On-chain reader<br/>Nethereum.Web3] ~~~ v11[Fireblocks · Utila<br/>REST clients]
+    end
+    subgraph EXT["Data and outside services"]
+        direction TB
+        x1[Kaiko<br/>REST] ~~~ x2[CoinMarketCap<br/>REST · scraper] ~~~ x3[CoinGecko<br/>REST] ~~~ x4[OpenAI<br/>Betalgo.OpenAI 8.7] ~~~ x5[Twitter · RSS<br/>LinqToTwitter · FeedReader] ~~~ x6[Google<br/>Drive · Gmail · Cloud Language] ~~~ x7[Email · SMS · Slack<br/>SendGrid · Plivo · webhook]
+    end
+    subgraph ST["Data stores"]
+        direction TB
+        t1[MySQL<br/>83 tables · 103 migrations<br/>Pomelo EF Core 8] ~~~ t2[Redis<br/>StackExchange.Redis] ~~~ t3[DynamoDB<br/>state, lock and cache tables] ~~~ t4[S3 · four buckets<br/>research, news, backups, Kaiko results] ~~~ t5[Athena<br/>queries over Kaiko data]
+    end
+    subgraph AWS["AWS — ap-northeast-1"]
+        direction TB
+        a1[ECS cluster<br/>runs the worker containers] ~~~ a2[ECR repository<br/>seven images · dev, staging, production] ~~~ a3[SQS · eight queues<br/>bot operations, wallets, order analytics,<br/>alarms, notifications, research runs] ~~~ a4[SNS · two topics<br/>wallet events, notifications] ~~~ a5[KMS key<br/>wallet credential encryption] ~~~ a6[Secrets Manager<br/>production configuration] ~~~ a7[Lambda<br/>Kaiko sync] ~~~ a8[CloudWatch Logs<br/>AWS.Logger] ~~~ a9[GitHub Actions<br/>build, test, push to ECR]
+    end
+    VC ~~~ EXT ~~~ ST ~~~ AWS
+```
+
+*Katalepsis, what it connects to and runs on: the venue, chain and custody clients with the library behind each; the outside data and messaging services; the data stores; and the AWS resources it is deployed on. Every block on the first map uses some of these.*
 
 **Katalepsis FT stands on Katalepsis.** It has no runtime link to it — separate repository, database and hosting, with code copied rather than referenced (`docs/plan.md` §1) — but what made this system possible is the accumulated work inside Katalepsis: a very large, very intricate trading platform whose calculations, venue knowledge and hard-won lessons were carried over. The measurements below show how much is in there, and why it had to be distilled into a new system rather than extended.
 
-**What Katalepsis does.** It is a full trading platform, and the map above shows 72 of its building blocks in nine groups:
+**What Katalepsis does.** It is a full trading platform, and the two maps above show 82 of its building blocks in ten groups, each with the technology it is built on:
 
 - **Eight kinds of trading bot** (`Katalepsis:Domain/Enums/BotTypeCode.cs`): Avellaneda, cross-exchange and two generations of DIAMM market making; AMM, triangle and veto arbitrage; DAO rebalancing.
 - **Trading on centralised and decentralised venues**: Binance, Bybit, OKX, KuCoin, Coinbase (Exchange, Prime and Pro), MEXC, Bitstamp and Deribit, plus Uniswap, Uniswap v4 and Aerodrome, with custody through Fireblocks and Utila.
@@ -76,6 +87,35 @@ flowchart LR
 - **An RIA platform** (`Katalepsis:Horizen.Ria/`) with model portfolios, proposals, execution, account valuation and backtests.
 - **Strategy research, market data, announcements and news**, drawing on Kaiko, CoinMarketCap, CoinGecko and OpenAI.
 - **Seven worker containers, a Lambda function and a scraper**, on eight AWS services, behind its own sign-in server.
+
+**Its technology and cloud resources.** Read from the project files, settings and deployment scripts at commit `9847e4f`:
+
+| Layer | Technology | Where it is declared |
+|---|---|---|
+| Client | Angular 21, ng-zorro 21, NGXS 21, Chart.js 4, ethers 6, angular-auth-oidc-client, RxJS 7 | `Katalepsis:Rest/ClientApp/package.json` |
+| API and jobs | ASP.NET Core 8, MediatR 12, AutoMapper 14, Quartz.NET 3.18, Swagger, Serilog | `Katalepsis:Rest/Rest.csproj`, `Katalepsis:Application/Application.csproj` |
+| Sign-in | A separate server: OpenIddict 5.8, ASP.NET Identity, Google sign-in | `Katalepsis:Horizen.Auth/Horizen.Auth.csproj` |
+| Data access | EF Core 8 with the Pomelo MySQL provider; StackExchange.Redis | `Katalepsis:Persistence/Persistence.csproj`, `Katalepsis:TradingEngine/TradingEngine.csproj` |
+| Exchange libraries | Binance.Net 12.11, Bybit.Net 6.10, Kucoin.Net 8.10, JK.OKX.Net 4.10, JK.Mexc.Net 4.9, Coinbase.Pro 4.2; Deribit hand-written over WebSocket4Net | `Katalepsis:Infrastructure/Infrastructure.csproj` |
+| On-chain | Nethereum 5.8 (Web3, Contracts, ABI, Uniswap) | `Katalepsis:Infrastructure/Infrastructure.csproj` |
+| Outside services | Betalgo.OpenAI, LinqToTwitter, FeedReader, Google Drive, Gmail and Cloud Language, SendGrid, Plivo, Selenium, headless Chromium | `Katalepsis:Application/Application.csproj`, `Katalepsis:Infrastructure.Notifications/Infrastructure.Notifications.csproj`, `Katalepsis:CoinmarketcapScrapper/CoinmarketcapScrapper.csproj` |
+| Containers | Seven Dockerfiles on `dotnet/aspnet:8.0`, each with development, staging and production targets | `Katalepsis:TradingEngine/Dockerfile` and its six siblings |
+
+| AWS resource | What Katalepsis uses it for | Where it is declared |
+|---|---|---|
+| ECS cluster and ECR repository, region `ap-northeast-1` | Runs the worker containers; holds their images | `Katalepsis:build-push-docker-staging.ps1`, `Katalepsis:CLAUDE.md` |
+| SQS, eight queues | `botOperationProcessing`, `fboProcessing`, `connectWallet`, `walletMessages`, `orderAnalyticsProcessing`, `notificationMessages`, `serviceAlarms`, `strategyResearchRuns` | `Katalepsis:LocalStack/init/init-aws.sh` |
+| SNS, two topics | Wallet events and notifications | `Katalepsis:LocalStack/init/init-aws.sh` |
+| S3, four buckets | Strategy research, news, backups, Kaiko results | `AWSOptions` across the `appsettings*.json` files, for example `Katalepsis:Rest/appsettings.json` |
+| DynamoDB | State, lock and cache tables for the trading engine and the wallet processor | `Katalepsis:LocalStack/init/init-aws.sh`, `Katalepsis:TradingEngine/TradingEngine.csproj` |
+| Athena | Queries over Kaiko market data | `Katalepsis:KaikoSyncAWSLambda/KaikoSyncAWSLambda.csproj` |
+| Lambda | The Kaiko sync function | `Katalepsis:KaikoSyncAWSLambda/Function.cs` |
+| KMS | The key that encrypts wallet credentials | `Katalepsis:Application/Services/AWS/MarketKms.cs` |
+| Secrets Manager | Production configuration | `Katalepsis:Infrastructure.SecretsManager/Infrastructure.SecretsManager.csproj` |
+| CloudWatch Logs | Logs from every service through AWS.Logger | `Katalepsis:Rest/Rest.csproj` |
+| GitHub Actions | Build, test and push to ECR | `Katalepsis:.github/workflows/dotnet-staging.yml` |
+
+Katalepsis FT replaces all of this with one image on Render, Postgres and one Key Value store (section 6).
 
 **How large and intricate Katalepsis is.** Measured at commit `9847e4f`, next to this system:
 
@@ -184,12 +224,12 @@ flowchart LR
     S[Strategy program<br/>holds a strategy key]
 
     subgraph Render["Render, Frankfurt — private network"]
-        W[Web service ×2<br/>API + Angular app]
-        X[Execution service<br/>order engine, book, key vault]
-        M[Monitoring workers<br/>cefi · defi · core]
-        J[Jobs<br/>pre-release + daily]
-        DB[(Postgres<br/>system of record)]
-        KV[(Key Value<br/>latest books, signals)]
+        W[Web service ×2<br/>ASP.NET Core 8 + Angular 21<br/>Render web service]
+        X[Execution service<br/>order engine, book, key vault<br/>.NET 8 · Render worker]
+        M[Monitoring workers<br/>cefi · defi · core<br/>.NET 8 · three Render workers]
+        J[Jobs<br/>pre-release + daily<br/>.NET 8 · Render cron job]
+        DB[(Postgres 17<br/>system of record<br/>EF Core 8 · Render Postgres)]
+        KV[(Key Value · Valkey 8<br/>latest books, signals<br/>Render Key Value)]
     end
 
     VEN[11 trading venues]
