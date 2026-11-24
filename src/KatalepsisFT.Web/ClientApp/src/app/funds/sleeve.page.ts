@@ -1,6 +1,8 @@
 import { DecimalPipe } from '@angular/common';
 import { Coin } from '../shared/coin';
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { Store } from '@ngxs/store';
+import { ViewState } from './view.state';
 import { RouterLink } from '@angular/router';
 import { NzAlertModule } from 'ng-zorro-antd/alert';
 import { NzTableModule } from 'ng-zorro-antd/table';
@@ -102,7 +104,7 @@ function heat(value: number, max: number): Record<string, string> {
           </div>
           <div class="cols">
             <div class="panel">
-              <h3>Mandate</h3>
+              <h3>Mandate @if (filter() !== 'All') {<span class="hint">Limits are checked on the whole book. Set the filter at the top to All to see them.</span>}</h3>
               <nz-table #checks [nzData]="mandate()" [nzShowPagination]="false" [nzFrontPagination]="false" nzSize="small">
                 <thead><tr><th>Rule</th><th class="num">Current</th><th class="num">Limit</th><th>Status</th></tr></thead>
                 <tbody>
@@ -275,9 +277,11 @@ export class SleevePage {
   private readonly api = inject(FundsApi);
   protected readonly page = pageData((params, filter) => this.api.sleeve(Number(params.get('sleeveId')), filter));
   protected readonly managerScale = computed(() => Math.max(1, ...(this.page.data()?.managers ?? []).flatMap((m: ManagerRow) => [m.totals.longUsd, -m.totals.shortUsd])));
+  protected readonly filter = inject(Store).selectSignal(ViewState.filter);
+  /** Only for the whole book: with one instrument type picked, exposure is that type's alone and a limit would look kept when it is not. */
   protected readonly mandate = computed(() => {
     const d = this.page.data();
-    return d ? checks(d) : [];
+    return d && this.filter() === 'All' ? checks(d) : [];
   });
   private readonly matrixMax = computed(() => Math.max(1, ...(this.page.data()?.assets ?? []).flatMap((a) => a.holders.map((h) => Math.abs(h.netUsd)))));
 

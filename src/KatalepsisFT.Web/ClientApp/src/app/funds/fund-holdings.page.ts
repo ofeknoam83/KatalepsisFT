@@ -48,7 +48,7 @@ import { InstrumentType, SLEEVE_COLORS } from './models';
             @for (row of assets.data; track row.asset.symbol) {
               <tr>
                 <td class="nowrap">
-                  <app-coin [symbol]="row.asset.symbol" /><a [routerLink]="['/funds', d.fund.id, 'assets', row.asset.symbol]"><b>{{ row.asset.symbol }}</b></a>
+                  <app-coin [symbol]="row.asset.symbol" [type]="row.netByType['Equity'] !== undefined ? 'Equity' : null" /><a [routerLink]="['/funds', d.fund.id, 'assets', row.asset.symbol]"><b>{{ row.asset.symbol }}</b></a>
                   @if (row.hasOffsettingManagers) {
                     <nz-tag nzColor="gold" style="margin-left:6px">Both sides</nz-tag>
                   }

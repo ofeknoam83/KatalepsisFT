@@ -113,7 +113,11 @@ const WHEN_LABEL: Record<ReportFrequency, string> = { Daily: 'Every day', Weekly
                       }
                     </td>
                     <td class="nowrap">
-                      <a (click)="run(http.post('/api/report-schedules/' + row.id + '/send', {}), 'Sent to ' + row.recipients + '.')" [attr.data-testid]="'send-' + row.id">Send now</a>
+                      @if (sendingId() === row.id) {
+                        <span style="color:var(--kft-text-3)">Sending…</span>
+                      } @else {
+                        <a (click)="sendNow(row.id, row.recipients)" [attr.data-testid]="'send-' + row.id">Send now</a>
+                      }
                       <a style="margin-left:12px" (click)="run(http.put('/api/report-schedules/' + row.id, { kind: row.kind, frequency: row.frequency, hourUtc: row.hourUtc, recipients: row.recipients, isEnabled: !row.isEnabled }), row.isEnabled ? 'Paused.' : 'Switched on.')">{{ row.isEnabled ? 'Pause' : 'Switch on' }}</a>
                       <a style="margin-left:12px;color:#cf1322" nz-popconfirm nzPopconfirmTitle="Remove this schedule?" nzOkText="Remove" (nzOnConfirm)="run(http.delete('/api/report-schedules/' + row.id), 'Schedule removed.')">Remove</a>
                     </td>
@@ -211,6 +215,31 @@ export class FundReportsPage {
       if (this.recipients() === sent) {
         this.recipients.set('');
       }
+    });
+  }
+
+  /** The schedule whose report is being sent right now, so a second click cannot send it twice. */
+  protected readonly sendingId = signal<number | null>(null);
+
+  protected sendNow(id: number, recipients: string): void {
+    if (this.sendingId() !== null) {
+      return;
+    }
+
+    this.sendingId.set(id);
+    this.http.post('/api/report-schedules/' + id + '/send', {}).subscribe({
+      next: () => {
+        this.sendingId.set(null);
+        this.error.set(null);
+        this.saved.set('Sent to ' + recipients + '.');
+        this.version.update((v) => v + 1);
+      },
+      error: (e: { error?: { message?: string } }) => {
+        this.sendingId.set(null);
+        this.saved.set(null);
+        this.error.set(e.error?.message ?? 'That did not work. Try again.');
+        this.version.update((v) => v + 1);
+      },
     });
   }
 

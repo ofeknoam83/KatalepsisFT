@@ -12,6 +12,7 @@ import { ExposureBar } from '../shared/exposure-bar';
 import { FORMAT_PIPES } from '../shared/format';
 import { pageData } from '../shared/page-data';
 import { Store } from '@ngxs/store';
+import { ViewState } from './view.state';
 import { SessionState } from '../core/session.state';
 import { ManualBookPanel } from '../manual/manual-book';
 import { PerformancePanel } from '../performance/performance-panel';
@@ -49,7 +50,7 @@ import { FundsApi } from './funds.api';
         <nz-tab nzTitle="Positions">
       <div class="panel">
         <h3>Positions <span class="hint">Click an instrument to see the asset across the fund</span></h3>
-        <nz-table #positions [nzData]="d.positions" [nzShowPagination]="false" [nzFrontPagination]="false" nzSize="small" [nzScroll]="{ x: '1500px' }">
+        <nz-table #positions [nzData]="shown()" [nzShowPagination]="false" [nzFrontPagination]="false" nzSize="small" [nzScroll]="{ x: '1500px' }">
           <thead>
             <tr>
               <th nzWidth="150px">Instrument</th><th>Type</th><th>Side</th><th class="num">Quantity</th><th class="num">Entry</th><th class="num">Mark</th><th class="num">Exposure</th>
@@ -60,7 +61,7 @@ import { FundsApi } from './funds.api';
             @for (row of positions.data; track row.instrument) {
               <tr>
                 <td class="nowrap">
-                  <app-coin [symbol]="row.asset" />
+                  <app-coin [symbol]="row.asset" [type]="row.type" />
                   @if (row.type === 'Cash') {
                     {{ row.instrument }}
                   } @else {
@@ -158,7 +159,13 @@ export class ManagerPage {
   protected readonly startTab = { keys: 4, manual: 5, history: 6 }[inject(ActivatedRoute).snapshot.queryParamMap.get('tab') ?? ''] ?? 0;
 
   protected readonly page = pageData((params, filter) => this.api.manager(Number(params.get('managerId')), filter));
-  protected readonly unrealised = computed(() => (this.page.data()?.positions ?? []).reduce((sum, p) => sum + p.unrealizedPnlUsd, 0));
+  private readonly filter = inject(Store).selectSignal(ViewState.filter);
+  /** The positions of the instrument type picked at the top, so the rows agree with the total under them. Cash is always shown. */
+  protected readonly shown = computed(() => {
+    const filter = this.filter();
+    return (this.page.data()?.positions ?? []).filter((p) => filter === 'All' || p.type === 'Cash' || (filter === 'TradFi' ? p.type === 'Equity' || p.type === 'Future' : p.type === filter));
+  });
+  protected readonly unrealised = computed(() => this.shown().reduce((sum, p) => sum + p.unrealizedPnlUsd, 0));
   protected readonly scale = computed(() => Math.max(1, ...(this.page.data()?.assets ?? []).flatMap((a) => [a.longUsd, -a.shortUsd])));
   protected readonly abs = Math.abs;
 

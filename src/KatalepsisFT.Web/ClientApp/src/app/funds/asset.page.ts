@@ -74,7 +74,7 @@ import { SLEEVE_COLORS } from './models';
                   <td>{{ position.instrument }}</td>
                   <td><nz-tag>{{ position.type }}</nz-tag></td>
                   <td><nz-tag [nzColor]="position.exposureUsd >= 0 ? 'green' : 'geekblue'">{{ position.exposureUsd >= 0 ? 'Long' : 'Short' }}</nz-tag></td>
-                  <td class="num">{{ abs(position.quantity) | number: '1.0-0' }}</td>
+                  <td class="num">{{ abs(position.quantity) | number: (abs(position.quantity) >= 1000 ? '1.0-0' : '1.0-4') }}</td>
                   <td class="num" [class]="position.exposureUsd | tone">{{ position.exposureUsd | usd: 2 }}</td>
                   <td class="num">{{ abs(position.exposureUsd) | share: position.managerNavUsd }}</td>
                   <td class="num">{{ abs(position.exposureUsd) | share: sleeve.sleeveNavUsd }}</td>

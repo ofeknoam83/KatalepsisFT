@@ -905,11 +905,25 @@ export class FundTradingPage {
     this.place({ tradingAccountId: accountId, managerId: null, asset, instrumentType: type, side: quantity > 0 ? 'Sell' : 'Buy', type: 'Market', timeInForce: 'ImmediateOrCancel', quantity: Math.abs(quantity), limitPrice: null, reduceOnly: type === 'Perp' });
   }
 
+  /** The order being sent and the name it goes under, kept until the server has answered for it. */
+  private attempt: { what: string; name: string } | null = null;
+
   private place(order: Record<string, unknown>): void {
+    // A second click while the first is still on its way does nothing.
+    if (this.sending()) {
+      return;
+    }
+
     this.sending.set(true);
-    // The name makes a repeated send (a double click, a retry after a lost answer) the same order, not a second one.
-    const body = { ...order, clientOrderId: `ui-${crypto.randomUUID()}` };
-    this.run(this.http.post<Answer>('/api/orders', body), `${order['side']} ${order['quantity']} ${order['asset']} sent.`, () => this.sending.set(false));
+    // The name makes a repeated send the same order, not a second one. It is kept until the server answers: if the
+    // answer is lost and the same order is sent again, it goes under the same name and the server returns the first.
+    const what = JSON.stringify(order);
+    if (this.attempt?.what !== what) {
+      this.attempt = { what, name: `ui-${crypto.randomUUID()}` };
+    }
+
+    const body = { ...order, clientOrderId: this.attempt.name };
+    this.run(this.http.post<Answer>('/api/orders', body), `${order['side']} ${order['quantity']} ${order['asset']} sent.`, () => this.sending.set(false), () => (this.attempt = null));
   }
 
   protected pull(fundId: number): void {

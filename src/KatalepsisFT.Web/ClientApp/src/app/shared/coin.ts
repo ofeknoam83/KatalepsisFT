@@ -40,6 +40,8 @@ import { COIN_ICONS } from './coin-list';
 })
 export class Coin {
   readonly symbol = input.required<string>();
+  /** What kind of instrument it is, where the caller knows. A share is never given a token's logo, even when a token has the same letters (META, CAT, T). */
+  readonly type = input<string | null>(null);
 
   /**
    * The icon file for this symbol, or null when there is none. Hyperliquid quotes some coins per thousand and puts
@@ -47,12 +49,17 @@ export class Coin {
    */
   protected readonly file = computed(() => {
     const symbol = this.symbol().toUpperCase();
+    if (this.type() === 'Equity') {
+      return null;
+    }
+
     if (COIN_ICONS.has(symbol)) {
       return symbol;
     }
 
-    // Only a small k followed by capitals is read this way, so KAVA or KAITO are never mistaken for it.
-    return /^k[A-Z0-9]{2,}$/.test(this.symbol()) && COIN_ICONS.has(symbol.slice(1)) ? symbol.slice(1) : null;
+    // Symbols arrive in capitals, so this is a K followed by a coin that has an icon of its own. A coin whose own
+    // name starts with K (KAS, KAVA) was found above and never gets here.
+    return /^K[A-Z0-9]{3,}$/.test(symbol) && COIN_ICONS.has(symbol.slice(1)) ? symbol.slice(1) : null;
   });
   protected readonly letters = computed(() => this.symbol().slice(0, 4).toUpperCase());
 }

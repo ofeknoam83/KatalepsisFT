@@ -1,4 +1,4 @@
-import { DestroyRef, Signal, inject, signal } from '@angular/core';
+import { DestroyRef, Signal, computed, inject, signal } from '@angular/core';
 import { toObservable } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, ParamMap } from '@angular/router';
 import { Store } from '@ngxs/store';
@@ -105,5 +105,8 @@ export function keptData<K, T>(key: Observable<K>, reload: Observable<unknown>, 
 export function pageData<T>(load: (params: ParamMap, filter: InstrumentFilter) => Observable<T>): PageData<T> {
   const route = inject(ActivatedRoute);
   const store = inject(Store);
-  return keptData(combineLatest([route.paramMap, store.select(ViewState.filter)]), toObservable(inject(LiveService).tick), ([params, filter]) => load(params, filter));
+  const loaded = keptData(combineLatest([route.paramMap, store.select(ViewState.filter)]), toObservable(inject(LiveService).tick), ([params, filter]) => load(params, filter));
+  // A whole page that is not there (a removed fund, an unknown asset) says so the same way as one that failed to
+  // load; only the panels inside a page tell the two apart.
+  return { data: loaded.data, failed: computed(() => loaded.failed() || loaded.missing()), missing: loaded.missing };
 }
