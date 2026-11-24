@@ -19,9 +19,10 @@ using StackExchange.Redis;
 //   migrate  brings the database schema up to date, creates the roles and, when the system has no user, the first Admin
 //   demo     loads daily prices, brings the demo fund up to the latest day with prices and evaluates its alert rules
 //   deploy   migrate, then demo; run by Render before each deploy. A failure of the demo step does not stop the deploy.
-const string Usage = "Usage: KatalepsisFT.Jobs check | migrate | demo | deploy";
+//   reset-password <email>   gives that account a temporary password and prints it; for when nobody can sign in to do it
+const string Usage = "Usage: KatalepsisFT.Jobs check | migrate | demo | deploy | reset-password <email>";
 string command = args.Length > 0 ? args[0] : string.Empty;
-if (command is not ("check" or "migrate" or "demo" or "deploy"))
+if (command is not ("check" or "migrate" or "demo" or "deploy" or "reset-password") || (command == "reset-password" && args.Length != 2))
 {
     Console.Error.WriteLine(Usage);
     return 2;
@@ -51,6 +52,7 @@ if (!hasPostgres)
 services.AddPersistence();
 services.AddFtIdentityCore();
 services.AddScoped<InitialAdminSeeder>();
+services.AddScoped<PasswordRecovery>();
 services.AddMarketData();
 services.AddScoped<PriceBackfillService>();
 services.AddScoped<DemoFundSeeder>();
@@ -63,6 +65,13 @@ services.AddSingleton(TimeProvider.System);
 // build's own run of this program, not the release it would otherwise break half way through.
 await using ServiceProvider provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
 await using AsyncServiceScope scope = provider.CreateAsyncScope();
+
+if (command == "reset-password")
+{
+    string? temporary = await scope.ServiceProvider.GetRequiredService<PasswordRecovery>().ResetAsync(args[1], CancellationToken.None);
+    Console.WriteLine(temporary is null ? "There is no account with that email." : $"Temporary password: {temporary}  It must be changed at the next sign-in.");
+    return temporary is null ? 1 : 0;
+}
 
 if (command == "demo")
 {
