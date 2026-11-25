@@ -6,7 +6,13 @@ namespace KatalepsisFT.Analytics.Performance;
 public sealed record BenchmarkComparison(double ExcessReturn, double? Beta, double? Correlation, double? TrackingError, double? InformationRatio)
 {
     /// <summary>
-    /// Excess return is the difference of the two compounded returns. Beta is covariance over benchmark variance. Tracking
+    /// The fewest daily returns from which beta and correlation are worked out. With fewer the answer is noise: two days
+    /// always give a correlation of exactly 1 or -1, and a beta of any size. The risk page uses the same number.
+    /// </summary>
+    public const int MinDaysForBeta = 20;
+
+    /// <summary>
+    /// Excess return is the difference of the two compounded returns. Beta is covariance of the daily returns over the benchmark's variance. Tracking
     /// error is the annualised standard deviation of the daily return differences (365-day year, as everywhere else).
     /// The information ratio is the annualised mean daily difference over the tracking error.
     /// </summary>
@@ -38,10 +44,12 @@ public sealed record BenchmarkComparison(double ExcessReturn, double? Beta, doub
         varianceP /= n - 1;
         varianceB /= n - 1;
 
-        // A series that does not move has no beta against it and no correlation with anything.
+        // A series that does not move has no beta against it and no correlation with anything, and neither does a
+        // history too short to tell.
         const double Flat = 1e-18;
-        double? beta = varianceB > Flat ? covariance / varianceB : null;
-        double? correlation = varianceB > Flat && varianceP > Flat ? covariance / Math.Sqrt(varianceP * varianceB) : null;
+        bool enough = n >= MinDaysForBeta;
+        double? beta = enough && varianceB > Flat ? covariance / varianceB : null;
+        double? correlation = enough && varianceB > Flat && varianceP > Flat ? covariance / Math.Sqrt(varianceP * varianceB) : null;
 
         double[] differences = portfolio.Zip(benchmark, (p, b) => p - b).ToArray();
         double trackingError = Indicators.StdDev(differences) * Math.Sqrt(Indicators.DaysPerYear);

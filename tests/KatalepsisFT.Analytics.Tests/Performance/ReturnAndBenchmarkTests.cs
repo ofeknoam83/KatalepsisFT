@@ -80,10 +80,30 @@ public class BenchmarkComparisonTests
 {
     private static readonly double[] Benchmark = [0.02, -0.01, 0.03, -0.02, 0.01, 0.00, -0.015, 0.025];
 
+    // Beta and correlation need enough days to mean anything, so these use a longer series.
+    private static readonly double[] Long = [.. Benchmark, .. Benchmark, .. Benchmark];
+
+    [Fact]
+    public void TooFewDays_GiveNoBetaOrCorrelation()
+    {
+        // Two days always line up perfectly, whatever the two series are: correlation 1 and a beta of any size.
+        // That is what a fund two days old showed: "132.86 / 1.00".
+        BenchmarkComparison two = BenchmarkComparison.Compute([0.0531, 0.0001], [0.0004, 0.0000]);
+        two.Beta.ShouldBeNull();
+        two.Correlation.ShouldBeNull();
+        two.ExcessReturn.ShouldBeGreaterThan(0.0);
+
+        double[] almost = Long[..(BenchmarkComparison.MinDaysForBeta - 1)];
+        BenchmarkComparison.Compute(almost, almost).Beta.ShouldBeNull();
+
+        double[] enough = Long[..BenchmarkComparison.MinDaysForBeta];
+        BenchmarkComparison.Compute(enough, enough).Beta!.Value.ShouldBe(1.0, 1e-9);
+    }
+
     [Fact]
     public void SameSeries_HasBetaOne_NoExcess_NoTrackingError()
     {
-        BenchmarkComparison c = BenchmarkComparison.Compute(Benchmark, Benchmark);
+        BenchmarkComparison c = BenchmarkComparison.Compute(Long, Long);
 
         c.ExcessReturn.ShouldBe(0.0, 1e-12);
         c.Beta!.Value.ShouldBe(1.0, 1e-12);
@@ -95,7 +115,7 @@ public class BenchmarkComparisonTests
     [Fact]
     public void TwiceTheBenchmark_HasBetaTwo_AndPerfectCorrelation()
     {
-        BenchmarkComparison c = BenchmarkComparison.Compute(Benchmark.Select(r => 2 * r).ToArray(), Benchmark);
+        BenchmarkComparison c = BenchmarkComparison.Compute(Long.Select(r => 2 * r).ToArray(), Long);
 
         c.Beta!.Value.ShouldBe(2.0, 1e-12);
         c.Correlation!.Value.ShouldBe(1.0, 1e-12);
@@ -105,7 +125,7 @@ public class BenchmarkComparisonTests
     [Fact]
     public void ShortTheBenchmark_HasBetaMinusOne()
     {
-        BenchmarkComparison c = BenchmarkComparison.Compute(Benchmark.Select(r => -r).ToArray(), Benchmark);
+        BenchmarkComparison c = BenchmarkComparison.Compute(Long.Select(r => -r).ToArray(), Long);
 
         c.Beta!.Value.ShouldBe(-1.0, 1e-12);
         c.Correlation!.Value.ShouldBe(-1.0, 1e-12);
@@ -128,11 +148,11 @@ public class BenchmarkComparisonTests
     [Fact]
     public void FlatBenchmark_HasNoBetaOrCorrelation_ButStillAnExcess()
     {
-        BenchmarkComparison c = BenchmarkComparison.Compute(Benchmark, new double[Benchmark.Length]);
+        BenchmarkComparison c = BenchmarkComparison.Compute(Long, new double[Long.Length]);
 
         c.Beta.ShouldBeNull();
         c.Correlation.ShouldBeNull();
-        c.ExcessReturn.ShouldBe(ReturnCalculator.Compound(Benchmark), 1e-12);
+        c.ExcessReturn.ShouldBe(ReturnCalculator.Compound(Long), 1e-12);
     }
 
     [Fact]
