@@ -106,17 +106,20 @@ interface Depth {
 
       @if (d.approvals.length > 0) {
         <div class="panel" data-testid="approvals">
-          <h3>Waiting for a second person <span class="hint">Nobody can approve their own request</span></h3>
+          <h3>
+            {{ waiting(d).length > 0 ? 'Waiting for approval' : 'Requests' }}
+            <span class="hint">{{ waiting(d).length > 0 ? 'Approved by a second administrator, or by one who is allowed to approve alone' : 'Nothing is waiting. The latest decisions are below.' }}</span>
+          </h3>
           <nz-table [nzData]="d.approvals" nzTemplateMode [nzShowPagination]="false" nzSize="small">
             <tbody>
-              @for (a of d.approvals; track a.id) {
-                <tr>
+              @for (a of waiting(d); track a.id) {
+                <tr [attr.data-testid]="'request-' + a.id">
                   <td class="nowrap"><nz-tag>{{ approvalLabel[a.kind] }}</nz-tag></td>
                   <td>{{ a.summary }}</td>
                   <td class="nowrap">{{ a.requestedBy }} · {{ a.requestedAt | date: 'd MMM HH:mm' : 'UTC' }} UTC</td>
                   <td class="nowrap" style="text-align:right">
                     @if (a.canDecide) {
-                      <a nz-popconfirm nzPopconfirmTitle="Approve this request?" nzOkText="Approve" (nzOnConfirm)="run(http.post('/api/approvals/' + a.id + '/approve', {}), 'Approved.')" [attr.data-testid]="'approve-' + a.id">Approve</a>
+                      <a nz-popconfirm [nzPopconfirmTitle]="a.canCancel ? 'Approve your own request? It is recorded that you approved it alone.' : 'Approve this request?'" nzOkText="Approve" (nzOnConfirm)="run(http.post('/api/approvals/' + a.id + '/approve', {}), 'Approved.')" [attr.data-testid]="'approve-' + a.id">Approve</a>
                       <a style="margin-left:12px;color:#cf1322" (click)="run(http.post('/api/approvals/' + a.id + '/reject', {}), 'Rejected.')">Reject</a>
                     }
                     @if (a.canCancel) {
@@ -125,6 +128,17 @@ interface Depth {
                     @if (!a.canDecide && !a.canCancel) {
                       <span class="hint">Needs an administrator</span>
                     }
+                  </td>
+                </tr>
+              }
+              @for (a of decided(d); track a.id) {
+                <tr class="decided" [attr.data-testid]="'decided-' + a.id">
+                  <td class="nowrap"><nz-tag>{{ approvalLabel[a.kind] }}</nz-tag></td>
+                  <td>{{ a.summary }}</td>
+                  <td class="nowrap">{{ a.requestedBy }} · {{ a.requestedAt | date: 'd MMM HH:mm' : 'UTC' }} UTC</td>
+                  <td class="nowrap" style="text-align:right" [title]="a.note ?? ''">
+                    <nz-tag [nzColor]="a.status === 'Approved' ? 'green' : a.status === 'Rejected' ? 'red' : 'default'">{{ a.status === 'Cancelled' ? 'Withdrawn' : a.status }}</nz-tag>
+                    <span class="hint">{{ a.status === 'Cancelled' ? '' : 'by ' + (a.decidedBy ?? '') }}{{ a.decidedAt ? ' · ' + (a.decidedAt | date: 'd MMM HH:mm' : 'UTC') + ' UTC' : '' }}</span>
                   </td>
                 </tr>
               }
@@ -854,6 +868,9 @@ interface Depth {
       margin-left: 8px;
       font-weight: 500;
     }
+    .decided td {
+      color: var(--kft-text-3);
+    }
     .quick {
       display: flex;
       flex-wrap: wrap;
@@ -1212,6 +1229,16 @@ export class FundTradingPage {
 
   /** What each venue's list says about the chosen instrument. Read once per instrument: it changes hourly at most. */
   protected readonly rules = keptData(toObservable(this.instrument), of(0), (i) => this.http.get<VenueRules[]>(`/api/instruments/${i.split(':')[0]}/${encodeURIComponent(i.split(':')[1])}`), (i) => i);
+
+  /** Requests still waiting for a decision, the oldest first. */
+  protected waiting(d: Trading): Trading['approvals'] {
+    return d.approvals.filter((a) => a.status === 'Pending').reverse();
+  }
+
+  /** The latest requests that have been decided, so that what happened to one just approved can be seen. */
+  protected decided(d: Trading): Trading['approvals'] {
+    return d.approvals.filter((a) => a.status !== 'Pending').slice(0, 5);
+  }
 
   protected hasPaper(d: Trading): boolean {
     return d.accounts.some((a) => a.mode === 'Paper');

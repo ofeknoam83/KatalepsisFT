@@ -78,7 +78,11 @@ export interface Approval {
   summary: string;
   requestedBy: string;
   requestedAt: string;
-  status: string;
+  status: 'Pending' | 'Approved' | 'Rejected' | 'Cancelled';
+  /** Who decided it, and when; empty while it is waiting. */
+  decidedBy: string | null;
+  decidedAt: string | null;
+  note: string | null;
   canDecide: boolean;
   canCancel: boolean;
 }
