@@ -37,6 +37,17 @@ public abstract class BookStream
     /// <summary>What to send once connected to start receiving books.</summary>
     public virtual IEnumerable<string> Subscriptions(IReadOnlyList<string> assets) => [];
 
+    /// <summary>
+    /// What to send to stop receiving the books of these assets. Every venue here undoes a request with the same
+    /// message under the opposite name, so the request is rewritten; a venue that differs overrides this.
+    /// </summary>
+    public virtual IEnumerable<string> Unsubscriptions(IReadOnlyList<string> assets) =>
+        Subscriptions(assets).Select(s => s
+            .Replace("\"subscribe\"", "\"unsubscribe\"", StringComparison.Ordinal)
+            .Replace("\"SUBSCRIBE\"", "\"UNSUBSCRIBE\"", StringComparison.Ordinal)
+            .Replace("public/subscribe\"", "public/unsubscribe\"", StringComparison.Ordinal)
+            .Replace("\"sub.depth.full\"", "\"unsub.depth.full\"", StringComparison.Ordinal));
+
     /// <summary>What to send now and then so the venue keeps the connection open; null when the venue does that itself.</summary>
     public virtual string? Ping => null;
 
@@ -85,7 +96,11 @@ public sealed class BinanceBookStream : BookStream
 
     public override HttpRequestMessage TimingRequest() => new(HttpMethod.Get, "https://fapi.binance.com/fapi/v1/ping");
 
-    public override Uri Address(IReadOnlyList<string> assets) => new("wss://fstream.binance.com/stream?streams=" + string.Join('/', assets.Select(a => a.ToLowerInvariant() + "usdt@depth20@100ms")));
+    public override Uri Address(IReadOnlyList<string> assets) => new("wss://fstream.binance.com/stream");
+
+    // Asked for in a message, not in the address, so that books can be added and dropped on an open connection.
+    public override IEnumerable<string> Subscriptions(IReadOnlyList<string> assets) =>
+        assets.Count == 0 ? [] : [JsonSerializer.Serialize(new { method = "SUBSCRIBE", @params = assets.Select(a => a.ToLowerInvariant() + "usdt@depth20@100ms"), id = 1 })];
 
     public override StreamedBook? Read(string message)
     {
@@ -460,7 +475,14 @@ public sealed class BookStreamRunner(BookStream stream, ConsolidatedBook books, 
     private static readonly TimeSpan ConfirmEvery = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan LongestWait = TimeSpan.FromSeconds(30);
 
-    public async Task RunAsync(IReadOnlyList<string> assets, CancellationToken stopping)
+    /// <summary>How often the list of wanted books is looked at again.</summary>
+    private static readonly TimeSpan LookEvery = TimeSpan.FromSeconds(1);
+
+    /// <summary>How many books are asked for in one message. Some venues refuse a longer list.</summary>
+    private const int AskTogether = 10;
+
+    /// <param name="wanted">The assets to follow right now. Asked again every second; books are opened and closed to match.</param>
+    public async Task RunAsync(Func<IReadOnlyList<string>> wanted, CancellationToken stopping)
     {
         TimeSpan wait = TimeSpan.FromSeconds(1);
         while (!stopping.IsCancellationRequested)
@@ -468,7 +490,7 @@ public sealed class BookStreamRunner(BookStream stream, ConsolidatedBook books, 
             DateTimeOffset started = clock.GetUtcNow();
             try
             {
-                await ConnectAndReadAsync(assets, stopping);
+                await ConnectAndReadAsync(wanted, stopping);
             }
             catch (OperationCanceledException) when (stopping.IsCancellationRequested)
             {
@@ -498,8 +520,17 @@ public sealed class BookStreamRunner(BookStream stream, ConsolidatedBook books, 
         }
     }
 
-    private async Task ConnectAndReadAsync(IReadOnlyList<string> assets, CancellationToken stopping)
+    private async Task ConnectAndReadAsync(Func<IReadOnlyList<string>> wanted, CancellationToken stopping)
     {
+        HashSet<string> following = wanted().ToHashSet();
+        if (following.Count == 0)
+        {
+            // Nothing to follow on this venue for now: no connection is held open for it.
+            await Task.Delay(LookEvery, stopping);
+            return;
+        }
+
+        List<string> assets = following.ToList();
         stream.Reset();
         await stream.PrepareAsync(http, stopping);
         using ClientWebSocket socket = new();
@@ -507,9 +538,12 @@ public sealed class BookStreamRunner(BookStream stream, ConsolidatedBook books, 
         {
             connecting.CancelAfter(TimeSpan.FromSeconds(10));
             await socket.ConnectAsync(stream.Address(assets), connecting.Token);
-            foreach (string subscription in stream.Subscriptions(assets))
+            foreach (string[] together in assets.Chunk(AskTogether))
             {
-                await socket.SendAsync(Encoding.UTF8.GetBytes(subscription), WebSocketMessageType.Text, true, connecting.Token);
+                foreach (string subscription in stream.Subscriptions(together))
+                {
+                    await socket.SendAsync(Encoding.UTF8.GetBytes(subscription), WebSocketMessageType.Text, true, connecting.Token);
+                }
             }
         }
 
@@ -520,9 +554,47 @@ public sealed class BookStreamRunner(BookStream stream, ConsolidatedBook books, 
         DateTimeOffset pinged = clock.GetUtcNow();
         DateTimeOffset confirmed = pinged;
         DateTimeOffset heard = pinged;
+        DateTimeOffset looked = pinged;
         Task<WebSocketReceiveResult>? receiving = null;
         while (!stopping.IsCancellationRequested)
         {
+            if (clock.GetUtcNow() - looked >= LookEvery)
+            {
+                looked = clock.GetUtcNow();
+                HashSet<string> next = wanted().ToHashSet();
+                if (next.Count == 0)
+                {
+                    // Nothing left to follow: the connection is given up, and opened again when something is wanted.
+                    return;
+                }
+
+                List<string> added = next.Except(following).ToList();
+                List<string> dropped = following.Except(next).ToList();
+                foreach (string[] together in added.Chunk(AskTogether))
+                {
+                    foreach (string subscription in stream.Subscriptions(together))
+                    {
+                        await socket.SendAsync(Encoding.UTF8.GetBytes(subscription), WebSocketMessageType.Text, true, stopping);
+                    }
+                }
+
+                foreach (string[] together in dropped.Chunk(AskTogether))
+                {
+                    foreach (string unsubscription in stream.Unsubscriptions(together))
+                    {
+                        await socket.SendAsync(Encoding.UTF8.GetBytes(unsubscription), WebSocketMessageType.Text, true, stopping);
+                    }
+                }
+
+                foreach (string asset in dropped)
+                {
+                    latest.Remove(asset);
+                    books.Remove(stream.Venue, stream.Type, asset);
+                }
+
+                following = next;
+            }
+
             // Wait for the next piece, but not past the next ping: a receive must never be cancelled (that would
             // break the connection), so the same receive is picked up again after the ping has gone out.
             receiving ??= socket.ReceiveAsync(new ArraySegment<byte>(buffer), stopping);
@@ -572,7 +644,8 @@ public sealed class BookStreamRunner(BookStream stream, ConsolidatedBook books, 
                     read = null;
                 }
 
-                if (read is not null)
+                // A venue may go on sending a book for a moment after it was told to stop; such a book is not kept.
+                if (read is not null && following.Contains(read.Asset))
                 {
                     VenueBook book = new(stream.Venue, read.Asset, stream.Type, read.Bids, read.Asks, now, stream.Quote);
                     latest[read.Asset] = book;

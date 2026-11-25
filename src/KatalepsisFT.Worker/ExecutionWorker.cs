@@ -8,9 +8,15 @@ using StackExchange.Redis;
 
 namespace KatalepsisFT.Worker;
 
-/// <summary>Which assets the execution service follows, and the key that opens the trading-key vault.</summary>
-public sealed record ExecutionOptions(IReadOnlyList<string> Assets, string? MasterKey)
+/// <summary>
+/// Which assets the execution service always follows, how many more books it may open because somebody asked, and
+/// the key that opens the trading-key vault.
+/// </summary>
+public sealed record ExecutionOptions(IReadOnlyList<string> Assets, string? MasterKey, int MostBooks = BookDemand.DefaultMost)
 {
+    /// <summary>How long a book stays open after it was last read.</summary>
+    public TimeSpan BooksKeptFor { get; init; } = KeyValueBookFeed.WantedFor;
+
     public static readonly IReadOnlyList<string> DefaultAssets = ["BTC", "ETH", "SOL", "XRP", "DOGE", "BNB", "LINK", "AVAX", "ADA", "SUI"];
 
     public static ExecutionOptions From(IConfiguration configuration)
@@ -21,7 +27,9 @@ public sealed record ExecutionOptions(IReadOnlyList<string> Assets, string? Mast
             .Select(a => a.ToUpperInvariant())
             .Distinct()
             .ToList();
-        return new ExecutionOptions(assets.Count > 0 ? assets : DefaultAssets, configuration["EXEC_MASTER_KEY"]);
+        int most = int.TryParse(configuration["EXEC_MAX_BOOKS"], out int given) && given is >= 0 and <= 500 ? given : BookDemand.DefaultMost;
+        TimeSpan kept = int.TryParse(configuration["EXEC_BOOK_IDLE_SECONDS"], out int seconds) && seconds is >= 10 and <= 3600 ? TimeSpan.FromSeconds(seconds) : KeyValueBookFeed.WantedFor;
+        return new ExecutionOptions(assets.Count > 0 ? assets : DefaultAssets, configuration["EXEC_MASTER_KEY"], most) { BooksKeptFor = kept };
     }
 }
 
@@ -37,6 +45,7 @@ public sealed class MarketDataWorker(
     IConnectionMultiplexer keyValue,
     IHttpClientFactory clients,
     ExecutionOptions options,
+    BookDemand demand,
     TimeProvider clock,
     ILogger<MarketDataWorker> logger
 ) : BackgroundService
@@ -47,10 +56,10 @@ public sealed class MarketDataWorker(
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         List<BookStream> all = streams.ToList();
-        logger.LogInformation("Following {Assets} on {Venues}.", string.Join(", ", options.Assets), string.Join(", ", all.Select(s => $"{s.Venue} {s.Type}")));
-        List<Task> running = all.Select(s => new BookStreamRunner(s, books, board, clients.CreateClient("exec"), clock, logger).RunAsync(options.Assets, stoppingToken)).ToList();
+        logger.LogInformation("Always following {Assets}, and up to {Most} more instruments on demand, on {Venues}.", string.Join(", ", options.Assets), options.MostBooks, string.Join(", ", all.Select(s => $"{s.Venue} {s.Type}")));
+        List<Task> running = all.Select(s => new BookStreamRunner(s, books, board, clients.CreateClient("exec"), clock, logger).RunAsync(() => demand.For(s.Venue, s.Type), stoppingToken)).ToList();
         running.AddRange(all.Select(s => TimeAsync(s, stoppingToken)));
-        running.AddRange(pollers.Select(p => p.RunAsync(options.Assets, books, board, clients.CreateClient("exec"), clock, logger, stoppingToken)));
+        running.AddRange(pollers.Select(p => p.RunAsync(() => demand.For(p.Venue, p.Type), books, board, clients.CreateClient("exec"), clock, logger, stoppingToken)));
         running.Add(PublishAsync(all.Select(s => s.Venue).Distinct().ToList(), stoppingToken));
         await Task.WhenAll(running);
     }

@@ -15,7 +15,10 @@ public sealed class BinanceSpotBookStream : BookStream
 
     public override HttpRequestMessage TimingRequest() => new(HttpMethod.Get, "https://api.binance.com/api/v3/ping");
 
-    public override Uri Address(IReadOnlyList<string> assets) => new("wss://stream.binance.com:9443/stream?streams=" + string.Join('/', assets.Select(a => a.ToLowerInvariant() + "usdt@depth20@100ms")));
+    public override Uri Address(IReadOnlyList<string> assets) => new("wss://stream.binance.com:9443/stream");
+
+    public override IEnumerable<string> Subscriptions(IReadOnlyList<string> assets) =>
+        assets.Count == 0 ? [] : [JsonSerializer.Serialize(new { method = "SUBSCRIBE", @params = assets.Select(a => a.ToLowerInvariant() + "usdt@depth20@100ms"), id = 1 })];
 
     public override StreamedBook? Read(string message)
     {

@@ -186,6 +186,9 @@ public sealed record TradingChange<T>(T? Value, string? Error, bool NotFound = f
 /// approvals, and taking in orders. It never fills or sends an order itself; it writes the order down and wakes the
 /// execution service, which is the only thing that acts on one.
 /// </summary>
+/// <summary>An instrument found in the venues' lists, and the venues that have it.</summary>
+public sealed record InstrumentHit(string Asset, InstrumentType Type, IReadOnlyList<Venue> Venues);
+
 public sealed class TradingService(IFtDbContext database, IBookFeed books, IExecutionSignal signal, ITradingVault vault, VenueAdapterRegistry adapters, TimeProvider clock)
 {
     /// <summary>The venues orders can go to in this version.</summary>
@@ -309,6 +312,33 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
             live.Where(i => i.Type is InstrumentType.Perp or InstrumentType.Spot).ToList(),
             await books.StatusAsync(cancellationToken)
         );
+    }
+
+    /// <summary>
+    /// Instruments whose asset starts with what was typed, across every venue's list: the exact name first, then
+    /// the ones most venues have.
+    /// </summary>
+    public async Task<IReadOnlyList<InstrumentHit>> SearchInstrumentsAsync(string? text, CancellationToken cancellationToken)
+    {
+        string typed = new((text ?? string.Empty).ToUpperInvariant().Where(char.IsLetterOrDigit).Take(20).ToArray());
+        if (typed.Length == 0)
+        {
+            return [];
+        }
+
+        var rows = await database
+            .ListedInstruments.AsNoTracking()
+            .Where(i => i.Tradable && i.Asset.StartsWith(typed) && Venues.Contains(i.Venue))
+            .Select(i => new { i.Asset, i.Type, i.Venue })
+            .ToListAsync(cancellationToken);
+        return rows.GroupBy(r => (r.Asset, r.Type))
+            .Select(g => new InstrumentHit(g.Key.Asset, g.Key.Type, g.Select(r => r.Venue).Distinct().OrderBy(v => v).ToList()))
+            .OrderByDescending(h => h.Asset == typed)
+            .ThenByDescending(h => h.Venues.Count)
+            .ThenBy(h => h.Asset, StringComparer.Ordinal)
+            .ThenBy(h => h.Type)
+            .Take(40)
+            .ToList();
     }
 
     public async Task<BookDto> BookAsync(string asset, InstrumentType type, CancellationToken cancellationToken)

@@ -103,6 +103,11 @@ if (hasPostgres && group.ToLowerInvariant() is WorkerGroups.Exec)
     builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.KrakenSpotBookStream>();
     builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.DeribitPerpBookStream>();
     builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookPoller, KatalepsisFT.Infrastructure.Execution.MexcSpotBookPoller>();
+    builder.Services.AddSingleton(provider => { ExecutionOptions options = provider.GetRequiredService<ExecutionOptions>(); return new KatalepsisFT.Infrastructure.Execution.BookDemand(options.Assets, options.MostBooks); });
+    // The venues' instrument lists are large; they get a client of their own with a longer wait.
+    builder.Services.AddHttpClient("lists", client => client.Timeout = TimeSpan.FromSeconds(40));
+    builder.Services.AddHostedService<InstrumentListWorker>();
+    builder.Services.AddHostedService<BookDemandWorker>();
     builder.Services.AddHostedService<MarketDataWorker>();
     // Real orders. The gateway and the opened trading keys exist only in this service.
     builder.Services.AddSingleton<OpenedTradingKeys>();

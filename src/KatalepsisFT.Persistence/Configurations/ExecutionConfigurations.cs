@@ -132,3 +132,17 @@ internal sealed class SystemSettingConfiguration : IEntityTypeConfiguration<Syst
         setting.HasIndex(x => x.Name).IsUnique();
     }
 }
+
+internal sealed class ListedInstrumentConfiguration : IEntityTypeConfiguration<ListedInstrument>
+{
+    public void Configure(EntityTypeBuilder<ListedInstrument> instrument)
+    {
+        instrument.ToTable("listed_instruments");
+        instrument.Property(x => x.Asset).HasMaxLength(32);
+        instrument.Property(x => x.Quote).HasMaxLength(12);
+        instrument.Property(x => x.Symbol).HasMaxLength(64);
+        instrument.HasIndex(x => new { x.Venue, x.Type, x.Asset }).IsUnique();
+        // What the search asks for: an asset by the start of its name.
+        instrument.HasIndex(x => x.Asset);
+    }
+}

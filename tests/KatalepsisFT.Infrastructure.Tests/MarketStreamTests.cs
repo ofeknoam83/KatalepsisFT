@@ -123,7 +123,8 @@ public class MarketStreamTests
         stream.Type.Should().Be(InstrumentType.Spot);
         book.Bids.Should().Equal(new BookLevel(1761.28m, 0.5m));
         book.Asks.Should().Equal(new BookLevel(1761.29m, 2.26m));
-        stream.Address(["BTC", "eth"]).AbsoluteUri.Should().Be("wss://stream.binance.com:9443/stream?streams=btcusdt@depth20@100ms/ethusdt@depth20@100ms");
+        stream.Address(["BTC", "eth"]).AbsoluteUri.Should().Be("wss://stream.binance.com:9443/stream");
+        stream.Subscriptions(["BTC", "eth"]).Single().Should().Contain("btcusdt@depth20@100ms").And.Contain("ethusdt@depth20@100ms");
         stream.Read("""{"result":null,"id":1}""").Should().BeNull();
     }
 

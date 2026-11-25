@@ -148,7 +148,7 @@ interface Depth {
             <div class="two">
               <div class="field">
                 <label>Instrument</label>
-                <nz-select [ngModel]="instrument()" (ngModelChange)="instrument.set($event)" nzShowSearch style="width:100%" data-testid="ticket-asset">
+                <nz-select [ngModel]="instrument()" (ngModelChange)="instrument.set($event)" nzShowSearch (nzOnSearch)="search($event)" nzPlaceHolder="Type to search every venue" style="width:100%" data-testid="ticket-asset">
                   @for (i of instruments(d); track i.type + i.asset) {
                     <nz-option [nzValue]="i.type + ':' + i.asset" [nzLabel]="name(i.asset, i.type)" />
                   }
@@ -213,7 +213,7 @@ interface Depth {
             </h3>
             @if (book.data(); as b) {
               @if (b.venues.length === 0) {
-                <p class="note" data-testid="book-empty">No venue has a live book for {{ name(asset(), type2()) }} right now. Orders for it are refused until one does.</p>
+                <p class="note" data-testid="book-empty">Opening the book for {{ name(asset(), type2()) }}. It takes a few seconds the first time; if nothing appears, no venue has a live book for it and orders are refused until one does.</p>
               } @else {
                 <div class="books">
                   <nz-table [nzData]="b.venues" nzTemplateMode [nzShowPagination]="false" nzSize="small">
@@ -853,8 +853,31 @@ export class FundTradingPage {
     const target = this.target();
     const venue = target?.[0] === 'a' ? d.accounts.find((a) => 'a' + a.id === target)?.venue : undefined;
     const live = d.instruments.filter((i) => venue === undefined || i.venues.includes(venue));
+    // What the search found in the venues' lists and has no open book yet. Choosing one opens its book.
+    const found = this.found().filter((i) => (venue === undefined || i.venues.includes(venue)) && !live.some((l) => l.asset === i.asset && l.type === i.type));
+    const all = [...live, ...found];
     const chosen = { asset: this.asset(), type: this.type2() };
-    return live.some((i) => i.asset === chosen.asset && i.type === chosen.type) ? live : [chosen, ...live];
+    return all.some((i) => i.asset === chosen.asset && i.type === chosen.type) ? all : [chosen, ...all];
+  }
+
+  /** Instruments the last search found in the venues' lists. */
+  private readonly found = signal<{ asset: string; type: TradedType; venues: TradingVenue[] }[]>([]);
+  private searching: ReturnType<typeof setTimeout> | undefined;
+
+  /** Looks the typed text up in every venue's list, a moment after the typing stops. */
+  protected search(text: string): void {
+    clearTimeout(this.searching);
+    const typed = text.trim();
+    if (typed === '') {
+      return;
+    }
+
+    this.searching = setTimeout(() => {
+      this.http.get<{ asset: string; type: TradedType; venues: TradingVenue[] }[]>('/api/instruments', { params: { q: typed } }).subscribe({
+        next: (hits) => this.found.set(hits),
+        error: () => undefined,
+      });
+    }, 200);
   }
 
   /** Managers with accounts on more than one venue: for them the system can pick the venue with the best price. */

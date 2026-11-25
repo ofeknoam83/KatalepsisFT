@@ -64,6 +64,13 @@ them; an upper limit on open books per venue.
 **Done when.** A search for any listed pair finds it, its book opens within a few seconds, and a paper order fills.
 The ten-asset setting is gone.
 
+**Status (25 November 2026): the core is built.** The list is read hourly from 18 venue markets into
+`listed_instruments`; the ticket searches it; a book opens when an instrument is read and closes five minutes after
+the last read, unless an order is working or a position is held in it. The ten assets of `EXEC_ASSETS` stay open
+always, and `EXEC_MAX_BOOKS` (default 80) caps how many more may be open on demand. Still to do in this phase:
+USDC-margined perps on Binance and Bybit, price and quantity steps in the list (they are still fetched per order),
+a pinned list per fund, and Hyperliquid names that count in thousands.
+
 **Risk.** Venue limits on the number of streams. The cap and the idle close keep within them; the limit per venue is
 measured, not guessed.
 

@@ -48,6 +48,9 @@ public sealed class ConsolidatedBook(TimeProvider clock)
         }
     }
 
+    /// <summary>Forgets one instrument of one venue, when its book is no longer followed.</summary>
+    public void Remove(Venue venue, InstrumentType type, string asset) => _books.TryRemove((asset.ToUpperInvariant(), type, venue), out _);
+
     /// <summary>One venue's book for an instrument, if it is fresh.</summary>
     public VenueBook? Of(Venue venue, string asset, InstrumentType type) =>
         _books.TryGetValue((asset.ToUpperInvariant(), type, venue), out VenueBook? book) && clock.GetUtcNow() - book.At <= MaxAge ? book : null;

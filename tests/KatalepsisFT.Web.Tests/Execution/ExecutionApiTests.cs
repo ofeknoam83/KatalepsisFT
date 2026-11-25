@@ -116,6 +116,33 @@ public class ExecutionApiTests(TestDatabase database) : IClassFixture<TestDataba
     }
 
     [Fact]
+    public async Task InstrumentSearch_FindsWhatTheVenuesList_TheExactNameFirst()
+    {
+        using (IServiceScope scope = _app!.Services.CreateScope())
+        {
+            FtDbContext db = scope.ServiceProvider.GetRequiredService<FtDbContext>();
+            if (!db.ListedInstruments.Any())
+            {
+                DateTimeOffset now = DateTimeOffset.UtcNow;
+                ListedInstrument Listed(Venue venue, InstrumentType type, string asset, bool tradable = true) => new() { Venue = venue, Type = type, Asset = asset, Quote = "USDT", Symbol = asset + "USDT", Tradable = tradable, SeenAt = now };
+                db.ListedInstruments.AddRange(
+                    Listed(Venue.Binance, InstrumentType.Spot, "PENDLE"), Listed(Venue.Bybit, InstrumentType.Spot, "PENDLE"), Listed(Venue.Okx, InstrumentType.Spot, "PENDLE"),
+                    Listed(Venue.Binance, InstrumentType.Perp, "PENDLE"), Listed(Venue.Bybit, InstrumentType.Perp, "PENDLE"),
+                    Listed(Venue.Gate, InstrumentType.Spot, "PEN"), Listed(Venue.Mexc, InstrumentType.Spot, "PENDULUM"),
+                    // Listed, but the venue is not taking orders for it: not offered.
+                    Listed(Venue.Binance, InstrumentType.Spot, "PENGONE", tradable: false));
+                await db.SaveChangesAsync();
+            }
+        }
+
+        List<InstrumentHit> hits = (await _admin.GetFromJsonAsync<List<InstrumentHit>>("/api/instruments?q=pen", Json))!;
+
+        hits.Select(h => $"{h.Asset} {h.Type} {h.Venues.Count}").Should().Equal("PEN Spot 1", "PENDLE Spot 3", "PENDLE Perp 2", "PENDULUM Spot 1");
+        (await _admin.GetFromJsonAsync<List<InstrumentHit>>("/api/instruments?q=", Json)).Should().BeEmpty();
+        (await TestDatabase.CreateClient(_app!).GetAsync("/api/instruments?q=pen")).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
     public async Task MarketOrder_FillsAgainstTheBookItIsShown_AndThePositionAndFeesFollow()
     {
         (int fundId, _, int accountId) = await NewAccountAsync();

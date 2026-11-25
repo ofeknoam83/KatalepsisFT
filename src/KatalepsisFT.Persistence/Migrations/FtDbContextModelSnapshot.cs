@@ -504,6 +504,62 @@ namespace KatalepsisFT.Persistence.Migrations
                     b.ToTable("approval_requests", (string)null);
                 });
 
+            modelBuilder.Entity("KatalepsisFT.Domain.Execution.ListedInstrument", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Asset")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("asset");
+
+                    b.Property<string>("Quote")
+                        .IsRequired()
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)")
+                        .HasColumnName("quote");
+
+                    b.Property<DateTimeOffset>("SeenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("seen_at");
+
+                    b.Property<string>("Symbol")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("symbol");
+
+                    b.Property<bool>("Tradable")
+                        .HasColumnType("boolean")
+                        .HasColumnName("tradable");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("integer")
+                        .HasColumnName("type");
+
+                    b.Property<int>("Venue")
+                        .HasColumnType("integer")
+                        .HasColumnName("venue");
+
+                    b.HasKey("Id")
+                        .HasName("pk_listed_instruments");
+
+                    b.HasIndex("Asset")
+                        .HasDatabaseName("ix_listed_instruments_asset");
+
+                    b.HasIndex("Venue", "Type", "Asset")
+                        .IsUnique()
+                        .HasDatabaseName("ix_listed_instruments_venue_type_asset");
+
+                    b.ToTable("listed_instruments", (string)null);
+                });
+
             modelBuilder.Entity("KatalepsisFT.Domain.Execution.Order", b =>
                 {
                     b.Property<long>("Id")

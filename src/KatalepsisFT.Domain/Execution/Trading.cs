@@ -1,5 +1,6 @@
 using KatalepsisFT.Domain.Connections;
 using KatalepsisFT.Domain.Funds;
+using KatalepsisFT.Domain.Instruments;
 
 namespace KatalepsisFT.Domain.Execution;
 
@@ -172,4 +173,30 @@ public class SystemSetting
     public int Id { get; set; }
     public required string Name { get; set; }
     public required string Value { get; set; }
+}
+
+/// <summary>
+/// An instrument a venue lists and this system can keep a book for. The list is read from every venue each hour, so
+/// that any of them can be searched for and traded, not only a handful named in a setting.
+/// </summary>
+public class ListedInstrument
+{
+    public long Id { get; set; }
+    public Venue Venue { get; set; }
+    public InstrumentType Type { get; set; }
+
+    /// <summary>Our name for the asset: capital letters and digits, the same on every venue.</summary>
+    public required string Asset { get; set; }
+
+    /// <summary>What the venue's prices for it are in.</summary>
+    public required string Quote { get; set; }
+
+    /// <summary>The venue's own name for the instrument.</summary>
+    public required string Symbol { get; set; }
+
+    /// <summary>False when the venue has it listed but is not taking orders, or no longer lists it.</summary>
+    public bool Tradable { get; set; }
+
+    /// <summary>When the venue's list last included it.</summary>
+    public DateTimeOffset SeenAt { get; set; }
 }

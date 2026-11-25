@@ -22,13 +22,24 @@ public abstract class BookPoller
     /// <summary>Reads one answer into the two sides of a book, best prices first; null when it is not a book.</summary>
     public abstract (IReadOnlyList<BookLevel> Bids, IReadOnlyList<BookLevel> Asks)? Read(string answer);
 
-    public async Task RunAsync(IReadOnlyList<string> assets, ConsolidatedBook books, VenueStatusBoard board, HttpClient http, TimeProvider clock, ILogger logger, CancellationToken stopping)
+    /// <summary>The most books asked for each round; every one is a request of its own.</summary>
+    public virtual int Most => 30;
+
+    public async Task RunAsync(Func<IReadOnlyList<string>> wanted, ConsolidatedBook books, VenueStatusBoard board, HttpClient http, TimeProvider clock, ILogger logger, CancellationToken stopping)
     {
         logger.LogInformation("The {Venue} {Type} books are read every {Seconds:0.#} s.", Venue, Type, Every.TotalSeconds);
         DateTimeOffset warned = DateTimeOffset.MinValue;
+        HashSet<string> followed = [];
         while (!stopping.IsCancellationRequested)
         {
             DateTimeOffset started = clock.GetUtcNow();
+            List<string> assets = wanted().Take(Most).ToList();
+            foreach (string dropped in followed.Except(assets).ToList())
+            {
+                books.Remove(Venue, Type, dropped);
+            }
+
+            followed = assets.ToHashSet();
             await Task.WhenAll(assets.Select(async asset =>
             {
                 try

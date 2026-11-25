@@ -44,6 +44,10 @@ public sealed class TradingController(TradingService trading) : ControllerBase
         return result is null ? NotFound() : result;
     }
 
+    /// <summary>Instruments the venues list whose asset starts with what was typed.</summary>
+    [HttpGet("instruments")]
+    public async Task<IReadOnlyList<InstrumentHit>> InstrumentsAsync([FromQuery] string? q, CancellationToken cancellationToken) => await trading.SearchInstrumentsAsync(q, cancellationToken);
+
     /// <summary>The consolidated book of one instrument: every venue's best prices and depth, side by side.</summary>
     [HttpGet("book/{type}/{asset}")]
     public async Task<BookDto> BookAsync(InstrumentType type, string asset, CancellationToken cancellationToken) => await trading.BookAsync(asset, type, cancellationToken);

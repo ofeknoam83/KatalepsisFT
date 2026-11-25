@@ -145,6 +145,12 @@ public sealed class KeyValueBookFeed(IConnectionMultiplexer keyValue) : IBookFee
     public static readonly TimeSpan Life = TimeSpan.FromSeconds(3);
     private const string IndexKey = "ft:book:index";
     private const string StatusKey = "ft:exec:status";
+
+    /// <summary>Instruments somebody asked for, each with when it was last asked for.</summary>
+    private const string WantedKey = "ft:book:wanted";
+
+    /// <summary>A book stays open this long after it was last asked for.</summary>
+    public static readonly TimeSpan WantedFor = TimeSpan.FromMinutes(5);
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
 
     private static string Key(string asset, InstrumentType type) => $"ft:book:{type}:{asset.ToUpperInvariant()}";
@@ -182,10 +188,41 @@ public sealed class KeyValueBookFeed(IConnectionMultiplexer keyValue) : IBookFee
         }
     }
 
+    /// <summary>
+    /// Called by the execution service: the instruments asked for in the last few minutes, the latest first. Older
+    /// entries are cleared away on the way.
+    /// </summary>
+    /// <param name="keptFor">How long a book stays wanted after it was last read.</param>
+    public async Task<IReadOnlyList<(string Asset, InstrumentType Type)>> WantedAsync(DateTimeOffset now, TimeSpan keptFor)
+    {
+        IDatabase database = keyValue.GetDatabase();
+        double oldest = (now - keptFor).ToUnixTimeSeconds();
+        await database.SortedSetRemoveRangeByScoreAsync(WantedKey, double.NegativeInfinity, oldest, Exclude.Stop);
+        List<(string, InstrumentType)> wanted = [];
+        foreach (RedisValue entry in await database.SortedSetRangeByScoreAsync(WantedKey, oldest, double.PositiveInfinity, order: Order.Descending))
+        {
+            string[] parts = ((string)entry!).Split(':');
+            if (parts.Length == 2 && Enum.TryParse(parts[0], out InstrumentType type) && InstrumentListing.IsAssetName(parts[1]))
+            {
+                wanted.Add((parts[1], type));
+            }
+        }
+
+        return wanted;
+    }
+
     public async Task<IReadOnlyList<VenueBook>> ReadAsync(string asset, InstrumentType type, CancellationToken cancellationToken)
     {
         try
         {
+            // Reading a book is what says it is wanted: the execution service opens it if it is not open yet, and
+            // keeps it open while it goes on being read.
+            string name = asset.ToUpperInvariant();
+            if (type is InstrumentType.Spot or InstrumentType.Perp && InstrumentListing.IsAssetName(name))
+            {
+                _ = keyValue.GetDatabase().SortedSetAddAsync(WantedKey, $"{type}:{name}", DateTimeOffset.UtcNow.ToUnixTimeSeconds(), flags: CommandFlags.FireAndForget);
+            }
+
             RedisValue stored = await keyValue.GetDatabase().StringGetAsync(Key(asset, type));
             return stored.IsNullOrEmpty ? [] : JsonSerializer.Deserialize<List<VenueBook>>((string)stored!, Json) ?? [];
         }
