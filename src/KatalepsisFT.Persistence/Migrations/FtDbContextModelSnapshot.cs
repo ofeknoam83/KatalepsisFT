@@ -2022,6 +2022,10 @@ namespace KatalepsisFT.Persistence.Migrations
                         .HasColumnType("text")
                         .HasColumnName("admin_proposed_by");
 
+                    b.Property<bool>("ApprovesAlone")
+                        .HasColumnType("boolean")
+                        .HasColumnName("approves_alone");
+
                     b.Property<string>("ConcurrencyStamp")
                         .IsConcurrencyToken()
                         .HasColumnType("text")

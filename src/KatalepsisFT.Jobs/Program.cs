@@ -21,9 +21,10 @@ using StackExchange.Redis;
 //   deploy   migrate, then demo; run by Render before each deploy. A failure of the demo step does not stop the deploy.
 //   reset-password <email>   gives that account a temporary password and prints it; for when nobody can sign in to do it
 //   make-admin <email>       makes an existing account an administrator; for when only one administrator is left
-const string Usage = "Usage: KatalepsisFT.Jobs check | migrate | demo | deploy | reset-password <email> | make-admin <email>";
+//   approve-alone <email> [off]   lets that administrator approve their own trading requests, or with "off" takes it away
+const string Usage = "Usage: KatalepsisFT.Jobs check | migrate | demo | deploy | reset-password <email> | make-admin <email> | approve-alone <email> [off]";
 string command = args.Length > 0 ? args[0] : string.Empty;
-if (command is not ("check" or "migrate" or "demo" or "deploy" or "reset-password" or "make-admin") || (command is "reset-password" or "make-admin" && args.Length != 2))
+if (command is not ("check" or "migrate" or "demo" or "deploy" or "reset-password" or "make-admin" or "approve-alone") || (command is "reset-password" or "make-admin" && args.Length != 2) || (command is "approve-alone" && !(args.Length == 2 || (args.Length == 3 && args[2] == "off"))))
 {
     Console.Error.WriteLine(Usage);
     return 2;
@@ -72,6 +73,14 @@ if (command == "reset-password")
     string? temporary = await scope.ServiceProvider.GetRequiredService<PasswordRecovery>().ResetAsync(args[1], CancellationToken.None);
     Console.WriteLine(temporary is null ? "There is no account with that email." : $"Temporary password: {temporary}  It must be changed at the next sign-in.");
     return temporary is null ? 1 : 0;
+}
+
+if (command == "approve-alone")
+{
+    bool allow = args.Length < 3;
+    string? refused = await scope.ServiceProvider.GetRequiredService<PasswordRecovery>().SetApprovesAloneAsync(args[1], allow, CancellationToken.None);
+    Console.WriteLine(refused ?? (allow ? "That administrator can now approve their own trading requests. It takes effect at once." : "That account needs a second administrator again."));
+    return refused is null ? 0 : 1;
 }
 
 if (command == "make-admin")

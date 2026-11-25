@@ -15,6 +15,36 @@ public sealed class PasswordRecovery(UserManager<AppUser> users, FtDbContext dat
     /// left: from the server, by someone who holds the hosting account, and not by the remaining administrator alone.
     /// </summary>
     /// <returns>False when there is no such account.</returns>
+    /// <summary>
+    /// Lets an administrator approve their own trading requests, or takes that away again. Only an administrator
+    /// can have it; a person who is not one is refused.
+    /// </summary>
+    /// <returns>Null when done; otherwise why not.</returns>
+    public async Task<string?> SetApprovesAloneAsync(string email, bool allow, CancellationToken cancellationToken)
+    {
+        AppUser? user = await users.FindByEmailAsync(email.Trim());
+        if (user is null)
+        {
+            return "There is no account with that email.";
+        }
+
+        if (allow && !await users.IsInRoleAsync(user, KatalepsisFT.Domain.Access.Roles.Admin))
+        {
+            return "That account is not an administrator. Only an administrator can approve requests.";
+        }
+
+        user.ApprovesAlone = allow;
+        IdentityResult changed = await users.UpdateAsync(user);
+        if (!changed.Succeeded)
+        {
+            throw new InvalidOperationException(string.Join("; ", changed.Errors.Select(e => e.Description)));
+        }
+
+        database.AuditEntries.Add(new AuditEntry { At = clock.GetUtcNow(), UserName = "Server command", Action = allow ? "Allowed to approve own trading requests, from the server" : "No longer allowed to approve own trading requests, from the server", Subject = user.DisplayName.Length > 0 ? user.DisplayName : "User " + user.Id });
+        await database.SaveChangesAsync(cancellationToken);
+        return null;
+    }
+
     public async Task<bool> MakeAdminAsync(string email, CancellationToken cancellationToken)
     {
         AppUser? user = await users.FindByEmailAsync(email.Trim());

@@ -19,14 +19,30 @@ public sealed record SetEnabledBody(bool Enabled);
 /// </summary>
 [ApiController]
 [Route("api")]
-public sealed class TradingController(TradingService trading, WorkingOrderService working) : ControllerBase
+public sealed class TradingController(TradingService trading, WorkingOrderService working, KatalepsisFT.Persistence.FtDbContext users) : ControllerBase
 {
     private Actor Actor => new(User.Identity?.Name ?? "Unknown", User.IsInRole(Roles.Admin) || User.IsInRole(Roles.Trader), User.IsInRole(Roles.Admin));
+
+    /// <summary>
+    /// The person, with whether they may approve their own requests. That is read from the database each time, not
+    /// from the session, so that giving it or taking it away from the server takes effect at once.
+    /// </summary>
+    private async Task<Actor> ActorWithApprovalAsync(CancellationToken cancellationToken)
+    {
+        Actor actor = Actor;
+        if (!actor.IsAdmin)
+        {
+            return actor;
+        }
+
+        string name = actor.Name;
+        return actor with { ApprovesAlone = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.AnyAsync(users.Users, u => u.UserName == name && u.ApprovesAlone, cancellationToken) };
+    }
 
     [HttpGet("funds/{fundId:int}/trading")]
     public async Task<ActionResult<TradingDto>> GetAsync(int fundId, CancellationToken cancellationToken)
     {
-        TradingDto? result = await trading.GetAsync(fundId, Actor, cancellationToken);
+        TradingDto? result = await trading.GetAsync(fundId, await ActorWithApprovalAsync(cancellationToken), cancellationToken);
         return result is null ? NotFound() : result;
     }
 
@@ -117,7 +133,7 @@ public sealed class TradingController(TradingService trading, WorkingOrderServic
     [Authorize(Roles = Roles.Admin)]
     [Audit("Request approved", Approval = "id")]
     [HttpPost("approvals/{id:int}/approve")]
-    public async Task<IActionResult> ApproveAsync(int id, DecisionRequest request, CancellationToken cancellationToken) => Result(await trading.DecideAsync(id, true, request.Note, Actor, cancellationToken));
+    public async Task<IActionResult> ApproveAsync(int id, DecisionRequest request, CancellationToken cancellationToken) => Result(await trading.DecideAsync(id, true, request.Note, await ActorWithApprovalAsync(cancellationToken), cancellationToken));
 
     [Authorize(Roles = Roles.Admin)]
     [Audit("Request rejected", Approval = "id")]

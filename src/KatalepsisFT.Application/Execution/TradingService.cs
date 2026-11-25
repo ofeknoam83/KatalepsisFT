@@ -193,7 +193,8 @@ public sealed record StrategyKeyCreatedDto(StrategyKeyDto Key, string Secret);
 public sealed record SaveStrategyKeyRequest(string Name, IReadOnlyList<int> AccountIds, decimal MaxOrderNotionalUsd);
 
 /// <summary>Who is acting: their name as it goes on record, and what they may do.</summary>
-public sealed record Actor(string Name, bool CanTrade, bool IsAdmin);
+/// <param name="ApprovesAlone">An administrator allowed to approve their own requests, where a second administrator is otherwise needed.</param>
+public sealed record Actor(string Name, bool CanTrade, bool IsAdmin, bool ApprovesAlone = false);
 
 /// <summary>The outcome of a change: done (perhaps with something to show), refused with a reason, or about something that is not there.</summary>
 public sealed record TradingChange<T>(T? Value, string? Error, bool NotFound = false, string? Notice = null)
@@ -918,7 +919,9 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
             return TradingChange<int>.Refused("That request has already been decided.");
         }
 
-        if (string.Equals(request.RequestedBy, actor.Name, StringComparison.OrdinalIgnoreCase))
+        bool own = string.Equals(request.RequestedBy, actor.Name, StringComparison.OrdinalIgnoreCase);
+        // Turning one's own request down needs nobody's leave; approving it does, unless this person has been given that from the server.
+        if (own && approve && !(actor.IsAdmin && actor.ApprovesAlone))
         {
             return TradingChange<int>.Refused("A request has to be approved by someone other than the person who made it.");
         }
@@ -929,6 +932,12 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
         request.DecidedAt = now;
         // The column holds a thousand characters; a longer note is cut, not allowed to fail the decision.
         request.Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim() is { Length: > 1000 } longNote ? longNote[..1000] : note.Trim();
+        if (own && approve)
+        {
+            // On the record, so that it reads differently from a request two people looked at.
+            request.Note = ("Approved by the person who asked, who is allowed to approve alone. " + request.Note).Trim();
+        }
+
         if (approve)
         {
             using JsonDocument payload = JsonDocument.Parse(request.PayloadJson);
@@ -1467,7 +1476,7 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
     {
         bool own = string.Equals(r.RequestedBy, actor.Name, StringComparison.OrdinalIgnoreCase);
         bool pending = r.Status == ApprovalStatus.Pending;
-        return new ApprovalDto(r.Id, r.Kind, r.Summary, r.RequestedBy, r.RequestedAt, r.Status, r.DecidedBy, r.DecidedAt, r.Note, pending && actor.IsAdmin && !own, pending && own);
+        return new ApprovalDto(r.Id, r.Kind, r.Summary, r.RequestedBy, r.RequestedAt, r.Status, r.DecidedBy, r.DecidedAt, r.Note, pending && actor.IsAdmin && (!own || actor.ApprovesAlone), pending && own);
     }
 
     private static StrategyKeyDto Dto(StrategyKey k) => new(k.Id, k.Name, k.Prefix, AccountIds(k), k.MaxOrderNotionalUsd, k.IsEnabled, k.CreatedBy, k.CreatedAt, k.LastUsedAt);

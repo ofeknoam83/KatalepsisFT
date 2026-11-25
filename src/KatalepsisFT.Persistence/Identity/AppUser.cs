@@ -16,4 +16,12 @@ public class AppUser : IdentityUser<int>
     /// the name of whoever put them forward. Until it is cleared the person keeps the role they had.
     /// </summary>
     public string? AdminProposedBy { get; set; }
+
+    /// <summary>
+    /// An administrator who may approve their own trading requests: a trading key, higher limits, releasing the
+    /// kill switch, going live, a large working order. Normally those need a second administrator. It is for a
+    /// firm where one person is answerable for all of it. It can only be given from the server, never on screen,
+    /// so nobody can give it to themselves.
+    /// </summary>
+    public bool ApprovesAlone { get; set; }
 }

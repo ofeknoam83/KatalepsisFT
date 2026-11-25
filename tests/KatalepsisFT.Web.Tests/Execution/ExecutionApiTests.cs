@@ -1,3 +1,4 @@
+using KatalepsisFT.Persistence.Identity;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -636,6 +637,61 @@ public class ExecutionApiTests(TestDatabase database) : IClassFixture<TestDataba
         real.Should().Be(40_000m);
         List<decimal> flows = await db.CashFlows.Where(f => f.ManagerAccountId == managerId && f.IsBookChange).OrderBy(f => f.Id).Select(f => f.AmountUsd).ToListAsync();
         flows.Should().Equal(1_000_000m, -1_000_000m, 40_000m);
+    }
+
+    [Fact]
+    public async Task AnAdministratorAllowedToApproveAlone_ApprovesTheirOwnRequest_AndItIsOnTheRecord()
+    {
+        (int fundId, _, int accountId) = await NewAccountAsync(maxOrder: 50_000m, maxPosition: 2_000_000m);
+        Quote(Venue.Binance, "FIL", 4.99m, 5.01m, 1_000_000m);
+        string email = await database.AddUserAsync(_app!, Roles.Admin);
+        HttpClient owner = TestDatabase.CreateClient(_app!);
+        await owner.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, TestDatabase.Password, false));
+        using (IServiceScope scope = _app!.Services.CreateScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<FtDbContext>().TradingAccounts.Where(a => a.Id == accountId).ExecuteUpdateAsync(a => a.SetProperty(x => x.Mode, TradingMode.Live));
+        }
+
+        async Task<ApprovalDto> AskAsync()
+        {
+            HttpResponseMessage sent = await owner.PostAsJsonAsync("/api/working-orders", Paced(accountId, null, "FIL", 20_000m, 1_000m), Json);
+            sent.StatusCode.Should().Be(HttpStatusCode.OK, await sent.Content.ReadAsStringAsync());
+            return (await owner.GetFromJsonAsync<TradingDto>($"/api/funds/{fundId}/trading", Json))!.Approvals.Single(a => a.Kind == ApprovalKind.LargeOrder && a.Status == ApprovalStatus.Pending);
+        }
+
+        // As everybody: not one's own request.
+        ApprovalDto first = await AskAsync();
+        first.CanDecide.Should().BeFalse();
+        (await owner.PostAsJsonAsync($"/api/approvals/{first.Id}/approve", new DecisionRequest(null), Json)).IsSuccessStatusCode.Should().BeFalse();
+        (await owner.PostAsync($"/api/approvals/{first.Id}/cancel", null)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // Given from the server, and only there: it takes effect at once, without signing in again.
+        using (IServiceScope scope = _app!.Services.CreateScope())
+        {
+            (await ActivatorUtilities.CreateInstance<PasswordRecovery>(scope.ServiceProvider).SetApprovesAloneAsync(email, true, CancellationToken.None)).Should().BeNull();
+            string viewer = await database.AddUserAsync(_app!, Roles.Viewer);
+            (await ActivatorUtilities.CreateInstance<PasswordRecovery>(scope.ServiceProvider).SetApprovesAloneAsync(viewer, true, CancellationToken.None)).Should().Contain("not an administrator");
+        }
+
+        ApprovalDto second = await AskAsync();
+        second.CanDecide.Should().BeTrue();
+        (await owner.PostAsJsonAsync($"/api/approvals/{second.Id}/approve", new DecisionRequest("Mine"), Json)).StatusCode.Should().Be(HttpStatusCode.OK);
+        TradingDto after = (await owner.GetFromJsonAsync<TradingDto>($"/api/funds/{fundId}/trading", Json))!;
+        after.Approvals.Should().NotContain(a => a.Status == ApprovalStatus.Pending);
+        using (IServiceScope scope = _app!.Services.CreateScope())
+        {
+            FtDbContext db = scope.ServiceProvider.GetRequiredService<FtDbContext>();
+            (await db.ApprovalRequests.SingleAsync(r => r.Id == second.Id)).Note.Should().StartWith("Approved by the person who asked");
+            // Somebody else's power is not this one's: another administrator still cannot approve their own.
+            await db.WorkingOrders.Where(w => w.TradingAccountId == accountId && (w.State == WorkingState.Working || w.State == WorkingState.Paused)).ExecuteUpdateAsync(w => w.SetProperty(x => x.State, WorkingState.Stopped));
+        }
+
+        HttpResponseMessage others = await _admin.PostAsJsonAsync("/api/working-orders", Paced(accountId, null, "FIL", 20_000m, 1_000m), Json);
+        others.StatusCode.Should().Be(HttpStatusCode.OK);
+        ApprovalDto third = (await _admin.GetFromJsonAsync<TradingDto>($"/api/funds/{fundId}/trading", Json))!.Approvals.Single(a => a.Kind == ApprovalKind.LargeOrder && a.Status == ApprovalStatus.Pending);
+        third.CanDecide.Should().BeFalse();
+        (await _admin.PostAsJsonAsync($"/api/approvals/{third.Id}/approve", new DecisionRequest(null), Json)).IsSuccessStatusCode.Should().BeFalse();
+        (await _admin.PostAsync($"/api/approvals/{third.Id}/cancel", null)).StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
     [Theory]
