@@ -46,7 +46,7 @@ public sealed class FundChangeRelay(IConnectionMultiplexer keyValue, IHubContext
                 }
             });
         }
-        catch (RedisException e)
+        catch (Exception e) when (e is RedisException or TimeoutException)
         {
             // The multiplexer keeps retrying and restores the subscription when the connection returns.
             logger.LogWarning(e, "Could not subscribe to fund changes yet");

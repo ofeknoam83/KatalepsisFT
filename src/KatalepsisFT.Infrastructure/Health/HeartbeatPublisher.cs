@@ -21,7 +21,7 @@ public sealed class HeartbeatPublisher(IConnectionMultiplexer keyValue, WorkerId
                 await database.StringSetAsync($"{HeartbeatRegistry.Channel}:{identity.Group}", DateTimeOffset.UtcNow.ToString("O"), KeyLifetime);
                 await keyValue.GetSubscriber().PublishAsync(RedisChannel.Literal(HeartbeatRegistry.Channel), identity.Group);
             }
-            catch (RedisException e)
+            catch (Exception e) when (e is RedisException or TimeoutException)
             {
                 logger.LogWarning(e, "Worker {Group} could not publish its heartbeat", identity.Group);
             }

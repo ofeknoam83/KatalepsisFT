@@ -182,7 +182,7 @@ public sealed class KeyValueBookFeed(IConnectionMultiplexer keyValue) : IBookFee
             RedisValue stored = await keyValue.GetDatabase().StringGetAsync(StatusKey);
             return stored.IsNullOrEmpty ? null : JsonSerializer.Deserialize<ExecutionStatus>((string)stored!, Json);
         }
-        catch (RedisException)
+        catch (Exception store) when (store is RedisException or TimeoutException)
         {
             return null;
         }
@@ -226,7 +226,7 @@ public sealed class KeyValueBookFeed(IConnectionMultiplexer keyValue) : IBookFee
             RedisValue stored = await keyValue.GetDatabase().StringGetAsync(Key(asset, type));
             return stored.IsNullOrEmpty ? [] : JsonSerializer.Deserialize<List<VenueBook>>((string)stored!, Json) ?? [];
         }
-        catch (RedisException)
+        catch (Exception store) when (store is RedisException or TimeoutException)
         {
             return [];
         }
@@ -239,7 +239,7 @@ public sealed class KeyValueBookFeed(IConnectionMultiplexer keyValue) : IBookFee
             RedisValue stored = await keyValue.GetDatabase().StringGetAsync(IndexKey);
             return stored.IsNullOrEmpty ? [] : JsonSerializer.Deserialize<List<LiveInstrument>>((string)stored!, Json) ?? [];
         }
-        catch (RedisException)
+        catch (Exception store) when (store is RedisException or TimeoutException)
         {
             return [];
         }
@@ -277,7 +277,7 @@ public sealed class KeyValueExecutionSignal(IConnectionMultiplexer keyValue, ILo
         {
             await keyValue.GetSubscriber().PublishAsync(RedisChannel.Literal(Channel), 1);
         }
-        catch (RedisException e)
+        catch (Exception e) when (e is RedisException or TimeoutException)
         {
             // The order is already written down; the execution service finds it on its next round.
             logger.LogWarning(e, "The execution service could not be woken.");

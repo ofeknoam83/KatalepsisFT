@@ -21,7 +21,7 @@ public sealed class HeartbeatListener(IConnectionMultiplexer keyValue, Heartbeat
                 }
             });
         }
-        catch (RedisException e)
+        catch (Exception e) when (e is RedisException or TimeoutException)
         {
             // The multiplexer keeps retrying and restores the subscription when the connection returns.
             logger.LogWarning(e, "Could not subscribe to worker heartbeats yet");

@@ -141,7 +141,10 @@ public sealed class MarketDataWorker(
 
             try
             {
-                await Task.Delay(PublishEvery, stopping);
+                // With many instruments open, each round is a lot to send; it is then sent less often, so the store
+                // is not handed more than it can take. A book is still at most a second old when it is read.
+                int open = books.Instruments().Count;
+                await Task.Delay(open <= 40 ? PublishEvery : open <= 80 ? PublishEvery * 2 : PublishEvery * 4, stopping);
             }
             catch (OperationCanceledException)
             {
@@ -192,7 +195,7 @@ public sealed class OrderEngineWorker(
                 }
             });
         }
-        catch (RedisException e)
+        catch (Exception e) when (e is RedisException or TimeoutException)
         {
             logger.LogWarning("The engine cannot be woken by new orders and will find them on its rounds: {Reason}", e.Message);
         }
@@ -388,7 +391,7 @@ public sealed class LiveOrdersWorker(IServiceScopeFactory scopes, IConnectionMul
                 }
             });
         }
-        catch (RedisException e)
+        catch (Exception e) when (e is RedisException or TimeoutException)
         {
             logger.LogWarning("Real orders cannot be woken by new orders and will be found on the rounds: {Reason}", e.Message);
         }

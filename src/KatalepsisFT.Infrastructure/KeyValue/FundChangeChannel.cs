@@ -18,7 +18,7 @@ public sealed class KeyValueFundChangeNotifier(IConnectionMultiplexer keyValue, 
         {
             await keyValue.GetSubscriber().PublishAsync(RedisChannel.Literal(Channel), fundId);
         }
-        catch (RedisException e)
+        catch (Exception e) when (e is RedisException or TimeoutException)
         {
             // Screens fall back to refreshing on a timer; the figures themselves are already saved.
             logger.LogWarning(e, "Could not announce a change to fund {FundId}", fundId);
