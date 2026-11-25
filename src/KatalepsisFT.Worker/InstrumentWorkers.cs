@@ -92,6 +92,7 @@ public sealed class InstrumentListWorker(IServiceScopeFactory scopes, IHttpClien
         IFtDbContext database = scope.ServiceProvider.GetRequiredService<IFtDbContext>();
         DateTimeOffset now = clock.GetUtcNow();
         List<string> failed = [];
+        List<string> read = [];
         int total = 0;
         foreach (var (listing, symbols, reason) in answers)
         {
@@ -102,6 +103,7 @@ public sealed class InstrumentListWorker(IServiceScopeFactory scopes, IHttpClien
             }
 
             total += symbols.Count;
+            read.Add($"{listing.Venue} {listing.Type} {symbols.Count(s => s.Tradable)} of {symbols.Count} open");
             demand.Listed(listing.Venue, listing.Type, symbols.Where(s => s.Tradable).Select(s => s.Asset));
             Dictionary<string, ListedInstrument> stored = await database.ListedInstruments.Where(i => i.Venue == listing.Venue && i.Type == listing.Type).ToDictionaryAsync(i => i.Asset, stopping);
             foreach (ListedSymbol symbol in symbols)
@@ -133,7 +135,7 @@ public sealed class InstrumentListWorker(IServiceScopeFactory scopes, IHttpClien
         }
         else
         {
-            logger.LogInformation("Instrument lists read: {Total} instruments on {Lists} venue markets.", total, answers.Length);
+            logger.LogInformation("Instrument lists read: {Total} instruments on {Lists} venue markets. {Detail}.", total, answers.Length, string.Join("; ", read));
         }
 
         return failed.Count == 0;

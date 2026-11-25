@@ -117,6 +117,9 @@ public class InstrumentListTests
         demand.Want(held: [], asked: [("PENDLE", InstrumentType.Perp), ("eth", InstrumentType.Perp)]);
 
         demand.For(Venue.Deribit, InstrumentType.Perp).Should().Equal("BTC", "ETH");
+        // What is always followed is asked for even where the venue's list leaves it out or marks it closed.
+        demand.Listed(Venue.Mexc, InstrumentType.Spot, ["ETH"]);
+        demand.For(Venue.Mexc, InstrumentType.Spot).Should().Equal("BTC");
         // A venue whose list has not been read is asked only for what was always followed.
         demand.For(Venue.Bybit, InstrumentType.Perp).Should().Equal("BTC");
     }

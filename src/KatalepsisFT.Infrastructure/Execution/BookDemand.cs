@@ -57,13 +57,14 @@ public sealed class BookDemand(IReadOnlyList<string> always, int most = BookDema
 
     /// <summary>
     /// The assets one venue's stream should follow for one kind of market, in a fixed order. Only what the venue
-    /// lists: asking a venue for a book it does not have can make it refuse the others asked for with it. Until a
-    /// venue's list has been read, only the assets that are always followed are asked for, as before there was a list.
+    /// lists: asking a venue for a book it does not have can make it refuse the others asked for with it. The assets
+    /// that are always followed are asked for on every venue whatever its list says, as they were before there was a
+    /// list: a venue can report an instrument as closed to where this service runs and still publish its book.
     /// </summary>
     public IReadOnlyList<string> For(Venue venue, InstrumentType type)
     {
         IEnumerable<string> assets = _wanted.Where(w => w.Type == type).Select(w => w.Asset);
-        assets = _listed.TryGetValue((venue, type), out IReadOnlySet<string>? listed) ? assets.Where(listed.Contains) : assets.Where(_always.Contains);
+        assets = _listed.TryGetValue((venue, type), out IReadOnlySet<string>? listed) ? assets.Where(a => listed.Contains(a) || _always.Contains(a)) : assets.Where(_always.Contains);
         return assets.OrderBy(a => a, StringComparer.Ordinal).ToList();
     }
 
