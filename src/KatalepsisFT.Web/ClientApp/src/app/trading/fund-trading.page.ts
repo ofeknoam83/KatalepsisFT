@@ -28,6 +28,12 @@ interface Answer {
   notice?: string | null;
 }
 
+/** How many decimals a number is written with, to ten at most. */
+function decimals(value: number): number {
+  const text = value.toFixed(10).replace(/0+$/, '');
+  return text.length - text.indexOf('.') - 1;
+}
+
 interface Depth {
   venue: string;
   price: number;
@@ -207,30 +213,31 @@ interface Depth {
                   <div class="hint" data-testid="position-line">No position in {{ name(asset(), type2()) }} on {{ r.buy?.venueName ?? r.sell?.venueName ?? 'this account' }}.</div>
                 }
                 @for (h of r.held; track h.tradingAccountId) {
-                  <div data-testid="position-line">
-                    <b [style.color]="h.quantity > 0 ? 'var(--kft-up)' : 'var(--kft-down)'">{{ type2() === 'Spot' ? 'Holds' : h.quantity > 0 ? 'Long' : 'Short' }}</b>
-                    {{ abs(h.quantity) | dynamicDecimal }} {{ asset() }}
-                    <span class="hint">
-                      @if (r.held.length > 1 || target()?.[0] === 'm') { on {{ h.venueName }} · }
-                      entry {{ h.averagePrice | dynamicDecimal }}
-                      @if (h.markPrice !== null) { · worth {{ abs(h.quantity) * h.markPrice | usd }} }
-                      @if (h.unrealisedPnlUsd !== null) { · open <span [style.color]="h.unrealisedPnlUsd >= 0 ? 'var(--kft-up)' : 'var(--kft-down)'">{{ h.unrealisedPnlUsd | usd }}</span> }
-                    </span>
-                    <span class="picks">
+                  <div class="held" data-testid="position-line">
+                    <div class="line">
+                      <span class="side" [class.short]="h.quantity < 0">{{ type2() === 'Spot' ? 'Holds' : h.quantity > 0 ? 'Long' : 'Short' }}</span>
+                      <b>{{ abs(h.quantity) | dynamicDecimal }} {{ asset() }}</b>
+                      @if (h.markPrice !== null) { <span class="worth">{{ abs(h.quantity) * h.markPrice | usd }}</span> }
+                    </div>
+                    <div class="line sub">
+                      <span>@if (r.held.length > 1 || target()?.[0] === 'm') { {{ h.venueName }} · }Entry {{ h.averagePrice | dynamicDecimal }}</span>
+                      @if (h.unrealisedPnlUsd !== null) { <span class="worth">Open P&amp;L <b [style.color]="h.unrealisedPnlUsd >= 0 ? 'var(--kft-up)' : 'var(--kft-down)'">{{ h.unrealisedPnlUsd | usd }}</b></span> }
+                    </div>
+                    <div class="picks">
                       @for (share of shares; track share) {
                         <a (click)="take(h, share)" [title]="h.reducible < abs(h.quantity) ? 'Fill in ' + share + '% of what is not already being closed by a working order' : 'Fill in ' + share + '% of this position'" [attr.data-testid]="'take-' + share">{{ share === 100 ? 'All' : share + '%' }}</a>
                       }
-                    </span>
+                    </div>
                   </div>
                 }
                 @if (r.buy || r.sell) {
-                  <div class="hint">
-                    Most the limits allow:
+                  <div class="most">
+                    <span>Limits allow</span>
                     @if (r.buy; as side) {
-                      <a (click)="takeMost(side)" [title]="'Set by ' + limit(side) + (target()?.[0] === 'm' ? ', on ' + side.venueName : '')" data-testid="max-buy">buy {{ most(side) | dynamicDecimal }}</a>
+                      <a (click)="takeMost(side)" [title]="'Set by ' + limit(side) + (target()?.[0] === 'm' ? ', on ' + side.venueName : '')" data-testid="max-buy">Buy {{ most(side) | dynamicDecimal }}</a>
                     }
                     @if (r.sell; as side) {
-                      · <a (click)="takeMost(side)" [title]="'Set by ' + limit(side) + (target()?.[0] === 'm' ? ', on ' + side.venueName : '')" data-testid="max-sell">sell {{ most(side) | dynamicDecimal }}</a>
+                      <a (click)="takeMost(side)" [title]="'Set by ' + limit(side) + (target()?.[0] === 'm' ? ', on ' + side.venueName : '')" data-testid="max-sell">Sell {{ most(side) | dynamicDecimal }}</a>
                     }
                     @if (style() !== 'Single') {
                       <span title="Each slice of a working order is smaller than one order may be, so only the position limit counts"> (for an order worked over time)</span>
@@ -250,7 +257,7 @@ interface Depth {
               </div>
             }
             @if (type2() === 'Perp') {
-              <label nz-checkbox [ngModel]="reduceOnly()" (ngModelChange)="reduceOnly.set($event)">Reduce only <span class="hint">may shrink a position, never open or flip one</span></label>
+              <label nz-checkbox [ngModel]="reduceOnly()" (ngModelChange)="reduceOnly.set($event)" title="The order may shrink a position, never open or flip one" style="margin-bottom:10px">Reduce only</label>
             } @else {
               <span class="hint">Spot: you can sell only what the account holds.</span>
             }
@@ -319,7 +326,7 @@ interface Depth {
               <button nz-button class="sell" [disabled]="!canSend(d)" nz-popconfirm [nzCondition]="!targetIsLive(d)" [nzPopconfirmTitle]="'Send a real order to sell ' + (quantity() ?? 0) + ' ' + asset() + '?'" nzOkText="Send it" (nzOnConfirm)="send('Sell')" data-testid="ticket-sell">Sell {{ asset() }}</button>
             </div>
             @if (targetIsLive(d)) {
-              <p class="note" style="color:#cf1322" data-testid="ticket-live">This account trades real money. A market order goes out priced at the edge of the account's price band, to trade now or not at all.</p>
+              <p class="real" data-testid="ticket-live"><b>Real money.</b> A market order goes out priced at the edge of the account's price band, to trade now or not at all.</p>
             }
             @if (!d.canTrade) {
               <p class="note">Your account can look but not trade. Trading needs the Trader or Admin role.</p>
@@ -331,13 +338,19 @@ interface Depth {
               {{ name(asset(), type2()) }} {{ bookView() === 'Venues' ? 'across venues' : 'depth' }}
               <nz-segmented [nzOptions]="['Venues', 'Depth']" [ngModel]="bookView()" (ngModelChange)="bookView.set($event)" nzSize="small" style="margin-left:6px" data-testid="book-view" />
               <span style="flex:1"></span>
-              @if (book.data(); as b) {
-                @if (b.spreadBps !== null) {
-                  <span class="hint">best bid {{ b.bestBid ?? 0 | dynamicDecimal }} on {{ venueName(d, b.bestBidVenue) }} · best ask {{ b.bestAsk ?? 0 | dynamicDecimal }} on {{ venueName(d, b.bestAskVenue) }} · {{ b.spreadBps | number: '1.2-2' }} bp apart</span>
-                }
-              }
             </h3>
             @if (book.data(); as b) {
+              @if (b.spreadBps !== null && b.bestBid !== null && b.bestAsk !== null) {
+                <div class="quote" data-testid="quote-strip">
+                  <div><span>Best bid</span><b class="up">{{ b.bestBid | number: priceFormat() }}</b><small>{{ venueName(d, b.bestBidVenue) }}</small></div>
+                  <div><span>Mid</span><b>{{ (b.bestBid + b.bestAsk) / 2 | number: priceFormat() }}</b><small>{{ depth().quote }}</small></div>
+                  <div><span>Best ask</span><b class="down">{{ b.bestAsk | number: priceFormat() }}</b><small>{{ venueName(d, b.bestAskVenue) }}</small></div>
+                  <div [title]="b.spreadBps < 0 ? 'The best bid on one venue is above the best ask on another. Fees and transfer time usually explain it.' : 'Between the best bid and the best ask across venues'">
+                    <span>{{ b.spreadBps < 0 ? 'Crossed by' : 'Spread' }}</span><b>{{ abs(b.spreadBps) | number: '1.2-2' }} bp</b><small>{{ abs(b.bestAsk - b.bestBid) | number: priceFormat() }} {{ depth().quote }}</small>
+                  </div>
+                  <div><span>Venues</span><b>{{ b.venues.length }}</b><small>live books</small></div>
+                </div>
+              }
               @if (b.venues.length === 0) {
                 <p class="note" data-testid="book-empty">Opening the book for {{ name(asset(), type2()) }}. It takes a few seconds the first time; if nothing appears, no venue has a live book for it and orders are refused until one does.</p>
               } @else {
@@ -365,19 +378,21 @@ interface Depth {
                     </tbody>
                   </nz-table>
                   } @else {
-                  <p class="hint" style="margin:0 0 6px" data-testid="depth-hint">The best ten prices each side across {{ depth().venues }} venues quoted in {{ depth().quote }}, with the venue each is on and the size building up. {{ depth().left > 0 ? depth().left + ' venue' + (depth().left === 1 ? '' : 's') + ' quoted in another currency ' + (depth().left === 1 ? 'is' : 'are') + ' left out: prices in different currencies do not belong in one ladder.' : '' }}</p>
                   <div class="ladder" data-testid="ladder">
                     <div>
+                      <div class="lvl bid head"><span>Venue</span><span>Total</span><span>Size</span><b>Bid</b></div>
                       @for (l of depth().bids; track $index) {
-                        <div class="lvl bid"><i [style.width.%]="l.total / depth().most * 100"></i><span>{{ l.venue }}</span><span>{{ l.quantity | dynamicDecimal }}</span><b>{{ l.price | dynamicDecimal }}</b></div>
+                        <div class="lvl bid"><i [style.width.%]="l.total / depth().most * 100"></i><span>{{ l.venue }}</span><span class="tot">{{ l.total | number: sizeFormat() }}</span><span>{{ l.quantity | number: sizeFormat() }}</span><b>{{ l.price | number: priceFormat() }}</b></div>
                       }
                     </div>
                     <div>
+                      <div class="lvl ask head"><b>Ask</b><span>Size</span><span>Total</span><span>Venue</span></div>
                       @for (l of depth().asks; track $index) {
-                        <div class="lvl ask"><i [style.width.%]="l.total / depth().most * 100"></i><b>{{ l.price | dynamicDecimal }}</b><span>{{ l.quantity | dynamicDecimal }}</span><span>{{ l.venue }}</span></div>
+                        <div class="lvl ask"><i [style.width.%]="l.total / depth().most * 100"></i><b>{{ l.price | number: priceFormat() }}</b><span>{{ l.quantity | number: sizeFormat() }}</span><span class="tot">{{ l.total | number: sizeFormat() }}</span><span>{{ l.venue }}</span></div>
                       }
                     </div>
                   </div>
+                  <p style="margin:0;font-size:12px;color:var(--kft-text-3)" data-testid="depth-hint">Best {{ depthLevels }} prices each side across {{ depth().venues }} venues quoted in {{ depth().quote }}. The bar is the size building up from the best price.{{ depth().left > 0 ? ' ' + depth().left + ' venue' + (depth().left === 1 ? '' : 's') + ' quoted in another currency ' + (depth().left === 1 ? 'is' : 'are') + ' left out.' : '' }}</p>
                   }
                   @if (rules.data(); as every) {
                     @if (rulesFor(d, every); as listed) {
@@ -866,13 +881,123 @@ interface Depth {
       color: var(--kft-down);
     }
     .room {
-      margin: -4px 0 12px;
+      margin: -2px 0 12px;
       font-size: 12.5px;
-      line-height: 1.7;
+    }
+    .held {
+      background: var(--kft-bg);
+      border: 1px solid var(--kft-line);
+      border-radius: 8px;
+      padding: 8px 10px;
+      margin-bottom: 6px;
+      font-variant-numeric: tabular-nums;
+    }
+    .held .line {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+    }
+    .held .line.sub {
+      color: var(--kft-text-3);
+      font-size: 12px;
+      margin-top: 1px;
+    }
+    .held .worth {
+      margin-left: auto;
+      font-weight: 600;
+    }
+    .held .sub .worth {
+      font-weight: 400;
+    }
+    .held .side {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 0 6px;
+      border-radius: 4px;
+      background: var(--kft-up-soft);
+      color: var(--kft-up);
+    }
+    .held .side.short {
+      background: var(--kft-down-soft);
+      color: var(--kft-down);
+    }
+    .room .picks {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      margin-top: 8px;
     }
     .room .picks a {
-      margin-left: 8px;
+      text-align: center;
       font-weight: 500;
+      font-size: 12px;
+      padding: 2px 0;
+      border: 1px solid var(--kft-line);
+      border-radius: 6px;
+      background: var(--kft-card);
+      color: var(--kft-text-2);
+    }
+    .room .picks a:hover {
+      border-color: var(--kft-brand);
+      color: var(--kft-brand);
+    }
+    .most {
+      display: flex;
+      gap: 10px;
+      align-items: baseline;
+      font-size: 12px;
+      color: var(--kft-text-3);
+      padding: 0 2px;
+    }
+    .most a {
+      font-weight: 500;
+    }
+    .real {
+      margin: 10px 0 0;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: var(--kft-down-soft);
+      color: var(--kft-down);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .quote {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      border: 1px solid var(--kft-line);
+      border-radius: 10px;
+      margin-bottom: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+    .quote div {
+      padding: 8px 12px;
+      border-right: 1px solid var(--kft-line);
+      display: grid;
+      gap: 1px;
+    }
+    .quote div:last-child {
+      border-right: 0;
+    }
+    .quote span {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--kft-text-3);
+    }
+    .quote b {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--kft-text);
+    }
+    .quote b.up {
+      color: #389e0d;
+    }
+    .quote b.down {
+      color: #cf1322;
+    }
+    .quote small {
+      font-size: 11.5px;
+      color: var(--kft-text-3);
     }
     .decided td {
       color: var(--kft-text-3);
@@ -1008,30 +1133,59 @@ interface Depth {
     .ladder {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 6px;
+      gap: 2px;
       font-size: 12px;
       font-variant-numeric: tabular-nums;
+      border: 1px solid var(--kft-line);
+      border-radius: 10px;
+      overflow: hidden;
     }
 
     .lvl {
       position: relative;
       display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      padding: 2px 8px;
+      grid-template-columns: 1.1fr 1fr 1fr 1.1fr;
+      padding: 3px 12px;
+      line-height: 18px;
+    }
+
+    .lvl > span,
+    .lvl > b {
+      position: relative;
+      text-align: right;
+    }
+
+    .lvl.head {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--kft-text-3);
+      background: var(--kft-bg);
+      border-bottom: 1px solid var(--kft-line);
+      padding: 5px 12px;
+    }
+
+    .lvl.head b {
+      font-weight: 500;
+      color: var(--kft-text-3) !important;
+    }
+
+    .lvl:not(.head):hover {
+      background: var(--kft-line-soft);
+    }
+
+    .lvl .tot {
+      color: var(--kft-text-3);
     }
 
     .lvl i {
       position: absolute;
-      top: 0;
-      bottom: 0;
-      opacity: 0.14;
+      top: 1px;
+      bottom: 1px;
+      opacity: 0.12;
     }
 
-    .lvl.bid {
-      text-align: right;
-    }
-
-    .lvl.bid span:first-of-type {
+    .lvl.bid > span:first-of-type {
       text-align: left;
       color: var(--kft-text-3);
     }
@@ -1045,13 +1199,12 @@ interface Depth {
       color: #389e0d;
     }
 
-    .lvl.ask span:last-of-type {
-      text-align: right;
-      color: var(--kft-text-3);
+    .lvl.ask > b {
+      text-align: left;
     }
 
-    .lvl.ask span:first-of-type {
-      text-align: right;
+    .lvl.ask > span:last-of-type {
+      color: var(--kft-text-3);
     }
 
     .lvl.ask i {
@@ -1355,6 +1508,23 @@ export class FundTradingPage {
    * whatever there is. A book in another currency is left out, because a price in USDC is not a better or worse
    * price than one in USDT; it is a price for something slightly different.
    */
+  /** How many prices each side of the ladder shows. */
+  protected readonly depthLevels = 15;
+
+  /** One number of decimals for every price on the panel, so the column lines up: as many as the finest price shown needs. */
+  protected readonly priceFormat = computed(() => {
+    const b = this.book.data();
+    const prices = [b?.bestBid, b?.bestAsk, ...this.depth().bids.map((l) => l.price), ...this.depth().asks.map((l) => l.price)].filter((x): x is number => typeof x === 'number');
+    const digits = Math.min(8, Math.max(0, ...prices.map(decimals)));
+    return `1.${digits}-${digits}`;
+  });
+
+  /** The same for sizes, to four decimals at most. */
+  protected readonly sizeFormat = computed(() => {
+    const digits = Math.min(4, Math.max(0, ...[...this.depth().bids, ...this.depth().asks].map((l) => decimals(l.quantity))));
+    return `1.${digits}-${digits}`;
+  });
+
   protected readonly depth = computed(() => {
     const all = this.book.data()?.venues ?? [];
     const target = this.target();
@@ -1367,7 +1537,7 @@ export class FundTradingPage {
       return venues
         .flatMap((v) => v[pick].map((l) => ({ venue: v.venueName, price: l.price, quantity: l.quantity })))
         .sort((a, b) => (pick === 'bids' ? b.price - a.price : a.price - b.price))
-        .slice(0, 10)
+        .slice(0, this.depthLevels)
         .map((l) => ({ ...l, total: (total += l.quantity) }));
     };
     const bids = side('bids');
