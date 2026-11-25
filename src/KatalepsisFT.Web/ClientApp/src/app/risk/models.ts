@@ -9,6 +9,8 @@ export interface AssetBeta {
   grossUsd: number;
   beta: number;
   betaIsAssumed: boolean;
+  /** The asset's share of the variance of today's book; null without price history. */
+  shareOfRisk: number | null;
 }
 
 export interface ScenarioGrid {

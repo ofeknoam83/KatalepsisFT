@@ -73,6 +73,37 @@ public class HistoricalVarTests
 
 public class RiskStatisticsTests
 {
+    // Thirty days of made-up moves: BTC and ETH move together, HEDGE moves against BTC.
+    private static readonly double[] Btc = Enumerable.Range(0, 30).Select(i => 0.02 * Math.Sin(i * 1.3) + 0.004 * Math.Cos(i * 0.7)).ToArray();
+    private static readonly double[] Eth = Btc.Select((r, i) => 1.2 * r + 0.003 * Math.Sin(i * 2.1)).ToArray();
+
+    [Fact]
+    public void SharesOfRisk_AddUpToOne_FollowTheSizeOfThePosition_AndAHedgeIsNegative()
+    {
+        Dictionary<string, double[]> moves = new() { ["BTC"] = Btc, ["ETH"] = Eth };
+
+        Dictionary<string, double> longOnly = RiskStatistics.ExposureVarianceShares(new Dictionary<string, decimal> { ["BTC"] = 1_000_000m, ["ETH"] = 100_000m, ["NEW"] = 50_000m }, moves);
+        Dictionary<string, double> hedged = RiskStatistics.ExposureVarianceShares(new Dictionary<string, decimal> { ["BTC"] = 1_000_000m, ["ETH"] = -300_000m }, moves);
+
+        longOnly.Values.Sum().ShouldBe(1.0, 1e-9);
+        longOnly["BTC"].ShouldBeGreaterThan(longOnly["ETH"]);
+        longOnly["ETH"].ShouldBeGreaterThan(0.0);
+        // An asset with no price history has no share; it is not counted as zero risk.
+        longOnly.ContainsKey("NEW").ShouldBeFalse();
+        hedged.Values.Sum().ShouldBe(1.0, 1e-9);
+        hedged["ETH"].ShouldBeLessThan(0.0);
+        hedged["BTC"].ShouldBeGreaterThan(1.0);
+    }
+
+    [Fact]
+    public void SharesOfRisk_OfOneAsset_IsAll_AndTooLittleHistoryOrABookThatDoesNotMoveGivesNone()
+    {
+        RiskStatistics.ExposureVarianceShares(new Dictionary<string, decimal> { ["BTC"] = 12_345m }, new Dictionary<string, double[]> { ["BTC"] = Btc })["BTC"].ShouldBe(1.0, 1e-9);
+        RiskStatistics.ExposureVarianceShares(new Dictionary<string, decimal> { ["BTC"] = 12_345m }, new Dictionary<string, double[]> { ["BTC"] = Btc[..(RiskStatistics.MinDaysForShares - 1)] }).ShouldBeEmpty();
+        RiskStatistics.ExposureVarianceShares(new Dictionary<string, decimal> { ["USDT"] = 12_345m }, new Dictionary<string, double[]> { ["USDT"] = new double[30] }).ShouldBeEmpty();
+        RiskStatistics.ExposureVarianceShares(new Dictionary<string, decimal>(), new Dictionary<string, double[]> { ["BTC"] = Btc }).ShouldBeEmpty();
+    }
+
     private static readonly double[] Returns = [0.02, -0.01, 0.03, -0.02, 0.01, 0.00, -0.015, 0.025];
 
     [Fact]

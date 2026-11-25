@@ -122,4 +122,69 @@ public static class RiskStatistics
 
         return shares;
     }
+
+    /// <summary>The fewest days of price history from which a share of risk is worked out.</summary>
+    public const int MinDaysForShares = 20;
+
+    /// <summary>
+    /// Each asset's share of the risk of today's book: the covariance of what the asset's exposure would have made
+    /// each past day with what the whole book would have made, over the variance of the whole. The shares of the
+    /// assets that have price history add up to 1; a hedge shows as a negative share. It needs no history of the book
+    /// itself, only of prices, so it works on the day a book is first read.
+    /// </summary>
+    /// <param name="exposures">Signed exposure per asset.</param>
+    /// <param name="returnsByAsset">Daily returns per asset, covering the same days.</param>
+    /// <returns>A share for each asset with history; nothing for one without, or when the book does not move.</returns>
+    public static Dictionary<string, double> ExposureVarianceShares(IReadOnlyDictionary<string, decimal> exposures, IReadOnlyDictionary<string, double[]> returnsByAsset)
+    {
+        List<(string Asset, double Exposure, double[] Returns)> covered = exposures
+            .Where(e => e.Value != 0m && returnsByAsset.ContainsKey(e.Key))
+            .Select(e => (e.Key, (double)e.Value, returnsByAsset[e.Key]))
+            .ToList();
+        Dictionary<string, double> shares = [];
+        int days = covered.Count == 0 ? 0 : covered.Min(c => c.Returns.Length);
+        if (days < MinDaysForShares)
+        {
+            return shares;
+        }
+
+        double[] whole = new double[days];
+        foreach ((_, double exposure, double[] returns) in covered)
+        {
+            for (int t = 0; t < days; t++)
+            {
+                // Aligned on the most recent days.
+                whole[t] += exposure * returns[returns.Length - days + t];
+            }
+        }
+
+        double meanW = whole.Average();
+        double variance = whole.Sum(w => (w - meanW) * (w - meanW));
+        // Against the size of the book, so that a book of a few dollars is not taken for one that does not move.
+        double scale = covered.Sum(c => Math.Abs(c.Exposure));
+        if (variance <= 1e-18 * scale * scale)
+        {
+            return shares;
+        }
+
+        foreach ((string asset, double exposure, double[] returns) in covered)
+        {
+            double meanP = 0;
+            for (int t = 0; t < days; t++)
+            {
+                meanP += exposure * returns[returns.Length - days + t];
+            }
+
+            meanP /= days;
+            double covariance = 0;
+            for (int t = 0; t < days; t++)
+            {
+                covariance += (exposure * returns[returns.Length - days + t] - meanP) * (whole[t] - meanW);
+            }
+
+            shares[asset] = covariance / variance;
+        }
+
+        return shares;
+    }
 }

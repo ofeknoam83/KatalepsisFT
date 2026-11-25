@@ -132,19 +132,21 @@ const CHILD_COLORS = ['#2a78d6', '#e08a00', '#1f9d74', '#8a4fd3', '#c2417a', '#5
         <div class="panel">
           <h3>Volatility</h3>
           <nz-table [nzData]="d.volatility" nzTemplateMode [nzShowPagination]="false" nzSize="small">
-            <thead><tr><th>Name</th><th class="num">30 days</th><th class="num">90 days</th><th class="num">Share of variance</th></tr></thead>
+            <thead><tr><th>Name</th><th class="num">30 days</th><th class="num">90 days</th>@if (d.volatility.length > 1) {<th class="num">Share of variance</th>}</tr></thead>
             <tbody>
               @for (row of d.volatility; track row.kind + row.id; let first = $first) {
                 <tr [class.total-row]="first">
                   <td>{{ row.name }}</td>
                   <td class="num">{{ row.days30 | pct: 1 : false }}</td>
                   <td class="num">{{ row.days90 | pct: 1 : false }}</td>
-                  <td class="num">{{ first ? '' : (row.shareOfVariance | pct: 0 : false) }}</td>
+                  @if (d.volatility.length > 1) {
+                    <td class="num">{{ first ? '' : (row.shareOfVariance | pct: 0 : false) }}</td>
+                  }
                 </tr>
               }
             </tbody>
           </nz-table>
-          <p class="note">Share of variance: how much of the swings of {{ d.scope.name }} each part accounts for, at today's weights.</p>
+          <p class="note">{{ d.volatility.length > 1 ? 'Share of variance: how much of the swings of ' + d.scope.name + ' each part accounts for, at today\'s weights.' : d.scope.name + ' has no parts under it to share its swings between. Its risk by asset is in the table of assets, under Share of risk.' }}</p>
         </div>
       </div>
 
@@ -171,9 +173,9 @@ const CHILD_COLORS = ['#2a78d6', '#e08a00', '#1f9d74', '#8a4fd3', '#c2417a', '#5
           </div>
         }
         <div class="panel">
-          <h3>Exposure and beta by asset</h3>
+          <h3>Exposure, beta and share of risk by asset <span class="hint">Share of risk: how much of the swings of today's book each asset accounts for, from a year of daily price moves. The shares add up to 100%; a hedge is negative.</span></h3>
           <nz-table [nzData]="d.assets" nzTemplateMode [nzShowPagination]="false" nzSize="small" [nzScroll]="{ y: '300px' }">
-            <thead><tr><th>Asset</th><th class="num">Net</th><th class="num">Gross</th><th class="num">Beta to {{ d.scenario.referenceAsset }}</th></tr></thead>
+            <thead><tr><th>Asset</th><th class="num">Net</th><th class="num">Gross</th><th class="num">Beta to {{ d.scenario.referenceAsset }}</th><th class="num" title="Also called risk contribution: the covariance of this asset's daily profit or loss with the whole book's, over the variance of the whole book">Share of risk</th></tr></thead>
             <tbody>
               @for (row of d.assets; track row.asset) {
                 <tr>
@@ -181,6 +183,7 @@ const CHILD_COLORS = ['#2a78d6', '#e08a00', '#1f9d74', '#8a4fd3', '#c2417a', '#5
                   <td class="num" [class]="row.netUsd | tone">{{ row.netUsd | usd: 2 }}</td>
                   <td class="num">{{ row.grossUsd | usd: 2 }}</td>
                   <td class="num">{{ row.beta | number: '1.2-2' }}{{ row.betaIsAssumed ? ' (assumed)' : '' }}</td>
+                  <td class="num" data-testid="share-of-risk">{{ row.shareOfRisk === null ? '–' : (row.shareOfRisk | pct: 1 : false) }}</td>
                 </tr>
               }
             </tbody>

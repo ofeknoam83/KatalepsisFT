@@ -64,6 +64,8 @@ public sealed class RiskService(IFtDbContext database)
         // how much it is, rather than left for the reader to assume the figure covers the whole book.
         var uncovered = assets.Where(a => a.NetUsd != 0m && !pastMoves.ContainsKey(a.Asset)).OrderByDescending(a => Math.Abs(a.NetUsd)).ToList();
         BookTotals totals = HoldingsAggregator.Totals(rows);
+        // The same year of price moves says how much of the book's swings each asset accounts for.
+        Dictionary<string, double> riskShares = RiskStatistics.ExposureVarianceShares(assets.ToDictionary(a => a.Asset, a => a.NetUsd), pastMoves);
 
         NavHistory history = await NavHistory.LoadAsync(database, book.Managers.Select(m => m.Id).ToArray(), cancellationToken);
         double[]? Returns(int[] managerIds)
@@ -111,7 +113,7 @@ public sealed class RiskService(IFtDbContext database)
             totals.GrossUsd > 0m ? Math.Round(assets.Take(5).Sum(a => a.GrossUsd) / totals.GrossUsd, 4) : 0m,
             grid,
             byChild,
-            assets.Select(a => new AssetBetaDto(a.Asset, a.NetUsd, a.GrossUsd, betas[a.Asset].Beta, betas[a.Asset].Assumed)).ToList(),
+            assets.Select(a => new AssetBetaDto(a.Asset, a.NetUsd, a.GrossUsd, betas[a.Asset].Beta, betas[a.Asset].Assumed, riskShares.TryGetValue(a.Asset, out double share) ? Math.Round(share, 4) : null)).ToList(),
             Mandate(context, history, market),
             volatility,
             rollingDates,

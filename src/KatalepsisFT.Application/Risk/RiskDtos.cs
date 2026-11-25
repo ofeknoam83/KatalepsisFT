@@ -4,7 +4,8 @@ using KatalepsisFT.Domain.Funds;
 
 namespace KatalepsisFT.Application.Risk;
 
-public sealed record AssetBetaDto(string Asset, decimal NetUsd, decimal GrossUsd, double Beta, bool BetaIsAssumed);
+/// <param name="ShareOfRisk">The asset's share of the variance of today's book, from a year of price moves; null when the asset has no price history. The shares add up to 1 and a hedge is negative.</param>
+public sealed record AssetBetaDto(string Asset, decimal NetUsd, decimal GrossUsd, double Beta, bool BetaIsAssumed, double? ShareOfRisk = null);
 
 /// <param name="Cells">One row per shock, one column per beta multiplier: profit or loss in USD.</param>
 public sealed record ScenarioGridDto(string ReferenceAsset, IReadOnlyList<double> Shocks, IReadOnlyList<double> BetaMultipliers, IReadOnlyList<IReadOnlyList<decimal>> Cells);
