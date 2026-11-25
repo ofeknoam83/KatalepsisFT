@@ -19,8 +19,25 @@ public sealed record ListedSymbol(string Asset, string Symbol, bool Tradable, de
 /// names them. Which venues list what, and how each names things, was first worked out in Katalepsis
 /// (MarketInfoService, PerpetualSymbolsService); the reading here is written against the venues' public answers.
 /// </summary>
-public sealed record InstrumentListing(Venue Venue, InstrumentType Type, string Quote, Func<HttpRequestMessage> Request, Func<JsonElement, IEnumerable<ListedSymbol>> Read)
+/// <param name="NextPage">For a venue that gives its list in pages: the request for the page after this answer, or null when it was the last.</param>
+public sealed record InstrumentListing(Venue Venue, InstrumentType Type, string Quote, Func<HttpRequestMessage> Request, Func<JsonElement, IEnumerable<ListedSymbol>> Read, Func<JsonElement, HttpRequestMessage?>? NextPage = null)
 {
+    /// <summary>The request for the page after this answer, or null when there is none.</summary>
+    public HttpRequestMessage? After(string answer)
+    {
+        if (NextPage is null)
+        {
+            return null;
+        }
+
+        using JsonDocument document = JsonDocument.Parse(answer);
+        return NextPage(document.RootElement);
+    }
+
+    /// <summary>Several pages read as one list.</summary>
+    public IReadOnlyList<ListedSymbol> ReadAnswers(IEnumerable<string> answers) =>
+        answers.SelectMany(ReadAnswer).GroupBy(s => s.Asset).Select(g => g.OrderByDescending(s => s.Tradable).First()).OrderBy(s => s.Asset, StringComparer.Ordinal).ToList();
+
     /// <summary>Reads a recorded or received answer. An asset the system cannot name (odd characters, too long) is left out.</summary>
     public IReadOnlyList<ListedSymbol> ReadAnswer(string answer)
     {
@@ -58,16 +75,19 @@ public static class InstrumentListings
         new(Venue.Bybit, InstrumentType.Spot, "USDT", () => Get("https://api.bybit.com/v5/market/instruments-info?category=spot&limit=1000"), root =>
             from s in Items(root.GetProperty("result"), "list")
             where Text(s, "quoteCoin") == "USDT" && Text(s, "symbol") == Text(s, "baseCoin") + "USDT"
-            select new ListedSymbol(Text(s, "baseCoin"), Text(s, "symbol"), Text(s, "status") == "Trading", Number(Part(s, "priceFilter"), "tickSize"), Number(Part(s, "lotSizeFilter"), "basePrecision"), Number(Part(s, "lotSizeFilter"), "minOrderQty"))),
+            select new ListedSymbol(Text(s, "baseCoin"), Text(s, "symbol"), Text(s, "status") == "Trading", Number(Part(s, "priceFilter"), "tickSize"), Number(Part(s, "lotSizeFilter"), "basePrecision"), Number(Part(s, "lotSizeFilter"), "minOrderQty")),
+            root => BybitNext(root, "spot")),
         new(Venue.Bybit, InstrumentType.Perp, "USDT", () => Get("https://api.bybit.com/v5/market/instruments-info?category=linear&limit=1000"), root =>
             from s in Items(root.GetProperty("result"), "list")
             where Text(s, "quoteCoin") == "USDT" && Text(s, "contractType") == "LinearPerpetual" && Text(s, "symbol") == Text(s, "baseCoin") + "USDT"
-            select new ListedSymbol(Text(s, "baseCoin"), Text(s, "symbol"), Text(s, "status") == "Trading", Number(Part(s, "priceFilter"), "tickSize"), Number(Part(s, "lotSizeFilter"), "qtyStep"), Number(Part(s, "lotSizeFilter"), "minOrderQty"))),
+            select new ListedSymbol(Text(s, "baseCoin"), Text(s, "symbol"), Text(s, "status") == "Trading", Number(Part(s, "priceFilter"), "tickSize"), Number(Part(s, "lotSizeFilter"), "qtyStep"), Number(Part(s, "lotSizeFilter"), "minOrderQty")),
+            root => BybitNext(root, "linear")),
         new(Venue.Bybit, InstrumentType.Perp, "USDC", () => Get("https://api.bybit.com/v5/market/instruments-info?category=linear&limit=1000"), root =>
             from s in Items(root.GetProperty("result"), "list")
             // Bybit names its USDC perpetuals after the asset with PERP on the end.
             where Text(s, "quoteCoin") == "USDC" && Text(s, "contractType") == "LinearPerpetual" && Text(s, "symbol") == Text(s, "baseCoin") + "PERP"
-            select new ListedSymbol(Text(s, "baseCoin"), Text(s, "symbol"), Text(s, "status") == "Trading", Number(Part(s, "priceFilter"), "tickSize"), Number(Part(s, "lotSizeFilter"), "qtyStep"), Number(Part(s, "lotSizeFilter"), "minOrderQty"))),
+            select new ListedSymbol(Text(s, "baseCoin"), Text(s, "symbol"), Text(s, "status") == "Trading", Number(Part(s, "priceFilter"), "tickSize"), Number(Part(s, "lotSizeFilter"), "qtyStep"), Number(Part(s, "lotSizeFilter"), "minOrderQty")),
+            root => BybitNext(root, "linear")),
         new(Venue.Okx, InstrumentType.Spot, "USDT", () => Get("https://www.okx.com/api/v5/public/instruments?instType=SPOT"), root =>
             from s in Items(root, "data")
             where Text(s, "quoteCcy") == "USDT" && Text(s, "instId") == Text(s, "baseCcy") + "-USDT"
@@ -139,6 +159,10 @@ public static class InstrumentListings
     ];
 
     private static HttpRequestMessage Get(string address) => new(HttpMethod.Get, address);
+
+    /// <summary>Bybit gives at most a thousand instruments an answer, and a cursor for the rest.</summary>
+    private static HttpRequestMessage? BybitNext(JsonElement root, string category) =>
+        Text(Part(root, "result"), "nextPageCursor") is { Length: > 0 } cursor ? Get($"https://api.bybit.com/v5/market/instruments-info?category={category}&limit=1000&cursor={Uri.EscapeDataString(cursor)}") : null;
 
     private static IEnumerable<JsonElement> Items(JsonElement parent, string name) =>
         parent.ValueKind == JsonValueKind.Object && parent.TryGetProperty(name, out JsonElement list) && list.ValueKind == JsonValueKind.Array ? list.EnumerateArray() : [];

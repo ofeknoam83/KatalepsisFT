@@ -104,7 +104,9 @@ public sealed record TradingDto(
 public sealed record PaperInBookRequest(bool Include);
 
 /// <summary>What one of the accounts the ticket is on holds of the instrument.</summary>
-public sealed record HeldDto(int TradingAccountId, string VenueName, decimal Quantity, decimal AveragePrice, decimal? MarkPrice, decimal? UnrealisedPnlUsd);
+/// <param name="Reducible">How much of it an order can still take off: the position less what orders already working would take.</param>
+/// <param name="QuantityStep">The smallest step in quantity on that account's venue, where its list says.</param>
+public sealed record HeldDto(int TradingAccountId, string VenueName, decimal Quantity, decimal AveragePrice, decimal? MarkPrice, decimal? UnrealisedPnlUsd, decimal Reducible = 0m, decimal? QuantityStep = null);
 
 /// <summary>The most that may be bought, or sold, in the instrument right now.</summary>
 /// <param name="Max">The largest single order the account's limits allow, in units of the asset, rounded down to the venue's step.</param>
@@ -435,6 +437,12 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
             return null;
         }
 
+        // As an order sent to the manager would be routed: to its real-money accounts where it has any.
+        if (accounts.Any(a => a.Mode == TradingMode.Live))
+        {
+            accounts = accounts.Where(a => a.Mode == TradingMode.Live).ToList();
+        }
+
         int[] ids = accounts.Select(a => a.Id).ToArray();
         List<TradingPosition> positions = await database.TradingPositions.AsNoTracking().Where(p => ids.Contains(p.TradingAccountId) && p.Asset == name && p.InstrumentType == type).ToListAsync(cancellationToken);
         var working = await database
@@ -455,9 +463,17 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
             decimal quantity = positions.FirstOrDefault(p => p.TradingAccountId == account.Id)?.Quantity ?? 0m;
             TradingPosition? position = positions.FirstOrDefault(p => p.TradingAccountId == account.Id);
             string venue = VenueExposureService.NameOf(account.Venue);
+            // The account's own market on its venue: its USDC perpetuals if that is what it trades, otherwise the USDT (or only) one.
+            string? quote = account.QuoteFor(type);
+            decimal? step = (listed.FirstOrDefault(i => i.Venue == account.Venue && i.Quote == quote) ?? listed.FirstOrDefault(i => i.Venue == account.Venue && i.Quote == "USDT") ?? listed.FirstOrDefault(i => i.Venue == account.Venue && quote is null))?.QuantityStep;
+            stepShown ??= step;
+            decimal openBuys = working.Where(o => o.TradingAccountId == account.Id && o.Side == OrderSide.Buy).Sum(o => o.Left);
+            decimal openSells = working.Where(o => o.TradingAccountId == account.Id && o.Side == OrderSide.Sell).Sum(o => o.Left);
             if (quantity != 0m)
             {
-                held.Add(new HeldDto(account.Id, venue, quantity, position!.AveragePrice, book?.Mid, book?.Mid is decimal at && position.AveragePrice > 0m ? Math.Round(quantity * (at - position.AveragePrice), 2) : null));
+                // What can still be taken off it: orders already working on the reducing side count against it, as they do when an order is checked.
+                decimal reducible = Math.Max(0m, Math.Abs(quantity) - (quantity > 0m ? openSells : openBuys));
+                held.Add(new HeldDto(account.Id, venue, quantity, position!.AveragePrice, book?.Mid, book?.Mid is decimal at && position.AveragePrice > 0m ? Math.Round(quantity * (at - position.AveragePrice), 2) : null, reducible, step));
             }
 
             if (book?.Mid is not decimal mid || mid <= 0m)
@@ -465,11 +481,6 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
                 continue;
             }
 
-            string quote = account.QuoteFor(type) ?? string.Empty;
-            decimal? step = (listed.FirstOrDefault(i => i.Venue == account.Venue && i.Quote == quote) ?? listed.FirstOrDefault(i => i.Venue == account.Venue))?.QuantityStep;
-            stepShown ??= step;
-            decimal openBuys = working.Where(o => o.TradingAccountId == account.Id && o.Side == OrderSide.Buy).Sum(o => o.Left);
-            decimal openSells = working.Where(o => o.TradingAccountId == account.Id && o.Side == OrderSide.Sell).Sum(o => o.Left);
             // A little is kept back, because the price the order is checked at will not be exactly this one.
             decimal single = account.MaxOrderNotionalUsd / mid * 0.995m;
             decimal positionMost = account.MaxPositionNotionalUsd / mid * 0.995m;
@@ -507,9 +518,15 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
             return TradingChange<int>.Refused("Only a trader or an administrator can pin an instrument.");
         }
 
-        if (!await database.Funds.AnyAsync(f => f.Id == fundId, cancellationToken))
+        Fund? pinning = await database.Funds.AsNoTracking().FirstOrDefaultAsync(f => f.Id == fundId, cancellationToken);
+        if (pinning is null)
         {
             return TradingChange<int>.Missing;
+        }
+
+        if (pinning.IsDemo)
+        {
+            return TradingChange<int>.Refused(DemoIsFixed);
         }
 
         string asset = (instrument.Asset ?? string.Empty).Trim().ToUpperInvariant();
@@ -531,7 +548,17 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
 
         PinnedInstrument pin = new() { FundId = fundId, Asset = asset, Type = instrument.Type };
         database.PinnedInstruments.Add(pin);
-        await database.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await database.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            // Pinned by somebody else in the same instant: it is pinned, which is what was asked.
+            database.DiscardChanges();
+            return TradingChange<int>.Ok(0);
+        }
+
         return TradingChange<int>.Ok(pin.Id);
     }
 
@@ -932,11 +959,9 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
 
                     if (await HasOpenOrdersAsync(account.Id, cancellationToken))
                     {
-                        return TradingChange<int>.Refused("The account has open paper orders. Cancel them first; real trading starts from a clean sheet.");
+                        return TradingChange<int>.Refused("The account has open orders or working orders on paper. Cancel or stop them first; real trading starts from a clean sheet.");
                     }
 
-                    // Paper positions were never real. From here the account shows what the venue holds for it.
-                    database.TradingPositions.RemoveRange(await database.TradingPositions.Where(p => p.TradingAccountId == account.Id).ToListAsync(cancellationToken));
                     account.Mode = TradingMode.Live;
                     account.LiveEquityUsd = null;
                     account.LiveSyncedAt = null;
@@ -990,6 +1015,14 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
             }
         }
 
+        if (approve && request.Kind == ApprovalKind.GoLive && request.TradingAccountId is int nowLive)
+        {
+            // Paper positions were never real. From here the account shows what the venue holds for it. They are
+            // cleared only now that the switch has held, so that one undone a moment ago keeps its paper record.
+            database.TradingPositions.RemoveRange(await database.TradingPositions.Where(p => p.TradingAccountId == nowLive).ToListAsync(cancellationToken));
+            await database.SaveChangesAsync(cancellationToken);
+        }
+
         return TradingChange<int>.Ok(request.Id);
     }
 
@@ -1011,7 +1044,7 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
             : !LiveVenues.Contains(account.Venue) ? $"Real orders cannot be sent to {venue} yet. It trades on paper."
             : account.PerpQuote != "USDT" ? $"Real orders in {account.PerpQuote}-margined perpetuals are not connected yet. This account trades on paper."
             : account.EncryptedKey is null ? "Add a trading key first, and have it approved."
-            : await HasOpenOrdersAsync(accountId, cancellationToken) ? "The account has open paper orders. Cancel them first; real trading starts from a clean sheet."
+            : await HasOpenOrdersAsync(accountId, cancellationToken) ? "The account has open orders or working orders on paper. Cancel or stop them first; real trading starts from a clean sheet."
             : await database.ApprovalRequests.AnyAsync(r => r.TradingAccountId == accountId && r.Kind == ApprovalKind.GoLive && r.Status == ApprovalStatus.Pending, cancellationToken) ? "This has already been asked for and is waiting for a second administrator."
             : null;
         if (refusal is not null)
@@ -1073,8 +1106,17 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
         return TradingChange<int>.Ok(account.Id, "Back on paper. What the account holds at the venue has not been touched.");
     }
 
-    private Task<bool> HasOpenOrdersAsync(int accountId, CancellationToken cancellationToken) =>
-        database.Orders.AnyAsync(o => o.TradingAccountId == accountId && (o.Status == OrderStatus.Received || o.Status == OrderStatus.Accepted || o.Status == OrderStatus.Working || o.Status == OrderStatus.PartlyFilled), cancellationToken);
+    /// <summary>
+    /// Whether anything is still in flight on the account: an order, or a working order that will send more. A
+    /// working order sent to the manager rather than to one account counts for every account of that manager.
+    /// </summary>
+    private async Task<bool> HasOpenOrdersAsync(int accountId, CancellationToken cancellationToken) =>
+        await database.Orders.AnyAsync(o => o.TradingAccountId == accountId && (o.Status == OrderStatus.Received || o.Status == OrderStatus.Accepted || o.Status == OrderStatus.Working || o.Status == OrderStatus.PartlyFilled), cancellationToken)
+        || await database.WorkingOrders.AnyAsync(
+            w => (w.State == WorkingState.Working || w.State == WorkingState.Paused || w.State == WorkingState.PendingApproval)
+                && (w.TradingAccountId == accountId || (w.TradingAccountId == null && database.TradingAccounts.Any(a => a.Id == accountId && a.ManagerAccountId == w.ManagerAccountId))),
+            cancellationToken
+        );
 
     /// <summary>Withdraws one's own request.</summary>
     public async Task<TradingChange<int>> CancelRequestAsync(int requestId, Actor actor, CancellationToken cancellationToken)
@@ -1093,6 +1135,12 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
         request.Status = ApprovalStatus.Cancelled;
         request.DecidedBy = actor.Name;
         request.DecidedAt = clock.GetUtcNow();
+        if (request.Kind == ApprovalKind.LargeOrder)
+        {
+            // What was waiting on this request will never start now; it is closed, not left waiting for ever.
+            await WorkingOrderService.DecideAsync(database, request, false, actor.Name, clock.GetUtcNow(), cancellationToken, withdrawn: true);
+        }
+
         request.PayloadJson = request.Kind == ApprovalKind.AddTradingKey ? "{}" : request.PayloadJson;
         await database.SaveChangesAsync(cancellationToken);
         return TradingChange<int>.Ok(request.Id);
@@ -1162,6 +1210,11 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
         bool anyOfTheManagers = request.TradingAccountId is null;
         Order? existing = await database.Orders.AsNoTracking().Include(o => o.TradingAccount).ThenInclude(a => a.ManagerAccount).Include(o => o.Events)
             .FirstOrDefaultAsync(o => o.ClientOrderId == clientOrderId && (o.TradingAccountId == account.Id || (anyOfTheManagers && o.TradingAccount.ManagerAccountId == managerId)), cancellationToken);
+        if (existing is not null && strategy is not null && !AccountIds(strategy).Contains(existing.TradingAccountId))
+        {
+            return TradingChange<OrderDto>.Refused("An order with this name exists on an account this strategy key is not allowed to trade. Use another name.");
+        }
+
         if (existing is not null)
         {
             return TradingChange<OrderDto>.Ok(Dto(existing), "An order with this name already exists; it is returned unchanged.");
@@ -1261,6 +1314,13 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
         }
 
         List<TradingAccount> own = await accounts.Where(a => a.ManagerAccountId == managerId).OrderBy(a => a.Id).ToListAsync(cancellationToken);
+        // Where the manager has a real-money account, an order sent to the manager is a real order: it is never
+        // filled on a paper account because that one happened to show a better price.
+        if (own.Any(a => a.Mode == TradingMode.Live))
+        {
+            own = own.Where(a => a.Mode == TradingMode.Live).ToList();
+        }
+
         if (own.Count <= 1)
         {
             return own.FirstOrDefault();

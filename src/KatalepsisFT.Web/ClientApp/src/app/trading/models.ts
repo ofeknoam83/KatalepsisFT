@@ -74,7 +74,7 @@ export interface Halt {
 
 export interface Approval {
   id: number;
-  kind: 'AddTradingKey' | 'RaiseLimits' | 'ReleaseHalt' | 'GoLive';
+  kind: 'AddTradingKey' | 'RaiseLimits' | 'ReleaseHalt' | 'GoLive' | 'LargeOrder';
   summary: string;
   requestedBy: string;
   requestedAt: string;
@@ -226,7 +226,7 @@ export interface AccountForm {
 export const TIF_LABEL: Record<TimeInForce, string> = { GoodTillCancelled: 'Rests until cancelled', ImmediateOrCancel: 'Fill now, cancel the rest', PostOnly: 'Maker only' };
 export const STATUS_LABEL: Record<OrderStatus, string> = { Received: 'Received', Accepted: 'Accepted', Working: 'Working', PartlyFilled: 'Partly filled', Filled: 'Filled', Cancelled: 'Cancelled', Rejected: 'Rejected' };
 export const STATUS_COLOR: Record<OrderStatus, string> = { Received: 'default', Accepted: 'blue', Working: 'blue', PartlyFilled: 'gold', Filled: 'green', Cancelled: 'default', Rejected: 'red' };
-export const APPROVAL_LABEL: Record<Approval['kind'], string> = { AddTradingKey: 'Trading key', RaiseLimits: 'Higher limits', ReleaseHalt: 'Release a halt', GoLive: 'Real money' };
+export const APPROVAL_LABEL: Record<Approval['kind'], string> = { AddTradingKey: 'Trading key', RaiseLimits: 'Higher limits', ReleaseHalt: 'Release a halt', GoLive: 'Real money', LargeOrder: 'Large order' };
 
 export type WorkingStyle = 'OverTime' | 'Paced' | 'Passive';
 export type WorkingState = 'PendingApproval' | 'Working' | 'Paused' | 'Done' | 'Stopped' | 'Rejected';
@@ -257,6 +257,8 @@ export interface WorkingOrder {
   side: OrderSide;
   quantity: number;
   limitPrice: number | null;
+  /** True when its slices may only shrink a position. */
+  reduceOnly: boolean;
   style: WorkingStyle;
   durationSeconds: number | null;
   sliceCount: number | null;
@@ -298,6 +300,10 @@ export interface Held {
   averagePrice: number;
   markPrice: number | null;
   unrealisedPnlUsd: number | null;
+  /** How much of it an order can still take off, after the orders already working to reduce it. */
+  reducible: number;
+  /** The smallest step in quantity on that account's venue. */
+  quantityStep: number | null;
 }
 
 /** The most that may be bought, or sold, right now. */

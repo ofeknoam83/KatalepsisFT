@@ -16,6 +16,8 @@ if (group is null || !WorkerGroups.All.Contains(group, StringComparer.OrdinalIgn
 }
 
 (bool hasPostgres, bool hasKeyValue) = builder.Services.AddStores(builder.Configuration);
+// Live prices from the execution service, for valuing what trading accounts hold when a manager's book is written.
+builder.Services.AddExecutionClient();
 if (!hasKeyValue)
 {
     Console.Error.WriteLine($"{KatalepsisFT.Infrastructure.DependencyInjection.KeyValueUrlKey} is not set; the worker has nothing to connect to.");

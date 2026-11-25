@@ -54,7 +54,10 @@ public sealed class InstrumentListWorker(IServiceScopeFactory scopes, IHttpClien
         {
             using IServiceScope scope = scopes.CreateScope();
             IFtDbContext database = scope.ServiceProvider.GetRequiredService<IFtDbContext>();
-            var stored = await database.ListedInstruments.AsNoTracking().Where(i => i.Tradable).Select(i => new { i.Venue, i.Type, i.Asset, i.Quote }).ToListAsync(stopping);
+            // Listed when last read, open for orders or not. What a venue had stopped listing is not asked for.
+            var newest = await database.ListedInstruments.AsNoTracking().GroupBy(i => new { i.Venue, i.Type, i.Quote }).Select(g => new { g.Key.Venue, g.Key.Type, g.Key.Quote, At = g.Max(i => i.SeenAt) }).ToListAsync(stopping);
+            var every = await database.ListedInstruments.AsNoTracking().Select(i => new { i.Venue, i.Type, i.Asset, i.Quote, i.SeenAt }).ToListAsync(stopping);
+            var stored = every.Where(i => newest.Any(n => n.Venue == i.Venue && n.Type == i.Type && n.Quote == i.Quote && n.At == i.SeenAt)).ToList();
             foreach (var group in stored.GroupBy(i => (i.Venue, i.Type, i.Quote)))
             {
                 demand.Listed(group.Key.Venue, group.Key.Type, group.Select(i => i.Asset), group.Key.Quote);
@@ -78,10 +81,20 @@ public sealed class InstrumentListWorker(IServiceScopeFactory scopes, IHttpClien
         {
             try
             {
-                using HttpRequestMessage request = listing.Request();
-                using HttpResponseMessage response = await http.SendAsync(request, stopping);
-                response.EnsureSuccessStatusCode();
-                IReadOnlyList<ListedSymbol> symbols = listing.ReadAnswer(await response.Content.ReadAsStringAsync(stopping));
+                List<string> pages = [];
+                HttpRequestMessage? request = listing.Request();
+                // A list that comes in pages is followed to its end, within reason.
+                for (int page = 0; request is not null && page < 20; page++)
+                {
+                    using HttpRequestMessage sending = request;
+                    using HttpResponseMessage response = await http.SendAsync(sending, stopping);
+                    response.EnsureSuccessStatusCode();
+                    string answer = await response.Content.ReadAsStringAsync(stopping);
+                    pages.Add(answer);
+                    request = listing.After(answer);
+                }
+
+                IReadOnlyList<ListedSymbol> symbols = listing.ReadAnswers(pages);
                 // An empty list from a venue that had instruments an hour ago is a bad answer, not a venue that closed.
                 return (Listing: listing, Symbols: symbols.Count > 0 ? symbols : null, Reason: symbols.Count > 0 ? null : "the list was empty");
             }
@@ -107,7 +120,8 @@ public sealed class InstrumentListWorker(IServiceScopeFactory scopes, IHttpClien
 
             total += symbols.Count;
             read.Add($"{listing.Venue} {listing.Type}{(listing.Quote == "USDT" ? string.Empty : " " + listing.Quote)} {symbols.Count(s => s.Tradable)} of {symbols.Count} open");
-            demand.Listed(listing.Venue, listing.Type, symbols.Where(s => s.Tradable).Select(s => s.Asset), listing.Quote);
+            // Every instrument in the venue's list counts for books, also one it is not taking orders for right now.
+            demand.Listed(listing.Venue, listing.Type, symbols.Select(s => s.Asset), listing.Quote);
             Dictionary<string, ListedInstrument> stored = await database.ListedInstruments.Where(i => i.Venue == listing.Venue && i.Type == listing.Type && i.Quote == listing.Quote).ToDictionaryAsync(i => i.Asset, stopping);
             foreach (ListedSymbol symbol in symbols)
             {

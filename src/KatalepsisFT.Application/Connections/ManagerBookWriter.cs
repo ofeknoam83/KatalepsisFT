@@ -45,6 +45,15 @@ public sealed class ManagerBookWriter(IFtDbContext database, IBookFeed? books = 
         // A retired manager keeps its history and holds nothing: whatever is still stored for it stays out of the book.
         if (!await database.ManagerAccounts.Where(m => m.Id == managerAccountId).Select(m => m.IsActive).FirstOrDefaultAsync(cancellationToken))
         {
+            // Its leaving was recorded when it was retired, for the whole book at once. Its trading accounts are no
+            // longer counted, so that they come back in as money arriving if the manager is reinstated.
+            foreach (TradingAccount account in await database.TradingAccounts.Where(a => a.ManagerAccountId == managerAccountId && a.InBookEquityUsd != null).ToListAsync(cancellationToken))
+            {
+                account.InBookEquityUsd = null;
+                account.InBookMode = null;
+            }
+
+            await database.SaveChangesAsync(cancellationToken);
             return (0m, 0m, 0m);
         }
 
@@ -180,7 +189,9 @@ public sealed class ManagerBookWriter(IFtDbContext database, IBookFeed? books = 
         }
 
         bool countPaper = await database.ManagerAccounts.Where(m => m.Id == managerAccountId).Select(m => m.Sleeve.Fund.IncludePaperTrading).FirstAsync(cancellationToken);
-        List<Venue> read = await database.VenueConnections.Where(c => c.ManagerAccountId == managerAccountId && c.State != ConnectionState.Disabled).Select(c => c.Venue).Distinct().ToListAsync(cancellationToken);
+        // Only a connection that has actually been read counts the account. One that was added and has not
+        // succeeded yet reads nothing, and must not push the trading account out of the book meanwhile.
+        List<Venue> read = await database.VenueConnections.Where(c => c.ManagerAccountId == managerAccountId && c.State != ConnectionState.Disabled && c.LastSnapshotJson != null).Select(c => c.Venue).Distinct().ToListAsync(cancellationToken);
         int[] ids = accounts.Select(a => a.Id).ToArray();
         List<TradingPosition> held = await database.TradingPositions.AsNoTracking().Where(p => ids.Contains(p.TradingAccountId)).ToListAsync(cancellationToken);
         Dictionary<string, decimal> closes = await LatestClosesAsync(database, held.Select(p => p.Asset).Distinct().ToArray(), cancellationToken);
@@ -222,17 +233,27 @@ public sealed class ManagerBookWriter(IFtDbContext database, IBookFeed? books = 
             if (counted)
             {
                 result.AddRange(lines);
+                // Counted before as paper and now as real money, or the other way round: what it was worth then
+                // leaves, and what it is worth now arrives. Neither is a gain or a loss.
+                if (account.InBookEquityUsd is decimal before && account.InBookMode is { } mode && mode != account.Mode)
+                {
+                    database.CashFlows.Add(ConnectionSyncService.BookChange(managerAccountId, -before, new DateTimeOffset(day.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero), $"{name} left the book as a {(mode == TradingMode.Live ? "real-money" : "paper")} account"));
+                    account.InBookEquityUsd = null;
+                }
+
                 if (account.InBookEquityUsd is null)
                 {
                     database.CashFlows.Add(ConnectionSyncService.BookChange(managerAccountId, equity, new DateTimeOffset(day.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero), $"{name} added to the book"));
                 }
 
                 account.InBookEquityUsd = Math.Round(equity, 2);
+                account.InBookMode = account.Mode;
             }
             else if (account.InBookEquityUsd is decimal last)
             {
                 database.CashFlows.Add(ConnectionSyncService.BookChange(managerAccountId, -last, new DateTimeOffset(day.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero), $"{name} taken out of the book"));
                 account.InBookEquityUsd = null;
+                account.InBookMode = null;
             }
         }
 

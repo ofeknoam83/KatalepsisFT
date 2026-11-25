@@ -60,7 +60,7 @@ public abstract class BookPoller
                         board.Heard(Venue);
                     }
                 }
-                catch (Exception e) when (e is HttpRequestException or OperationCanceledException or JsonException or FormatException or KeyNotFoundException or InvalidOperationException)
+                catch (Exception e) when (e is HttpRequestException or OperationCanceledException or JsonException or FormatException or KeyNotFoundException or InvalidOperationException or ArgumentException or OverflowException or IndexOutOfRangeException)
                 {
                     if (!stopping.IsCancellationRequested && clock.GetUtcNow() - warned > TimeSpan.FromMinutes(5))
                     {

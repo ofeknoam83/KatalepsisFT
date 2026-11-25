@@ -55,6 +55,12 @@ public class TradingAccount
     /// </summary>
     public decimal? InBookEquityUsd { get; set; }
 
+    /// <summary>
+    /// Whether it was counted as a paper or a real-money account. The two are different money: an account that
+    /// changes from one to the other leaves the book as the one and comes into it as the other.
+    /// </summary>
+    public TradingMode? InBookMode { get; set; }
+
     /// <summary>The currency this account's book for a kind of market must be in; null where the venue has only one.</summary>
     public string? QuoteFor(InstrumentType type) => type == InstrumentType.Perp && PerpQuote != "USDT" ? PerpQuote : null;
 

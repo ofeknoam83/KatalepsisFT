@@ -66,10 +66,12 @@ public sealed class TradingController(TradingService trading, WorkingOrderServic
     public async Task<IActionResult> PaperInBookAsync(int fundId, PaperInBookRequest request, CancellationToken cancellationToken) => Result(await trading.SetPaperInBookAsync(fundId, request.Include, Actor, cancellationToken));
 
     [Authorize(Roles = Roles.CanTrade)]
+    [Audit("Instrument pinned", Fund = "fundId")]
     [HttpPost("funds/{fundId:int}/pins")]
     public async Task<IActionResult> PinAsync(int fundId, InstrumentRef instrument, CancellationToken cancellationToken) => Result(await trading.PinAsync(fundId, instrument, Actor, cancellationToken));
 
     [Authorize(Roles = Roles.CanTrade)]
+    [Audit("Instrument unpinned", Fund = "fundId")]
     [HttpDelete("funds/{fundId:int}/pins/{type}/{asset}")]
     public async Task<IActionResult> UnpinAsync(int fundId, InstrumentType type, string asset, CancellationToken cancellationToken) => Result(await trading.UnpinAsync(fundId, new InstrumentRef(asset, type), Actor, cancellationToken));
 

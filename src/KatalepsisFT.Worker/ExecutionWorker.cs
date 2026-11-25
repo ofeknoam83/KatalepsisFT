@@ -27,7 +27,7 @@ public sealed record ExecutionOptions(IReadOnlyList<string> Assets, string? Mast
             .Select(a => a.ToUpperInvariant())
             .Distinct()
             .ToList();
-        int most = int.TryParse(configuration["EXEC_MAX_BOOKS"], out int given) && given is >= 0 and <= 500 ? given : BookDemand.DefaultMost;
+        int most = int.TryParse(configuration["EXEC_MAX_BOOKS"], out int given) && given is >= 0 and <= 200 ? given : BookDemand.DefaultMost;
         TimeSpan kept = int.TryParse(configuration["EXEC_BOOK_IDLE_SECONDS"], out int seconds) && seconds is >= 10 and <= 3600 ? TimeSpan.FromSeconds(seconds) : KeyValueBookFeed.WantedFor;
         return new ExecutionOptions(assets.Count > 0 ? assets : DefaultAssets, configuration["EXEC_MASTER_KEY"], most) { BooksKeptFor = kept };
     }

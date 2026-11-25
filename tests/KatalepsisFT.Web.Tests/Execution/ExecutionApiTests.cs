@@ -236,8 +236,16 @@ public class ExecutionApiTests(TestDatabase database) : IClassFixture<TestDataba
         alone.Should().Be(250_000m);
         gross.Should().Be(60_000m);
 
-        // With a read-only key on the same venue, that key reads the same account; counting both would double it.
-        db.VenueConnections.Add(new VenueConnection { ManagerAccountId = managerId, Venue = Venue.Binance, Label = "Read", EncryptedCredentials = "x", KeyHint = "…x", State = ConnectionState.Pending, CreatedAt = DateTimeOffset.UtcNow });
+        // A read-only key that has not been read yet counts nothing, so it must not push the account out meanwhile.
+        VenueConnection key = new() { ManagerAccountId = managerId, Venue = Venue.Binance, Label = "Read", EncryptedCredentials = "x", KeyHint = "…x", State = ConnectionState.Pending, CreatedAt = DateTimeOffset.UtcNow };
+        db.VenueConnections.Add(key);
+        await db.SaveChangesAsync();
+        (decimal unread, _, _) = await writer.WriteAsync(managerId, today, CancellationToken.None);
+        unread.Should().Be(250_000m);
+
+        // Once that key has been read, it reads the same account; counting both would double it.
+        key.LastSnapshotJson = JsonSerializer.Serialize(new VenueSnapshot(DateTimeOffset.UtcNow, []), ManagerBookWriter.Json);
+        key.State = ConnectionState.Live;
         await db.SaveChangesAsync();
         (decimal withKey, _, _) = await writer.WriteAsync(managerId, today, CancellationToken.None);
         withKey.Should().Be(0m);
@@ -538,6 +546,96 @@ public class ExecutionApiTests(TestDatabase database) : IClassFixture<TestDataba
         {
             await scope.ServiceProvider.GetRequiredService<FtDbContext>().WorkingOrders.Where(w => w.TradingAccountId == accountId && (w.State == WorkingState.Working || w.State == WorkingState.Paused)).ExecuteUpdateAsync(w => w.SetProperty(x => x.State, WorkingState.Stopped));
         }
+    }
+
+    [Fact]
+    public async Task AnAccountCannotChangeBetweenPaperAndRealMoney_WhileAWorkingOrderIsOpenOnIt()
+    {
+        (int fundId, int managerId, int accountId) = await NewAccountAsync();
+        Quote(Venue.Binance, "DOT", 4.99m, 5.01m, 1_000_000m);
+        // Between slices a working order has no open order, and it would carry on with real money unapproved.
+        WorkingOrderDto working = await WorkAsync((await StartWorkingAsync(Paced(null, managerId, "DOT", 10_000m, 1_000m))).Id);
+        working.SlicesSent.Should().Be(1);
+        using (IServiceScope scope = _app!.Services.CreateScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<FtDbContext>().TradingAccounts.Where(a => a.Id == accountId).ExecuteUpdateAsync(a => a.SetProperty(x => x.EncryptedKey, "sealed").SetProperty(x => x.KeyHint, "…test"));
+        }
+
+        HttpResponseMessage live = await _admin.PostAsync($"/api/trading-accounts/{accountId}/go-live", null);
+        live.IsSuccessStatusCode.Should().BeFalse();
+        (await live.Content.ReadAsStringAsync()).Should().Contain("working orders");
+
+        // Stopped, the way is clear.
+        (await _admin.PostAsync($"/api/working-orders/{working.Id}/stop", null)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await WorkAsync(working.Id)).State.Should().Be(WorkingState.Stopped);
+        (await _admin.PostAsync($"/api/trading-accounts/{accountId}/go-live", null)).StatusCode.Should().Be(HttpStatusCode.OK);
+        _ = fundId;
+    }
+
+    [Fact]
+    public async Task WorkingOrders_GoWhereThePositionIs_AreNotCutBelowTheVenuesStep_AndEndWhenTheirRequestIsWithdrawn()
+    {
+        (int fundId, int managerId, int binance) = await NewAccountAsync(maxOrder: 50_000m, maxPosition: 2_000_000m);
+        int bybit = await AddAccountAsync(managerId, Venue.Bybit);
+        Quote(Venue.Binance, "UNI", 9.98m, 10m, 1_000_000m);
+        Quote(Venue.Bybit, "UNI", 9.99m, 10.01m, 1_000_000m);
+        // Long on Binance. Bybit pays more for a sale, but an order that only reduces has to go where the position is.
+        await TradeAsync(new SubmitOrderRequest(binance, null, "UNI", InstrumentType.Perp, OrderSide.Buy, OrderType.Market, TimeInForce.ImmediateOrCancel, 1_000m, null, false, Guid.NewGuid().ToString("N")));
+        WorkingOrderDto reducing = await WorkAsync((await StartWorkingAsync(Paced(null, managerId, "UNI", 1_000m, 500m, OrderSide.Sell) with { ReduceOnly = true })).Id, 4);
+        reducing.State.Should().Be(WorkingState.Done);
+        reducing.Slices.Should().OnlyContain(s => s.Venue == Venue.Binance && s.Status == OrderStatus.Filled);
+
+        // A slice smaller than the venue's smallest step could never be sent: said at once, not found out by waiting.
+        using (IServiceScope scope = _app!.Services.CreateScope())
+        {
+            FtDbContext db = scope.ServiceProvider.GetRequiredService<FtDbContext>();
+            if (!db.ListedInstruments.Any(i => i.Asset == "UNI"))
+            {
+                db.ListedInstruments.Add(new ListedInstrument { Venue = Venue.Binance, Type = InstrumentType.Perp, Asset = "UNI", Quote = "USDT", Symbol = "UNIUSDT", Tradable = true, QuantityStep = 1m, SeenAt = DateTimeOffset.UtcNow });
+                await db.SaveChangesAsync();
+            }
+        }
+
+        HttpResponseMessage tiny = await _admin.PostAsJsonAsync("/api/working-orders", new WorkingOrderRequest(binance, null, "UNI", InstrumentType.Perp, OrderSide.Buy, 5m, null, false, WorkingStyle.OverTime, 10, 10, null, null, null, null, null, null), Json);
+        tiny.IsSuccessStatusCode.Should().BeFalse();
+        (await tiny.Content.ReadAsStringAsync()).Should().Contain("below the smallest step");
+
+        // On real money a large order waits; when whoever asked withdraws the request, the order is closed with it.
+        using (IServiceScope scope = _app!.Services.CreateScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<FtDbContext>().TradingAccounts.Where(a => a.Id == binance || a.Id == bybit).ExecuteUpdateAsync(a => a.SetProperty(x => x.Mode, TradingMode.Live));
+        }
+
+        WorkingOrderDto waiting = await StartWorkingAsync(Paced(binance, null, "UNI", 20_000m, 1_000m));
+        waiting.State.Should().Be(WorkingState.PendingApproval);
+        ApprovalDto request = (await _admin.GetFromJsonAsync<TradingDto>($"/api/funds/{fundId}/trading", Json))!.Approvals.Single(a => a.Kind == ApprovalKind.LargeOrder && a.Status == ApprovalStatus.Pending);
+        (await _admin.PostAsync($"/api/approvals/{request.Id}/cancel", null)).StatusCode.Should().Be(HttpStatusCode.OK);
+        WorkingOrderDto closed = (await _admin.GetFromJsonAsync<WorkingOrderDto>($"/api/working-orders/{waiting.Id}", Json))!;
+        closed.State.Should().Be(WorkingState.Stopped);
+        closed.Note.Should().Contain("withdrawn");
+    }
+
+    [Fact]
+    public async Task AnAccountThatChangesFromPaperToRealMoney_LeavesTheBookAsTheOneAndArrivesAsTheOther()
+    {
+        (int fundId, int managerId, int accountId) = await NewAccountAsync();
+        (await _admin.PostAsJsonAsync($"/api/funds/{fundId}/paper-in-book", new PaperInBookRequest(true), Json)).StatusCode.Should().Be(HttpStatusCode.OK);
+        DateOnly today = DateOnly.FromDateTime(DateTime.UtcNow);
+        using IServiceScope scope = _app!.Services.CreateScope();
+        FtDbContext db = scope.ServiceProvider.GetRequiredService<FtDbContext>();
+        ManagerBookWriter writer = new(db, scope.ServiceProvider.GetRequiredService<IBookFeed>());
+        (decimal onPaper, _, _) = await writer.WriteAsync(managerId, today, CancellationToken.None);
+        onPaper.Should().Be(1_000_000m);
+
+        // Now real money, worth far less than the paper balance was. That is not a loss.
+        TradingAccount account = await db.TradingAccounts.SingleAsync(a => a.Id == accountId);
+        account.Mode = TradingMode.Live;
+        account.LiveEquityUsd = 40_000m;
+        await db.SaveChangesAsync();
+        (decimal real, _, _) = await writer.WriteAsync(managerId, today, CancellationToken.None);
+        real.Should().Be(40_000m);
+        List<decimal> flows = await db.CashFlows.Where(f => f.ManagerAccountId == managerId && f.IsBookChange).OrderBy(f => f.Id).Select(f => f.AmountUsd).ToListAsync();
+        flows.Should().Equal(1_000_000m, -1_000_000m, 40_000m);
     }
 
     [Theory]

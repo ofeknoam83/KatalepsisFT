@@ -151,6 +151,9 @@ public sealed class KeyValueBookFeed(IConnectionMultiplexer keyValue) : IBookFee
 
     /// <summary>A book stays open this long after it was last asked for.</summary>
     public static readonly TimeSpan WantedFor = TimeSpan.FromMinutes(5);
+
+    /// <summary>The most entries the list of asked-for books is allowed to hold.</summary>
+    public const int MostWanted = 500;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
 
     private static string Key(string asset, InstrumentType type) => $"ft:book:{type}:{asset.ToUpperInvariant()}";
@@ -198,8 +201,10 @@ public sealed class KeyValueBookFeed(IConnectionMultiplexer keyValue) : IBookFee
         IDatabase database = keyValue.GetDatabase();
         double oldest = (now - keptFor).ToUnixTimeSeconds();
         await database.SortedSetRemoveRangeByScoreAsync(WantedKey, double.NegativeInfinity, oldest, Exclude.Stop);
+        // Whatever anybody asks for, the list is kept short: only the latest are ever looked at, and the rest is thrown away.
+        await database.SortedSetRemoveRangeByRankAsync(WantedKey, 0, -(MostWanted + 1));
         List<(string, InstrumentType)> wanted = [];
-        foreach (RedisValue entry in await database.SortedSetRangeByScoreAsync(WantedKey, oldest, double.PositiveInfinity, order: Order.Descending))
+        foreach (RedisValue entry in await database.SortedSetRangeByScoreAsync(WantedKey, oldest, double.PositiveInfinity, order: Order.Descending, take: MostWanted))
         {
             string[] parts = ((string)entry!).Split(':');
             if (parts.Length == 2 && Enum.TryParse(parts[0], out InstrumentType type) && InstrumentListing.IsAssetName(parts[1]))

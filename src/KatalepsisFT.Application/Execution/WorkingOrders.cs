@@ -126,6 +126,12 @@ public sealed class WorkingOrderService(IFtDbContext database, IBookFeed books, 
         }
 
         database.WorkingOrders.Add(working);
+        if (needsApproval)
+        {
+            // Recorded together with the order: an order waiting for a second person always has the request that lets it start.
+            Ask(ready.FundId, working.TradingAccountId, $"Work an order to {ready.Text} on {ready.Where}: about {ready.NotionalUsd:N0} USD, above the {ready.Strictest!.MaxOrderNotionalUsd:N0} USD one order may be. {Describe(working)}.", [working], actor, now);
+        }
+
         try
         {
             await database.SaveChangesAsync(cancellationToken);
@@ -141,8 +147,6 @@ public sealed class WorkingOrderService(IFtDbContext database, IBookFeed books, 
         string? notice = null;
         if (needsApproval)
         {
-            Ask(ready.FundId, working.TradingAccountId, $"Work an order to {ready.Text} on {ready.Where}: about {ready.NotionalUsd:N0} USD, above the {ready.Strictest!.MaxOrderNotionalUsd:N0} USD one order may be. {Describe(working)}.", [working.Id], actor, now);
-            await database.SaveChangesAsync(cancellationToken);
             notice = "Recorded. It starts when a second administrator approves it.";
         }
         else
@@ -160,7 +164,7 @@ public sealed class WorkingOrderService(IFtDbContext database, IBookFeed books, 
     /// </summary>
     public async Task<TradingChange<IReadOnlyList<WorkingOrderDto>>> SubmitBasketAsync(BasketRequest request, Actor actor, CancellationToken cancellationToken)
     {
-        if (request.Lines is not { Count: >= 2 and <= MostBasketLines })
+        if (request?.Lines is not { Count: >= 2 and <= MostBasketLines } || request.Lines.Any(l => l is null))
         {
             return TradingChange<IReadOnlyList<WorkingOrderDto>>.Refused($"A basket has between 2 and {MostBasketLines} lines.");
         }
@@ -171,21 +175,31 @@ public sealed class WorkingOrderService(IFtDbContext database, IBookFeed books, 
             return TradingChange<IReadOnlyList<WorkingOrderDto>>.Refused("The basket's own name may be up to 40 letters, digits, dashes, dots and underscores.");
         }
 
-        // The same basket sent again, after a lost answer, is returned as it stands.
-        List<long> before = await database.WorkingOrders.Where(w => w.Basket == basket).OrderBy(w => w.Id).Select(w => w.Id).ToListAsync(cancellationToken);
+        // The same basket sent again, after a lost answer, is returned as it stands. A name is one manager's or one
+        // account's: another fund using the same name has a basket of its own.
+        int?[] forAccounts = request.Lines.Select(l => l.TradingAccountId).Distinct().ToArray();
+        int?[] forManagers = request.Lines.Select(l => l.ManagerId).Distinct().ToArray();
+        List<int> managerIds = await database.TradingAccounts.Where(a => forAccounts.Contains(a.Id) || forManagers.Contains(a.ManagerAccountId)).Select(a => a.ManagerAccountId).Distinct().ToListAsync(cancellationToken);
+        async Task<List<long>> SentBeforeAsync() => await database.WorkingOrders.Where(w => w.Basket == basket && managerIds.Contains(w.ManagerAccountId)).OrderBy(w => w.Id).Select(w => w.Id).ToListAsync(cancellationToken);
+        List<long> before = await SentBeforeAsync();
         if (before.Count > 0)
         {
             return TradingChange<IReadOnlyList<WorkingOrderDto>>.Ok(await DtosAsync(before, cancellationToken), "A basket with this name already exists; it is returned unchanged.");
+        }
+
+        if (managerIds.Count > 0 && await database.WorkingOrders.CountAsync(w => managerIds.Contains(w.ManagerAccountId) && (w.State == WorkingState.Working || w.State == WorkingState.Paused || w.State == WorkingState.PendingApproval), cancellationToken) + request.Lines.Count > MostOpen)
+        {
+            return TradingChange<IReadOnlyList<WorkingOrderDto>>.Refused(TooManyOpen);
         }
 
         DateTimeOffset now = clock.GetUtcNow();
         List<Prepared> lines = [];
         for (int index = 0; index < request.Lines.Count; index++)
         {
-            (Prepared? ready, _, string? refusal, bool missing) = await PrepareAsync(request.Lines[index] with { ClientId = $"{basket}.{index + 1}" }, actor, now, cancellationToken);
+            (Prepared? ready, WorkingOrder? taken, string? refusal, bool missing) = await PrepareAsync(request.Lines[index] with { ClientId = $"{basket}.{index + 1}" }, actor, now, cancellationToken);
             if (ready is null)
             {
-                return TradingChange<IReadOnlyList<WorkingOrderDto>>.Refused($"Line {index + 1}: {(missing ? "that trading account or manager does not exist." : refusal)} Nothing was sent.");
+                return TradingChange<IReadOnlyList<WorkingOrderDto>>.Refused($"Line {index + 1}: {(missing ? "that trading account or manager does not exist." : taken is not null ? "a working order is already using the name this line would get; give the basket another name." : refusal)} Nothing was sent.");
             }
 
             lines.Add(ready);
@@ -219,6 +233,11 @@ public sealed class WorkingOrderService(IFtDbContext database, IBookFeed books, 
             database.WorkingOrders.Add(line.Working);
         }
 
+        if (needsApproval)
+        {
+            Ask(real[0].FundId, null, $"Work a basket of {real.Count} orders worth about {realTotal:N0} USD, above the {allowed:N0} USD one order may be: {string.Join("; ", real.Select(l => l.Text))}.", real.Select(l => l.Working).ToList(), actor, now);
+        }
+
         try
         {
             await database.SaveChangesAsync(cancellationToken);
@@ -226,14 +245,16 @@ public sealed class WorkingOrderService(IFtDbContext database, IBookFeed books, 
         catch (DbUpdateException)
         {
             database.DiscardChanges();
-            return TradingChange<IReadOnlyList<WorkingOrderDto>>.Refused("The basket could not be recorded. Nothing was sent. Try again.");
+            // Most likely the same basket arrived twice at the same instant, and the other one won.
+            List<long> won = await SentBeforeAsync();
+            return won.Count > 0
+                ? TradingChange<IReadOnlyList<WorkingOrderDto>>.Ok(await DtosAsync(won, cancellationToken), "A basket with this name already exists; it is returned unchanged.")
+                : TradingChange<IReadOnlyList<WorkingOrderDto>>.Refused("The basket could not be recorded. Nothing was sent. Try again.");
         }
 
         string? notice = null;
         if (needsApproval)
         {
-            Ask(real[0].FundId, null, $"Work a basket of {real.Count} orders worth about {realTotal:N0} USD, above the {allowed:N0} USD one order may be: {string.Join("; ", real.Select(l => l.Text))}.", real.Select(l => l.Working.Id).ToList(), actor, now);
-            await database.SaveChangesAsync(cancellationToken);
             notice = real.Count == lines.Count ? "Recorded. The basket starts when a second administrator approves it." : "Recorded. The lines on paper have started; those on real money start when a second administrator approves them.";
         }
 
@@ -242,6 +263,11 @@ public sealed class WorkingOrderService(IFtDbContext database, IBookFeed books, 
     }
 
     public const int MostBasketLines = 50;
+
+    /// <summary>How many working orders one manager may have open at once. Each is looked at every round by the engine that also fills orders.</summary>
+    public const int MostOpen = 100;
+
+    private const string TooManyOpen = "This manager already has as many working orders open as the system works at once. Let some finish, or stop them, first.";
 
     private async Task<IReadOnlyList<WorkingOrderDto>> DtosAsync(List<long> ids, CancellationToken cancellationToken)
     {
@@ -254,15 +280,20 @@ public sealed class WorkingOrderService(IFtDbContext database, IBookFeed books, 
         return result;
     }
 
-    private void Ask(int fundId, int? accountId, string summary, List<long> ids, Actor actor, DateTimeOffset now) =>
+    /// <summary>
+    /// The request for a second person, naming the working orders by manager and name: both are known before the
+    /// orders are saved, so the request and the orders go into the database in one step.
+    /// </summary>
+    private void Ask(int fundId, int? accountId, string summary, List<WorkingOrder> orders, Actor actor, DateTimeOffset now) =>
         database.ApprovalRequests.Add(
             new ApprovalRequest
             {
                 Kind = ApprovalKind.LargeOrder,
                 FundId = fundId,
                 TradingAccountId = accountId,
-                Summary = summary.Length <= 1000 ? summary : summary[..997] + "…",
-                PayloadJson = JsonSerializer.Serialize(new { workingOrderIds = ids }),
+                // The column holds six hundred characters.
+                Summary = summary.Length <= 600 ? summary : summary[..597] + "…",
+                PayloadJson = JsonSerializer.Serialize(new { orders = orders.Select(o => new { m = o.ManagerAccountId, c = o.ClientId }) }),
                 RequestedBy = actor.Name,
                 RequestedAt = now,
             }
@@ -306,7 +337,7 @@ public sealed class WorkingOrderService(IFtDbContext database, IBookFeed books, 
             WorkingStyle.Paced when request.MinSlice is not > 0m || request.MaxSlice is not > 0m || request.MaxSlice < request.MinSlice => "Give the smallest and the largest slice, the largest not below the smallest.",
             WorkingStyle.Paced when request.MaxSlice > request.Quantity => "The largest slice is more than the whole order.",
             WorkingStyle.Paced when request.WaitSeconds is not (>= 1 and <= 3600) => "The wait between slices is between a second and an hour.",
-            WorkingStyle.Paced when request.Quantity / request.MinSlice!.Value > WorkingOrderEngine.MostSlices => $"At its smallest slice this order would take more than {WorkingOrderEngine.MostSlices} slices. Use larger slices.",
+            WorkingStyle.Paced when request.MinSlice!.Value * WorkingOrderEngine.MostSlices < request.Quantity => $"At its smallest slice this order would take more than {WorkingOrderEngine.MostSlices} slices. Use larger slices.",
             _ => null,
         };
         if (shape is not null)
@@ -346,6 +377,21 @@ public sealed class WorkingOrderService(IFtDbContext database, IBookFeed books, 
             return (null, existing, null, false);
         }
 
+        // Real money and paper are not mixed in one order: where the manager has a real-money account, the order is for those.
+        if (accounts.Any(a => a.Mode == TradingMode.Live))
+        {
+            accounts = accounts.Where(a => a.Mode == TradingMode.Live).ToList();
+        }
+
+        // A slice smaller than the venue's smallest step can never be sent; better to say so now than to wait for nothing.
+        Venue[] venues = accounts.Select(a => a.Venue).Distinct().ToArray();
+        decimal? step = (await database.ListedInstruments.AsNoTracking().Where(i => i.Asset == asset && i.Type == request.InstrumentType && venues.Contains(i.Venue) && i.QuantityStep != null).Select(i => i.QuantityStep).ToListAsync(cancellationToken)).Max();
+        decimal? smallest = request.Style switch { WorkingStyle.OverTime => request.Quantity / request.Slices!.Value, WorkingStyle.Paced => request.MinSlice, _ => request.Quantity };
+        if (step is decimal unit && smallest < unit)
+        {
+            return No(request.Style == WorkingStyle.Passive ? $"The quantity is below the smallest step the venue takes for {asset}, {unit:0.##########}." : $"The slices would be {smallest:0.##########} {asset} each, below the smallest step the venue takes, {unit:0.##########}. Use fewer or larger slices.");
+        }
+
         // Its size in dollars decides whether a second person is needed, so there has to be a price to size it with.
         decimal? mid = ConsolidatedBook.Mid((await books.ReadAsync(asset, request.InstrumentType, cancellationToken)).ToList());
         if (mid is not decimal price)
@@ -378,23 +424,24 @@ public sealed class WorkingOrderService(IFtDbContext database, IBookFeed books, 
         };
         string where = request.TradingAccountId is null ? $"{manager.Name}, best venue" : $"{manager.Name} · {VenueExposureService.NameOf(accounts[0].Venue)}";
         string text = $"{(request.Side == OrderSide.Buy ? "buy" : "sell")} {request.Quantity:0.########} {(request.InstrumentType == InstrumentType.Spot ? asset + " spot" : asset + "-PERP")}";
+        if (await database.WorkingOrders.CountAsync(w => w.ManagerAccountId == manager.Id && (w.State == WorkingState.Working || w.State == WorkingState.Paused || w.State == WorkingState.PendingApproval), cancellationToken) >= MostOpen)
+        {
+            return No(TooManyOpen);
+        }
+
         return (new Prepared(working, request.Quantity * price, accounts.Where(a => a.Mode == TradingMode.Live).OrderBy(a => a.MaxOrderNotionalUsd).FirstOrDefault(), where, manager.Sleeve.FundId, text), null, null, false);
     }
 
     /// <summary>What a decision on a large order does to it. Called with the decision, before it is saved.</summary>
-    public static async Task<bool> DecideAsync(IFtDbContext database, ApprovalRequest request, bool approve, string by, DateTimeOffset now, CancellationToken cancellationToken)
+    public static async Task<bool> DecideAsync(IFtDbContext database, ApprovalRequest request, bool approve, string by, DateTimeOffset now, CancellationToken cancellationToken, bool withdrawn = false)
     {
-        List<long> ids;
-        try
-        {
-            ids = JsonDocument.Parse(request.PayloadJson).RootElement.GetProperty("workingOrderIds").EnumerateArray().Select(id => id.GetInt64()).ToList();
-        }
-        catch (Exception e) when (e is JsonException or KeyNotFoundException or InvalidOperationException or FormatException)
+        List<WorkingOrder> waiting = (await NamedAsync(database, request, cancellationToken)).Where(w => w.State == WorkingState.PendingApproval).ToList();
+        // A retired manager trades nothing: what was waiting for it cannot be started any more.
+        if (approve && waiting.Any(w => !w.ManagerAccount.IsActive))
         {
             return false;
         }
 
-        List<WorkingOrder> waiting = await database.WorkingOrders.Where(w => ids.Contains(w.Id) && w.State == WorkingState.PendingApproval).ToListAsync(cancellationToken);
         foreach (WorkingOrder working in waiting)
         {
             if (approve)
@@ -405,13 +452,32 @@ public sealed class WorkingOrderService(IFtDbContext database, IBookFeed books, 
             }
             else
             {
-                working.State = WorkingState.Rejected;
+                working.State = withdrawn ? WorkingState.Stopped : WorkingState.Rejected;
                 working.EndedAt = now;
-                working.Note = $"Not approved by {by}.";
+                working.Note = withdrawn ? $"The request to start it was withdrawn by {by}." : $"Not approved by {by}.";
             }
         }
 
         return waiting.Count > 0;
+    }
+
+    /// <summary>The working orders a request for a second person is about.</summary>
+    private static async Task<List<WorkingOrder>> NamedAsync(IFtDbContext database, ApprovalRequest request, CancellationToken cancellationToken)
+    {
+        List<(int Manager, string Name)> named;
+        try
+        {
+            named = JsonDocument.Parse(request.PayloadJson).RootElement.GetProperty("orders").EnumerateArray().Select(o => (o.GetProperty("m").GetInt32(), o.GetProperty("c").GetString()!)).ToList();
+        }
+        catch (Exception e) when (e is JsonException or KeyNotFoundException or InvalidOperationException or FormatException)
+        {
+            return [];
+        }
+
+        int[] managers = named.Select(n => n.Manager).Distinct().ToArray();
+        string[] names = named.Select(n => n.Name).Distinct().ToArray();
+        List<WorkingOrder> found = await database.WorkingOrders.Include(w => w.ManagerAccount).Where(w => managers.Contains(w.ManagerAccountId) && names.Contains(w.ClientId)).ToListAsync(cancellationToken);
+        return found.Where(w => named.Contains((w.ManagerAccountId, w.ClientId))).ToList();
     }
 
     public async Task<TradingChange<WorkingOrderDto>> PauseAsync(long id, Actor actor, CancellationToken cancellationToken) =>
@@ -452,18 +518,9 @@ public sealed class WorkingOrderService(IFtDbContext database, IBookFeed books, 
             // What was waiting for a second person no longer needs one.
             foreach (ApprovalRequest waiting in await database.ApprovalRequests.Where(r => r.Kind == ApprovalKind.LargeOrder && r.Status == ApprovalStatus.Pending).ToListAsync(cancellationToken))
             {
-                List<long> named;
-                try
-                {
-                    named = JsonDocument.Parse(waiting.PayloadJson).RootElement.GetProperty("workingOrderIds").EnumerateArray().Select(x => x.GetInt64()).ToList();
-                }
-                catch (Exception e) when (e is JsonException or KeyNotFoundException or InvalidOperationException or FormatException)
-                {
-                    continue;
-                }
-
+                List<WorkingOrder> named = await NamedAsync(database, waiting, cancellationToken);
                 // A basket's request stands for as long as any of its lines is still waiting.
-                if (named.Contains(id) && !await database.WorkingOrders.AnyAsync(w => named.Contains(w.Id) && w.State == WorkingState.PendingApproval, cancellationToken))
+                if (named.Any(w => w.Id == id) && !named.Any(w => w.State == WorkingState.PendingApproval))
                 {
                     waiting.Status = ApprovalStatus.Cancelled;
                     waiting.DecidedAt = clock.GetUtcNow();
@@ -513,8 +570,10 @@ public sealed class WorkingOrderService(IFtDbContext database, IBookFeed books, 
         DateTimeOffset since = clock.GetUtcNow() - TimeSpan.FromDays(7);
         List<long> ids = await database
             .WorkingOrders.Where(w => w.ManagerAccount.Sleeve.FundId == fundId && (w.EndedAt == null || w.EndedAt >= since))
-            .OrderByDescending(w => w.Id)
-            .Take(50)
+            // What is still open comes first and is never cut off: it has to be reachable to be stopped.
+            .OrderBy(w => w.State == WorkingState.Working || w.State == WorkingState.Paused || w.State == WorkingState.PendingApproval ? 0 : 1)
+            .ThenByDescending(w => w.Id)
+            .Take(MostOpen * 2)
             .Select(w => w.Id)
             .ToListAsync(cancellationToken);
         List<WorkingOrderDto> result = [];
@@ -675,6 +734,13 @@ public sealed class WorkingOrderEngine(IFtDbContext database, ConsolidatedBook b
 
         List<Order> slices = await database.Orders.Where(o => o.WorkingOrderId == id).OrderBy(o => o.Id).ToListAsync(cancellationToken);
         List<TradingAccount> accounts = await (w.TradingAccountId is int one ? database.TradingAccounts.Where(a => a.Id == one) : database.TradingAccounts.Where(a => a.ManagerAccountId == w.ManagerAccountId)).OrderBy(a => a.Id).ToListAsync(cancellationToken);
+        // Real money and paper are not mixed in one order: where the manager has a real-money account, the slices go to those.
+        if (accounts.Any(a => a.Mode == TradingMode.Live))
+        {
+            accounts = accounts.Where(a => a.Mode == TradingMode.Live).ToList();
+        }
+
+        bool retired = !await database.ManagerAccounts.Where(m => m.Id == w.ManagerAccountId).Select(m => m.IsActive).FirstOrDefaultAsync(cancellationToken);
         DateTimeOffset now = clock.GetUtcNow();
 
         // What has been done is what the slices say, every time.
@@ -690,6 +756,7 @@ public sealed class WorkingOrderEngine(IFtDbContext database, ConsolidatedBook b
         // ---- reasons to end
         (WorkingState State, string Note)? end =
             w.StopRequested ? (WorkingState.Stopped, w.Note ?? "Stopped on request.")
+            : retired ? (WorkingState.Stopped, "Stopped: its manager has been retired.")
             : usable.Count == 0 ? (WorkingState.Stopped, "Stopped by the kill switch.")
             : remaining <= w.Quantity * 0.0000001m ? (WorkingState.Done, "All of it has traded.")
             : w.HardEndAt is DateTimeOffset latest && now >= latest ? (WorkingState.Stopped, "Stopped: it reached the latest time it was allowed to run to.")
@@ -729,6 +796,24 @@ public sealed class WorkingOrderEngine(IFtDbContext database, ConsolidatedBook b
             }
         }
 
+        // An order that may only reduce a position, or sell what is held, can only go to an account that has it.
+        if (usable.Count > 1 && (w.ReduceOnly || (w.InstrumentType == InstrumentType.Spot && w.Side == OrderSide.Sell)))
+        {
+            int[] ids = usable.Select(a => a.Id).ToArray();
+            var held = await database.TradingPositions.AsNoTracking().Where(p => ids.Contains(p.TradingAccountId) && p.Asset == w.Asset && p.InstrumentType == w.InstrumentType).Select(p => new { p.TradingAccountId, p.Quantity }).ToListAsync(cancellationToken);
+            List<TradingAccount> holding = usable.Where(a => held.Any(h => h.TradingAccountId == a.Id && (w.Side == OrderSide.Sell ? h.Quantity > 0m : h.Quantity < 0m))).ToList();
+            if (holding.Count > 0)
+            {
+                usable = holding;
+            }
+        }
+
+        // A resting slice is judged against the book of the account it rests on, not whichever is cheapest this second.
+        if (w.Style == WorkingStyle.Passive && open.Count > 0 && usable.FirstOrDefault(a => a.Id == open[0].TradingAccountId) is { } restsOn)
+        {
+            usable = [restsOn];
+        }
+
         (TradingAccount Account, VenueBook Book)? best = Choose(w, usable);
         if (best is not { } chosen)
         {
@@ -737,7 +822,6 @@ public sealed class WorkingOrderEngine(IFtDbContext database, ConsolidatedBook b
         }
 
         decimal touch = (w.Side == OrderSide.Buy ? chosen.Book.BestAsk : chosen.Book.BestBid)!.Value;
-        w.ArrivalPrice ??= chosen.Book.Mid;
         if (w.PausePrice is decimal hold && (w.Side == OrderSide.Buy ? touch > hold : touch < hold))
         {
             CancelOpen(open, now);
@@ -753,7 +837,13 @@ public sealed class WorkingOrderEngine(IFtDbContext database, ConsolidatedBook b
         // ---- the next slice
         if (w.Style == WorkingStyle.Passive)
         {
-            decimal rest = (w.Side == OrderSide.Buy ? chosen.Book.BestBid : chosen.Book.BestAsk) ?? touch;
+            // With nobody on its own side of the book there is no best price to join; taking the other side's would cross.
+            if ((w.Side == OrderSide.Buy ? chosen.Book.BestBid : chosen.Book.BestAsk) is not decimal rest)
+            {
+                w.Note = "Waiting: there is no price on its side of the book to rest at.";
+                return await SaveAsync(cancellationToken);
+            }
+
             if (w.LimitPrice is decimal cap)
             {
                 rest = w.Side == OrderSide.Buy ? Math.Min(rest, cap) : Math.Max(rest, cap);
@@ -806,11 +896,18 @@ public sealed class WorkingOrderEngine(IFtDbContext database, ConsolidatedBook b
     {
         decimal? step = await StepAsync(account, w, cancellationToken);
         decimal remaining = w.Quantity - w.FilledQuantity;
+        decimal most = account.MaxOrderNotionalUsd / price * 0.98m;
         // No slice is larger than one order may be on that account, with a little room for the price moving.
-        decimal size = Math.Min(quantity, account.MaxOrderNotionalUsd / price * 0.98m);
+        decimal size = Math.Min(quantity, most);
         if (step is decimal unit && unit > 0m)
         {
             size = Math.Floor(size / unit) * unit;
+            // A slice that rounds down to nothing while there is still a step's worth to do goes out as one step.
+            if (size <= 0m && remaining >= unit && unit <= most)
+            {
+                size = unit;
+            }
+
             if (size <= 0m && remaining < unit)
             {
                 w.State = WorkingState.Done;
@@ -827,9 +924,12 @@ public sealed class WorkingOrderEngine(IFtDbContext database, ConsolidatedBook b
         }
 
         w.SlicesSent++;
+        // What the order is measured against: the middle of the market when its first slice goes out.
+        w.ArrivalPrice ??= books.Of(account.Venue, w.Asset, w.InstrumentType, account.QuoteFor(w.InstrumentType))?.Mid ?? price;
         Order slice = new()
         {
-            ClientOrderId = $"w{w.Id}-{w.SlicesSent}",
+            // Not guessable, so that nobody can take the name first and leave the slice unable to be recorded.
+            ClientOrderId = $"w{w.Id}-{w.SlicesSent}-{Guid.NewGuid():N}"[..Math.Min(64, $"w{w.Id}-{w.SlicesSent}-".Length + 12)],
             TradingAccountId = account.Id,
             Asset = w.Asset,
             InstrumentType = w.InstrumentType,
@@ -914,9 +1014,10 @@ public sealed class WorkingOrderEngine(IFtDbContext database, ConsolidatedBook b
             await database.SaveChangesAsync(cancellationToken);
             return true;
         }
-        catch (DbUpdateConcurrencyException)
+        catch (DbUpdateException)
         {
-            // A person paused or stopped it, or a slice was filled, in the same instant. Nothing is lost: the next look starts from what is stored.
+            // A person paused or stopped it, or a slice was filled, in the same instant; or the slice could not be
+            // recorded. Nothing is lost either way: the next look starts from what is stored.
             database.DiscardChanges();
             return false;
         }

@@ -571,7 +571,13 @@ public sealed class LiveExecution(IFtDbContext database, IEnumerable<IOrderGatew
                 gone.UpdatedAt = now;
             }
 
-            account.LiveEquityUsd = Math.Round(equity, 2);
+            // A reading without the futures side leaves that wallet out. The account's value is then kept as it was
+            // last read whole, so that it does not drop and come back in the fund's NAV.
+            if (report.PerpsRead || account.LiveEquityUsd is null)
+            {
+                account.LiveEquityUsd = Math.Round(equity, 2);
+            }
+
             account.LiveSyncedAt = now;
             account.LiveSyncError = null;
         }

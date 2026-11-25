@@ -428,6 +428,29 @@ public sealed class StructureService(IFtDbContext database, AlertEvaluator alert
             connection.State = ConnectionState.Disabled;
         }
 
+        // The book left as one sum just above. Its trading accounts are not counted any more, and any working
+        // order still open for the manager is told to stop: a retired manager trades nothing.
+        foreach (Domain.Execution.TradingAccount account in await database.TradingAccounts.Where(a => a.ManagerAccountId == managerId && a.InBookEquityUsd != null).ToListAsync(cancellationToken))
+        {
+            account.InBookEquityUsd = null;
+            account.InBookMode = null;
+        }
+
+        foreach (Domain.Execution.WorkingOrder working in await database.WorkingOrders.Where(w => w.ManagerAccountId == managerId && (w.State == Domain.Execution.WorkingState.Working || w.State == Domain.Execution.WorkingState.Paused || w.State == Domain.Execution.WorkingState.PendingApproval)).ToListAsync(cancellationToken))
+        {
+            if (working.State == Domain.Execution.WorkingState.PendingApproval)
+            {
+                working.State = Domain.Execution.WorkingState.Stopped;
+                working.EndedAt = now;
+            }
+            else
+            {
+                working.StopRequested = true;
+            }
+
+            working.Note = "Stopped: its manager has been retired.";
+        }
+
         manager.IsActive = false;
         manager.RetiredOn = today;
         await database.SaveChangesAsync(cancellationToken);
@@ -460,6 +483,8 @@ public sealed class StructureService(IFtDbContext database, AlertEvaluator alert
         {
             DateTimeOffset now = clock.GetUtcNow();
             (decimal nav, _, _) = await new ManagerBookWriter(database).WriteAsync(managerId, DateOnly.FromDateTime(now.UtcDateTime), cancellationToken);
+            // Trading accounts that came back with this write recorded their own arrival; what is left is the rest of the book.
+            nav -= await database.TradingAccounts.Where(a => a.ManagerAccountId == managerId && a.InBookEquityUsd != null).SumAsync(a => a.InBookEquityUsd ?? 0m, cancellationToken);
             if (nav != 0m)
             {
                 database.CashFlows.Add(ConnectionSyncService.BookChange(managerId, nav, now, "Manager reinstated: its book comes back into the fund"));

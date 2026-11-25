@@ -58,6 +58,15 @@ public abstract class BookStream
     /// </summary>
     public virtual bool SilenceMeansUnchanged => false;
 
+    /// <summary>
+    /// Whether this stream can ask for the asset's book with what it learnt in <see cref="PrepareAsync"/>. A stream
+    /// that needs a contract size or the venue's own symbol cannot follow an instrument listed after it last looked.
+    /// </summary>
+    public virtual bool CanFollow(string asset) => true;
+
+    /// <summary>How many books are asked for in one message. Some venues refuse a longer list; some limit how many messages they take a second.</summary>
+    public virtual int AskTogether => 10;
+
     /// <summary>Anything to learn before connecting, such as contract sizes.</summary>
     public virtual Task PrepareAsync(HttpClient http, CancellationToken cancellationToken) => Task.CompletedTask;
 
@@ -97,6 +106,9 @@ public class BinanceBookStream : BookStream
     public override HttpRequestMessage TimingRequest() => new(HttpMethod.Get, "https://fapi.binance.com/fapi/v1/ping");
 
     public override Uri Address(IReadOnlyList<string> assets) => new("wss://fstream.binance.com/stream");
+
+    // Binance takes hundreds of streams in one request but only a few requests a second.
+    public override int AskTogether => 150;
 
     // Asked for in a message, not in the address, so that books can be added and dropped on an open connection.
     public override IEnumerable<string> Subscriptions(IReadOnlyList<string> assets) =>
@@ -266,12 +278,17 @@ public sealed class OkxBookStream : BookStream
     }
 
     private static string InstrumentOf(string asset) => $"{asset.ToUpperInvariant()}-USDT-SWAP";
+
+    public override bool CanFollow(string asset) => _contractSizes.ContainsKey(InstrumentOf(asset));
 }
 
 /// <summary>Hyperliquid perpetuals. Every message is the whole top of one book, about twice a second.</summary>
 public sealed class HyperliquidBookStream : BookStream
 {
     public override Venue Venue => Venue.Hyperliquid;
+
+    // Hyperliquid's perpetuals are margined and quoted in USDC, and that is how its list is kept.
+    public override string Quote => "USDC";
 
     public override string? Ping => """{"method":"ping"}""";
 
@@ -414,6 +431,8 @@ public sealed class KucoinPerpBookStream : KucoinBookStream
 
     protected override string? SymbolOf(string asset) => _symbols.GetValueOrDefault(asset.ToUpperInvariant());
 
+    public override bool CanFollow(string asset) => _symbols.ContainsKey(asset.ToUpperInvariant());
+
     public override async Task PrepareAsync(HttpClient http, CancellationToken cancellationToken)
     {
         using HttpResponseMessage response = await http.GetAsync($"https://{RestHost}/api/v1/contracts/active", cancellationToken);
@@ -491,8 +510,11 @@ public sealed class BookStreamRunner(BookStream stream, ConsolidatedBook books, 
     /// <summary>How often the list of wanted books is looked at again.</summary>
     private static readonly TimeSpan LookEvery = TimeSpan.FromSeconds(1);
 
-    /// <summary>How many books are asked for in one message. Some venues refuse a longer list.</summary>
-    private const int AskTogether = 10;
+    /// <summary>A short wait between requests, so that a long list does not arrive as one burst the venue cuts the connection for.</summary>
+    private static readonly TimeSpan BetweenRequests = TimeSpan.FromMilliseconds(120);
+
+    /// <summary>How often a stream looks again at what its venue lists, when it is wanted to follow something it does not know.</summary>
+    private static readonly TimeSpan LearnAgainAfter = TimeSpan.FromMinutes(2);
 
     /// <param name="wanted">The assets to follow right now. Asked again every second; books are opened and closed to match.</param>
     public async Task RunAsync(Func<IReadOnlyList<string>> wanted, CancellationToken stopping)
@@ -501,9 +523,10 @@ public sealed class BookStreamRunner(BookStream stream, ConsolidatedBook books, 
         while (!stopping.IsCancellationRequested)
         {
             DateTimeOffset started = clock.GetUtcNow();
+            bool idle = false;
             try
             {
-                await ConnectAndReadAsync(wanted, stopping);
+                idle = await ConnectAndReadAsync(wanted, stopping);
             }
             catch (OperationCanceledException) when (stopping.IsCancellationRequested)
             {
@@ -518,8 +541,8 @@ public sealed class BookStreamRunner(BookStream stream, ConsolidatedBook books, 
                 books.Clear(stream.Venue, stream.Type, stream.Quote);
             }
 
-            // A connection that lasted is not a failing one: start the waits over.
-            wait = clock.GetUtcNow() - started > TimeSpan.FromMinutes(1) ? TimeSpan.FromSeconds(1) : wait;
+            // A connection that lasted is not a failing one, and neither is having had nothing to follow: start the waits over.
+            wait = idle || clock.GetUtcNow() - started > TimeSpan.FromMinutes(1) ? TimeSpan.FromSeconds(1) : wait;
             try
             {
                 await Task.Delay(wait, stopping);
@@ -533,32 +556,37 @@ public sealed class BookStreamRunner(BookStream stream, ConsolidatedBook books, 
         }
     }
 
-    private async Task ConnectAndReadAsync(Func<IReadOnlyList<string>> wanted, CancellationToken stopping)
+    /// <returns>True when it ended because there was nothing to follow, which is not a failure.</returns>
+    private async Task<bool> ConnectAndReadAsync(Func<IReadOnlyList<string>> wanted, CancellationToken stopping)
     {
-        HashSet<string> following = wanted().ToHashSet();
-        if (following.Count == 0)
+        if (wanted().Count == 0)
         {
             // Nothing to follow on this venue for now: no connection is held open for it.
             await Task.Delay(LookEvery, stopping);
-            return;
+            return true;
         }
 
-        List<string> assets = following.ToList();
         stream.Reset();
         await stream.PrepareAsync(http, stopping);
+        DateTimeOffset learnt = clock.GetUtcNow();
+        // Only what the stream can ask for counts as followed; the rest is tried again when it has looked again.
+        List<string> assets = wanted().Where(stream.CanFollow).ToList();
+        HashSet<string> following = assets.ToHashSet();
+        if (assets.Count == 0)
+        {
+            await Task.Delay(LookEvery, stopping);
+            return true;
+        }
+
         using ClientWebSocket socket = new();
         using (CancellationTokenSource connecting = CancellationTokenSource.CreateLinkedTokenSource(stopping))
         {
             connecting.CancelAfter(TimeSpan.FromSeconds(10));
             await socket.ConnectAsync(stream.Address(assets), connecting.Token);
-            foreach (string[] together in assets.Chunk(AskTogether))
-            {
-                foreach (string subscription in stream.Subscriptions(together))
-                {
-                    await socket.SendAsync(Encoding.UTF8.GetBytes(subscription), WebSocketMessageType.Text, true, connecting.Token);
-                }
-            }
         }
+
+        // Not under the connecting limit: a long list is asked for at a pace the venue accepts, which can take a few seconds.
+        await AskAsync(socket, assets, stream.Subscriptions, stopping);
 
         logger.LogInformation("The {Venue} {Type} market data stream is open.", stream.Venue, stream.Type);
         Dictionary<string, VenueBook> latest = [];
@@ -574,30 +602,33 @@ public sealed class BookStreamRunner(BookStream stream, ConsolidatedBook books, 
             if (clock.GetUtcNow() - looked >= LookEvery)
             {
                 looked = clock.GetUtcNow();
-                HashSet<string> next = wanted().ToHashSet();
-                if (next.Count == 0)
+                IReadOnlyList<string> all = wanted();
+                if (all.Count == 0)
                 {
                     // Nothing left to follow: the connection is given up, and opened again when something is wanted.
-                    return;
+                    return true;
                 }
 
+                // Wanted, but the venue listed it after this stream last looked: look again now and then, so the
+                // book opens without waiting for the connection to drop.
+                if (all.Any(a => !stream.CanFollow(a)) && looked - learnt >= LearnAgainAfter)
+                {
+                    learnt = looked;
+                    try
+                    {
+                        await stream.PrepareAsync(http, stopping);
+                    }
+                    catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException or KeyNotFoundException && !stopping.IsCancellationRequested)
+                    {
+                        // What it knew stays in use; the next look tries again.
+                    }
+                }
+
+                HashSet<string> next = all.Where(stream.CanFollow).ToHashSet();
                 List<string> added = next.Except(following).ToList();
                 List<string> dropped = following.Except(next).ToList();
-                foreach (string[] together in added.Chunk(AskTogether))
-                {
-                    foreach (string subscription in stream.Subscriptions(together))
-                    {
-                        await socket.SendAsync(Encoding.UTF8.GetBytes(subscription), WebSocketMessageType.Text, true, stopping);
-                    }
-                }
-
-                foreach (string[] together in dropped.Chunk(AskTogether))
-                {
-                    foreach (string unsubscription in stream.Unsubscriptions(together))
-                    {
-                        await socket.SendAsync(Encoding.UTF8.GetBytes(unsubscription), WebSocketMessageType.Text, true, stopping);
-                    }
-                }
+                await AskAsync(socket, added, stream.Subscriptions, stopping);
+                await AskAsync(socket, dropped, stream.Unsubscriptions, stopping);
 
                 foreach (string asset in dropped)
                 {
@@ -650,7 +681,7 @@ public sealed class BookStreamRunner(BookStream stream, ConsolidatedBook books, 
                 {
                     read = stream.Read(Encoding.UTF8.GetString(message.GetBuffer(), 0, (int)message.Length));
                 }
-                catch (Exception e) when (e is JsonException or FormatException or KeyNotFoundException or InvalidOperationException or IndexOutOfRangeException)
+                catch (Exception e) when (e is JsonException or FormatException or KeyNotFoundException or InvalidOperationException or IndexOutOfRangeException or ArgumentException or OverflowException)
                 {
                     // One message that cannot be read is skipped; the next whole book replaces whatever it carried.
                     logger.LogWarning("A {Venue} market data message could not be read: {Reason}", stream.Venue, e.Message);
@@ -685,6 +716,27 @@ public sealed class BookStreamRunner(BookStream stream, ConsolidatedBook books, 
             }
 
             message.SetLength(0);
+        }
+
+        return false;
+    }
+
+    /// <summary>Sends the requests for a list of assets, so many to a message and with a short wait between messages.</summary>
+    private async Task AskAsync(ClientWebSocket socket, IReadOnlyList<string> assets, Func<IReadOnlyList<string>, IEnumerable<string>> requests, CancellationToken stopping)
+    {
+        bool first = true;
+        foreach (string[] together in assets.Chunk(Math.Max(1, stream.AskTogether)))
+        {
+            foreach (string request in requests(together))
+            {
+                if (!first)
+                {
+                    await Task.Delay(BetweenRequests, stopping);
+                }
+
+                first = false;
+                await socket.SendAsync(Encoding.UTF8.GetBytes(request), WebSocketMessageType.Text, true, stopping);
+            }
         }
     }
 }

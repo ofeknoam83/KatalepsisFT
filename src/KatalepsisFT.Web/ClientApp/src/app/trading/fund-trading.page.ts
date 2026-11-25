@@ -204,7 +204,7 @@ interface Depth {
                     </span>
                     <span class="picks">
                       @for (share of shares; track share) {
-                        <a (click)="take(h, share, r)" [title]="'Fill in ' + share + '% of this position'" [attr.data-testid]="'take-' + share">{{ share === 100 ? 'All' : share + '%' }}</a>
+                        <a (click)="take(h, share)" [title]="h.reducible < abs(h.quantity) ? 'Fill in ' + share + '% of what is not already being closed by a working order' : 'Fill in ' + share + '% of this position'" [attr.data-testid]="'take-' + share">{{ share === 100 ? 'All' : share + '%' }}</a>
                       }
                     </span>
                   </div>
@@ -225,7 +225,7 @@ interface Depth {
                 }
               </div>
             }
-            @if (type() === 'Limit') {
+            @if (type() === 'Limit' && style() === 'Single') {
               <div class="field">
                 <label>How long</label>
                 <nz-select [ngModel]="tif()" (ngModelChange)="tif.set($event)" style="width:100%">
@@ -280,8 +280,16 @@ interface Depth {
                         </div>
                       }
                     </div>
-                    <p class="hint">All lines are worked the way chosen above, on the account chosen above. They are checked together: if one cannot be taken, none is sent.</p>
-                    <button nz-button nzType="primary" nzBlock [disabled]="!canSendBasket(d)" [nzLoading]="sending()" (click)="sendBasket()" data-testid="send-basket">Send the basket of {{ lines.length }}</button>
+                    <p class="hint" data-testid="basket-hint">
+                      All lines are worked the way chosen above ({{ style() === 'OverTime' ? 'over ' + (durationMinutes() ?? 0) + ' minutes in ' + (sliceCount() ?? 0) + ' slices' : 'passive' }}), on the account chosen above, at the market: the limit price and the pause price above are not used for a basket.
+                      @if (reduceOnly()) {
+                        <b>Reduce only is ticked: every perpetual line may only shrink a position.</b>
+                      } @else {
+                        Lines may open or add to positions; tick Reduce only above to prevent that for perpetuals.
+                      }
+                      They are checked together: if one cannot be taken, none is sent.
+                    </p>
+                    <button nz-button nzType="primary" nzBlock [disabled]="!canSendBasket(d)" [nzLoading]="sending()" nz-popconfirm [nzCondition]="!targetIsLive(d)" [nzPopconfirmTitle]="'Send ' + lines.length + ' real orders to work on a real-money account?'" nzOkText="Send them" (nzOnConfirm)="sendBasket()" data-testid="send-basket">Send the basket of {{ lines.length }}</button>
                   }
                 }
               }
@@ -583,7 +591,7 @@ interface Depth {
               <tbody>
                 @for (w of list; track w.id) {
                   <tr class="rowlink" (click)="openWorking.set(openWorking() === w.id ? null : w.id)" [attr.data-testid]="'working-' + w.id">
-                    <td class="nowrap"><b [style.color]="w.side === 'Buy' ? 'var(--kft-up)' : 'var(--kft-down)'">{{ w.side }}</b> {{ w.quantity | dynamicDecimal }} {{ name(w.asset, w.instrumentType) }}{{ w.limitPrice === null ? '' : ' up to ' + (w.limitPrice | dynamicDecimal) }}</td>
+                    <td class="nowrap"><b [style.color]="w.side === 'Buy' ? 'var(--kft-up)' : 'var(--kft-down)'">{{ w.side }}</b> {{ w.quantity | dynamicDecimal }} {{ name(w.asset, w.instrumentType) }}{{ w.limitPrice === null ? '' : (w.side === 'Buy' ? ' up to ' : ' down to ') + (w.limitPrice | dynamicDecimal) }} @if (w.reduceOnly) { <span class="hint">reduce only</span> }</td>
                     <td class="nowrap">{{ how(w) }} @if (w.basket) { <span class="hint" [title]="'Sent together with other lines as one basket'">basket</span> }</td>
                     <td class="nowrap">{{ w.manager }} · {{ w.where }} @if (w.isPaper) { <span class="hint">paper</span> }</td>
                     <td>
@@ -1071,7 +1079,7 @@ export class FundTradingPage {
   // Working orders.
   protected readonly working = keptData(this.fundId$, this.beat, (id) => this.http.get<WorkingOrder[]>(`/api/funds/${id}/working-orders`), (id) => id);
   protected readonly openWorking = signal<number | null>(null);
-  protected readonly workingDetail = keptData(toObservable(this.openWorking).pipe(filter((id): id is number => id !== null)), this.beat, (id) => this.http.get<WorkingOrder>(`/api/working-orders/${id}`), (id) => id);
+  protected readonly workingDetail = keptData(toObservable(this.openWorking), this.beat, (id) => (id === null ? of(null) : this.http.get<WorkingOrder>(`/api/working-orders/${id}`)), (id) => id);
   protected readonly workingLabel = WORKING_STATE_LABEL;
   protected readonly workingColor = WORKING_STATE_COLOR;
   protected readonly styles = [
@@ -1102,17 +1110,22 @@ export class FundTradingPage {
 
   /** Reads "buy 2 BTC-PERP" or "sell 500 SOL spot", in any order of its words. */
   private static readLine(line: string): { side: OrderSide; quantity: number; asset: string; type: TradedType; error: string | null } {
-    const words = line.replace(/,/g, '').split(/\s+/);
-    const sideWord = words.find((w) => /^(buy|sell)$/i.test(w));
-    const numberWord = words.find((w) => /^\d*\.?\d+$/.test(w));
-    const rest = words.filter((w) => w !== sideWord && w !== numberWord);
+    const words = line.split(/\s+/);
+    const sides = words.filter((w) => /^(buy|sell)$/i.test(w));
+    const numbers = words.filter((w) => /^\d*\.?\d+$/.test(w));
+    const sideWord = sides[0];
+    const numberWord = numbers[0];
+    const rest = words.filter((w) => !sides.includes(w) && !numbers.includes(w));
     const spot = rest.some((w) => /^spot$/i.test(w));
-    const named = rest.find((w) => !/^(spot|perp)$/i.test(w)) ?? '';
+    const names = rest.filter((w) => !/^(spot|perp)$/i.test(w));
+    const named = names[0] ?? '';
+    // A comma could mean thousands or decimals, and guessing wrong is ten or a thousand times the size.
+    const unclear = /,/.test(line) ? 'write the quantity without commas, with a point for decimals.' : sides.length > 1 || numbers.length > 1 || names.length > 1 ? 'one order a line: one of buy or sell, one quantity, one instrument.' : null;
     const perp = /-PERP$/i.test(named) || rest.some((w) => /^perp$/i.test(w));
     const asset = named.replace(/-PERP$/i, '').toUpperCase();
     const quantity = Number(numberWord);
     const error =
-      sideWord === undefined ? 'say buy or sell.' : numberWord === undefined || !(quantity > 0) ? 'give a quantity.' : !/^[A-Z0-9]{1,20}$/.test(asset) ? 'name the instrument, like BTC-PERP or SOL spot.' : spot === perp ? 'say whether it is spot or a perpetual, like BTC-PERP or SOL spot.' : null;
+      unclear !== null ? unclear : sideWord === undefined ? 'say buy or sell.' : numberWord === undefined || !(quantity > 0) ? 'give a quantity.' : !/^[A-Z0-9]{1,20}$/.test(asset) ? 'name the instrument, like BTC-PERP or SOL spot.' : spot === perp ? 'say whether it is spot or a perpetual, like BTC-PERP or SOL spot.' : null;
     return { side: /^buy$/i.test(sideWord ?? '') ? 'Buy' : 'Sell', quantity, asset, type: perp ? 'Perp' : 'Spot', error };
   }
 
@@ -1135,7 +1148,7 @@ export class FundTradingPage {
       side: l.side,
       quantity: l.quantity,
       limitPrice: null,
-      reduceOnly: false,
+      reduceOnly: l.type === 'Perp' && this.reduceOnly(),
       style: this.style(),
       durationMinutes: this.durationMinutes(),
       slices: this.sliceCount(),
@@ -1146,13 +1159,9 @@ export class FundTradingPage {
       maxSlippageBps: this.maxSlippage(),
     }));
     this.sending.set(true);
-    const what = JSON.stringify(lines);
-    if (this.attempt?.what !== what) {
-      this.attempt = { what, name: `ui-${crypto.randomUUID()}` };
-    }
-
-    this.run(this.http.post<Answer>('/api/working-orders/basket', { lines, clientId: this.attempt.name.slice(0, 40) }), `Basket of ${lines.length} recorded.`, () => this.sending.set(false), () => {
-      this.attempt = null;
+    const what = 'basket:' + JSON.stringify(lines);
+    this.run(this.http.post<Answer>('/api/working-orders/basket', { lines, clientId: this.nameFor(what).slice(0, 40) }), `Basket of ${lines.length} recorded.`, () => this.sending.set(false), () => {
+      this.attempts.delete(what);
       this.basketText.set('');
       this.basketOpen.set(false);
     });
@@ -1241,8 +1250,22 @@ export class FundTradingPage {
 
   /** Fills in the most the limits allow. That is an order that may open or add to a position, so it is not one that only reduces. */
   protected takeMost(side: RoomSide): void {
-    this.quantity.set(this.most(side));
+    let most = this.most(side);
+    // A limit order is sized at its limit price. Above the market, the same dollars buy fewer units.
+    const mid = this.book.data()?.mid ?? null;
+    const limit = this.type() === 'Limit' ? this.limitPrice() : null;
+    if (mid !== null && limit !== null && limit > mid) {
+      const step = this.room.data()?.quantityStep ?? null;
+      most = (most * mid) / limit;
+      most = step !== null && step > 0 ? Math.floor(most / step + 1e-9) * step : Math.floor(most * 1e8) / 1e8;
+    }
+
+    this.quantity.set(+most.toFixed(10));
     this.reduceOnly.set(false);
+    if (this.target()?.[0] === 'm') {
+      // The figure is one account's. The order goes to that account, so that it is checked against the limits it was worked out from.
+      this.target.set('a' + side.tradingAccountId);
+    }
   }
 
   protected limit(side: RoomSide): string {
@@ -1250,12 +1273,14 @@ export class FundTradingPage {
   }
 
   /** Fills in a share of a position, rounded down to the venue's step, and for a perpetual marks the order as one that only reduces. */
-  protected take(held: Held, share: number, room: Room): void {
-    const wanted = (Math.abs(held.quantity) * share) / 100;
-    const step = room.quantityStep;
-    // All of it is all of it: rounding must not leave dust behind when the whole position is asked for.
-    const quantity = share === 100 || step === null || step <= 0 ? wanted : Math.floor(wanted / step + 1e-9) * step;
-    this.quantity.set(+quantity.toPrecision(12));
+  protected take(held: Held, share: number): void {
+    // Of what can still be taken off: orders already working to close it are counted, as they are when an order is checked.
+    const wanted = (held.reducible * share) / 100;
+    const step = held.quantityStep;
+    // All of it is all of it: rounding must not leave dust behind when the whole position is asked for. It is
+    // cut, never rounded up, so that the order is not for a hair more than is held.
+    const quantity = share === 100 || step === null || step <= 0 ? Math.floor(wanted * 1e8 + 1e-6) / 1e8 : Math.floor(wanted / step + 1e-9) * step;
+    this.quantity.set(+quantity.toFixed(10));
     if (this.type2() === 'Perp') {
       this.reduceOnly.set(true);
     }
@@ -1311,6 +1336,21 @@ export class FundTradingPage {
   })();
 
   constructor() {
+    // A reduce-only tick, a limit price and a pause price are about one instrument. On another they would
+    // refuse a normal order, or hold a working one at a price that means nothing there.
+    let shown: string | null = null;
+    effect(() => {
+      const instrument = this.instrument();
+      if (shown !== null && shown !== instrument) {
+        this.reduceOnly.set(false);
+        this.limitPrice.set(null);
+        this.pausePrice.set(null);
+        this.quantity.set(null);
+      }
+
+      shown = instrument;
+    });
+
     effect(() => {
       const d = this.page.data();
       if (d === null) {
@@ -1396,6 +1436,7 @@ export class FundTradingPage {
   /** Instruments the last search found in the venues' lists. */
   private readonly found = signal<{ asset: string; type: TradedType; venues: TradingVenue[] }[]>([]);
   private searching: ReturnType<typeof setTimeout> | undefined;
+  private searches = 0;
 
   /** Looks the typed text up in every venue's list, a moment after the typing stops. */
   protected search(text: string): void {
@@ -1405,9 +1446,11 @@ export class FundTradingPage {
       return;
     }
 
+    const asked = ++this.searches;
     this.searching = setTimeout(() => {
       this.http.get<{ asset: string; type: TradedType; venues: TradingVenue[] }[]>('/api/instruments', { params: { q: typed } }).subscribe({
-        next: (hits) => this.found.set(hits),
+        // An answer to an earlier search that arrives late does not replace a later one's.
+        next: (hits) => asked === this.searches && this.found.set(hits),
         error: () => undefined,
       });
     }, 200);
@@ -1488,7 +1531,21 @@ export class FundTradingPage {
   }
 
   /** The order being sent and the name it goes under, kept until the server has answered for it. */
-  private attempt: { what: string; name: string } | null = null;
+  /**
+   * The name each thing being sent goes under, kept until the server has answered for it. Sending something else in
+   * between does not lose it: a retry of the first still goes under its first name, and the server returns the first.
+   */
+  private readonly attempts = new Map<string, string>();
+
+  private nameFor(what: string): string {
+    let name = this.attempts.get(what);
+    if (name === undefined) {
+      name = `ui-${crypto.randomUUID()}`;
+      this.attempts.set(what, name);
+    }
+
+    return name;
+  }
 
   private place(order: Record<string, unknown>, url = '/api/orders', nameField = 'clientOrderId'): void {
     // A second click while the first is still on its way does nothing.
@@ -1499,13 +1556,9 @@ export class FundTradingPage {
     this.sending.set(true);
     // The name makes a repeated send the same order, not a second one. It is kept until the server answers: if the
     // answer is lost and the same order is sent again, it goes under the same name and the server returns the first.
-    const what = JSON.stringify(order);
-    if (this.attempt?.what !== what) {
-      this.attempt = { what, name: `ui-${crypto.randomUUID()}` };
-    }
-
-    const body = { ...order, [nameField]: this.attempt.name };
-    this.run(this.http.post<Answer>(url, body), url === '/api/orders' ? `${order['side']} ${order['quantity']} ${order['asset']} sent.` : `Working order to ${String(order['side']).toLowerCase()} ${order['quantity']} ${order['asset']} recorded.`, () => this.sending.set(false), () => (this.attempt = null));
+    const what = url + ':' + JSON.stringify(order);
+    const body = { ...order, [nameField]: this.nameFor(what) };
+    this.run(this.http.post<Answer>(url, body), url === '/api/orders' ? `${order['side']} ${order['quantity']} ${order['asset']} sent.` : `Working order to ${String(order['side']).toLowerCase()} ${order['quantity']} ${order['asset']} recorded.`, () => this.sending.set(false), () => this.attempts.delete(what));
   }
 
   protected pull(fundId: number): void {

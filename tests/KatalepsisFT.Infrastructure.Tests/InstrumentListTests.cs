@@ -147,7 +147,8 @@ public class InstrumentListTests
 
         demand.Listed(Venue.Binance, InstrumentType.Perp, ["BTC", "ARB"], "USDC");
         demand.Listed(Venue.Binance, InstrumentType.Perp, ["BTC", "DOGE"]);
-        demand.For(Venue.Binance, InstrumentType.Perp, "USDC", second: true).Should().Equal("ARB", "BTC");
+        // In order of importance: what is always followed first.
+        demand.For(Venue.Binance, InstrumentType.Perp, "USDC", second: true).Should().Equal("BTC", "ARB");
         demand.For(Venue.Binance, InstrumentType.Perp).Should().Equal("BTC", "DOGE");
     }
 
@@ -189,7 +190,9 @@ public class InstrumentListTests
         demand.Want(held: [("SUI", InstrumentType.Perp)], asked: [("ARB", InstrumentType.Perp), ("BTC", InstrumentType.Perp), ("TIA", InstrumentType.Perp), ("INJ", InstrumentType.Perp)]);
 
         // The limit counts only what is open because somebody asked: BTC is followed anyway, so INJ is the one over.
-        demand.For(Venue.Okx, InstrumentType.Perp).Should().Equal("ARB", "BTC", "ETH", "SUI", "TIA");
+        // In order of importance, so that a stream which can only follow so many keeps the right ones: what is
+        // always followed, then what is held, then what was asked for.
+        demand.For(Venue.Okx, InstrumentType.Perp).Should().Equal("BTC", "ETH", "SUI", "ARB", "TIA");
         demand.For(Venue.Okx, InstrumentType.Spot).Should().Equal("BTC", "ETH");
 
         demand.Want(held: [], asked: []);
@@ -204,9 +207,10 @@ public class InstrumentListTests
         demand.Want(held: [], asked: [("PENDLE", InstrumentType.Perp), ("eth", InstrumentType.Perp)]);
 
         demand.For(Venue.Deribit, InstrumentType.Perp).Should().Equal("BTC", "ETH");
-        // What is always followed is asked for even where the venue's list leaves it out or marks it closed.
+        // Once a venue's list is known it decides, also for what is always followed: a venue is not asked for a
+        // book it does not list, because that can make it refuse the others asked for with it.
         demand.Listed(Venue.Mexc, InstrumentType.Spot, ["ETH"]);
-        demand.For(Venue.Mexc, InstrumentType.Spot).Should().Equal("BTC");
+        demand.For(Venue.Mexc, InstrumentType.Spot).Should().BeEmpty();
         // A venue whose list has not been read is asked only for what was always followed.
         demand.For(Venue.Bybit, InstrumentType.Perp).Should().Equal("BTC");
     }

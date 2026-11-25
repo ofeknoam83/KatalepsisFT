@@ -55,7 +55,8 @@ public sealed class ManagerBookService(IFtDbContext database, ManagerBookWriter 
             .TradingAccounts.Where(a =>
                 a.InBookEquityUsd != null
                 || (a.Mode == Domain.Execution.TradingMode.Paper && a.ManagerAccount.Sleeve.Fund.IncludePaperTrading)
-                || (a.Mode == Domain.Execution.TradingMode.Live && a.LiveEquityUsd != null)
+                // A real-money account that a read-only key on the same venue already reads is not counted, so its manager needs no rewrite for it.
+                || (a.Mode == Domain.Execution.TradingMode.Live && a.LiveEquityUsd != null && !database.VenueConnections.Any(c => c.ManagerAccountId == a.ManagerAccountId && c.Venue == a.Venue && c.State != Domain.Connections.ConnectionState.Disabled && c.LastSnapshotJson != null))
             )
             .Select(a => a.ManagerAccountId)
             .Distinct()

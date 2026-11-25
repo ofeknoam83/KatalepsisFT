@@ -939,6 +939,10 @@ namespace KatalepsisFT.Persistence.Migrations
                         .HasColumnType("numeric(20,2)")
                         .HasColumnName("in_book_equity_usd");
 
+                    b.Property<int?>("InBookMode")
+                        .HasColumnType("integer")
+                        .HasColumnName("in_book_mode");
+
                     b.Property<string>("KeyHint")
                         .HasMaxLength(8)
                         .HasColumnType("character varying(8)")

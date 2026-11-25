@@ -17,6 +17,8 @@ public sealed class BinanceSpotBookStream : BookStream
 
     public override Uri Address(IReadOnlyList<string> assets) => new("wss://stream.binance.com:9443/stream");
 
+    public override int AskTogether => 150;
+
     public override IEnumerable<string> Subscriptions(IReadOnlyList<string> assets) =>
         assets.Count == 0 ? [] : [JsonSerializer.Serialize(new { method = "SUBSCRIBE", @params = assets.Select(a => a.ToLowerInvariant() + "usdt@depth20@100ms"), id = 1 })];
 
@@ -180,6 +182,8 @@ public abstract class ContractBookStream : BookStream
     public void UseContractSizes(Dictionary<string, decimal> sizes) => ContractSizes = sizes;
 
     protected IEnumerable<string> Followed(IReadOnlyList<string> assets) => assets.Select(a => $"{a.ToUpperInvariant()}_USDT").Where(ContractSizes.ContainsKey);
+
+    public override bool CanFollow(string asset) => ContractSizes.ContainsKey($"{asset.ToUpperInvariant()}_USDT");
 
     protected StreamedBook? Book(string contract, List<BookLevel> bids, List<BookLevel> asks) =>
         contract.EndsWith("_USDT", StringComparison.Ordinal) && ContractSizes.ContainsKey(contract) ? new StreamedBook(contract[..^5], bids, asks) : null;
@@ -551,6 +555,8 @@ public sealed class DeribitPerpBookStream : BookStream
     }
 
     public void UseListed(HashSet<string> listed) => _listed = listed;
+
+    public override bool CanFollow(string asset) => _listed.Contains(asset.ToUpperInvariant());
 
     public override IEnumerable<string> Subscriptions(IReadOnlyList<string> assets)
     {
