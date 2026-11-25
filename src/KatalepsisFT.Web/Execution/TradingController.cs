@@ -142,6 +142,15 @@ public sealed class TradingController(TradingService trading, WorkingOrderServic
     public async Task<IActionResult> SubmitWorkingAsync(WorkingOrderRequest request, CancellationToken cancellationToken) => Result(await working.SubmitAsync(request, Actor, cancellationToken));
 
     [Authorize(Roles = Roles.CanTrade)]
+    [Audit("Basket of working orders sent from the ticket")]
+    [HttpPost("working-orders/basket")]
+    public async Task<IActionResult> SubmitBasketAsync(BasketRequest request, CancellationToken cancellationToken)
+    {
+        HttpContext.Items[AuditFilter.SubjectItem] = $"Basket of {request.Lines?.Count ?? 0} lines";
+        return Result(await working.SubmitBasketAsync(request, Actor, cancellationToken));
+    }
+
+    [Authorize(Roles = Roles.CanTrade)]
     [Audit("Working order paused")]
     [HttpPost("working-orders/{id:long}/pause")]
     public async Task<IActionResult> PauseWorkingAsync(long id, CancellationToken cancellationToken)

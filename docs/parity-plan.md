@@ -153,7 +153,11 @@ execution service looks at each open working order every round, after the orders
 - Approval: a working order on a real-money account, worth more than that account's largest single order, waits
   for a second administrator. **Paper accounts need no approval**, so a trial is not held up. The amount is the
   account's largest-order limit; a separate, editable amount is not built.
-- Still to do: baskets; the stop on low margin for real perp accounts; working orders through the strategy API.
+- Baskets: several lines typed on the ticket, one a line ("buy 2 BTC-PERP"), are sent as one. Every line is checked
+  before any is recorded, so a basket is taken whole or not at all. On real money it is the basket's total that
+  decides whether a second administrator is needed, and one approval starts all of it.
+- Still to do: the stop on low margin for real perp accounts; working orders through the strategy API; an editable
+  approval amount; pasting a basket from a spreadsheet with a different way of working per line.
 
 **New here.** Tables `working_orders` and a parent link on `orders`; a step in the execution loop; the approval
 kind "large order".

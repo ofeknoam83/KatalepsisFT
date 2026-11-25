@@ -281,6 +281,9 @@ public class WorkingOrder
     public required string CreatedBy { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public string? ApprovedBy { get; set; }
+
+    /// <summary>The same on every working order that was sent together as one basket; empty for one sent on its own.</summary>
+    public string? Basket { get; set; }
     public List<Order> Children { get; set; } = [];
 
     /// <summary>Changes on every save, so that a person's pause and the engine's own write cannot overwrite each other unseen.</summary>

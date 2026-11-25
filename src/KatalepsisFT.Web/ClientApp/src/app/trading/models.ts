@@ -283,6 +283,8 @@ export interface WorkingOrder {
   approvedBy: string | null;
   isPaper: boolean;
   slices: Slice[] | null;
+  /** The same on every working order sent together as one basket. */
+  basket: string | null;
 }
 
 export const WORKING_STATE_LABEL: Record<WorkingState, string> = { PendingApproval: 'Waiting for approval', Working: 'Working', Paused: 'Paused', Done: 'Done', Stopped: 'Stopped', Rejected: 'Not approved' };

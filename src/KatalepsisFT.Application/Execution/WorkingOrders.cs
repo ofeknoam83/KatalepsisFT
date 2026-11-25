@@ -39,6 +39,10 @@ public sealed record WorkingOrderRequest(
     string? ClientId
 );
 
+/// <summary>Several working orders to send as one.</summary>
+/// <param name="ClientId">The sender's own name for the basket; the same name again returns the same basket.</param>
+public sealed record BasketRequest(IReadOnlyList<WorkingOrderRequest> Lines, string? ClientId);
+
 public sealed record SliceDto(long Id, DateTimeOffset At, Venue Venue, string VenueName, OrderType Type, decimal Quantity, decimal? LimitPrice, decimal FilledQuantity, decimal AverageFillPrice, decimal FeesUsd, OrderStatus Status, string? RejectReason);
 
 /// <param name="SlippageBps">How much worse (positive) or better (negative) than the price at the start the fills have been, in hundredths of a percent.</param>
@@ -81,7 +85,8 @@ public sealed record WorkingOrderDto(
     DateTimeOffset CreatedAt,
     string? ApprovedBy,
     bool IsPaper,
-    IReadOnlyList<SliceDto>? Slices
+    IReadOnlyList<SliceDto>? Slices,
+    string? Basket = null
 );
 
 // ---------------------------------------------------------------- taking, steering and showing working orders
@@ -94,32 +99,203 @@ public sealed class WorkingOrderService(IFtDbContext database, IBookFeed books, 
 {
     private static readonly TimeSpan LongestOpenEnded = TimeSpan.FromHours(24);
 
+    /// <summary>A working order as it would be recorded, with what is needed to decide whether a second person has to agree.</summary>
+    private sealed record Prepared(WorkingOrder Working, decimal NotionalUsd, TradingAccount? Strictest, string Where, int FundId, string Text);
+
     public async Task<TradingChange<WorkingOrderDto>> SubmitAsync(WorkingOrderRequest request, Actor actor, CancellationToken cancellationToken)
     {
+        DateTimeOffset now = clock.GetUtcNow();
+        (Prepared? ready, WorkingOrder? existing, string? refusal, bool missing) = await PrepareAsync(request, actor, now, cancellationToken);
+        if (existing is not null)
+        {
+            return TradingChange<WorkingOrderDto>.Ok(await DtoAsync(existing.Id, false, cancellationToken), "A working order with this name already exists; it is returned unchanged.");
+        }
+
+        if (ready is null)
+        {
+            return missing ? TradingChange<WorkingOrderDto>.Missing : TradingChange<WorkingOrderDto>.Refused(refusal!);
+        }
+
+        WorkingOrder working = ready.Working;
+        // Real money above what an account may send in one order takes a second person. Paper needs nobody's leave.
+        bool needsApproval = ready.Strictest is not null && ready.NotionalUsd > ready.Strictest.MaxOrderNotionalUsd;
+        working.State = needsApproval ? WorkingState.PendingApproval : WorkingState.Working;
+        if (!needsApproval)
+        {
+            Start(working, now);
+        }
+
+        database.WorkingOrders.Add(working);
+        try
+        {
+            await database.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            // The same name arrived twice at the same instant; the other one won.
+            database.DiscardChanges();
+            WorkingOrder? won = await database.WorkingOrders.AsNoTracking().FirstOrDefaultAsync(w => w.ManagerAccountId == working.ManagerAccountId && w.ClientId == working.ClientId, cancellationToken);
+            return won is null ? TradingChange<WorkingOrderDto>.Refused("The order could not be recorded. Try again.") : TradingChange<WorkingOrderDto>.Ok(await DtoAsync(won.Id, false, cancellationToken));
+        }
+
+        string? notice = null;
+        if (needsApproval)
+        {
+            Ask(ready.FundId, working.TradingAccountId, $"Work an order to {ready.Text} on {ready.Where}: about {ready.NotionalUsd:N0} USD, above the {ready.Strictest!.MaxOrderNotionalUsd:N0} USD one order may be. {Describe(working)}.", [working.Id], actor, now);
+            await database.SaveChangesAsync(cancellationToken);
+            notice = "Recorded. It starts when a second administrator approves it.";
+        }
+        else
+        {
+            await signal.WakeAsync(cancellationToken);
+        }
+
+        return TradingChange<WorkingOrderDto>.Ok(await DtoAsync(working.Id, false, cancellationToken), notice);
+    }
+
+    /// <summary>
+    /// Several working orders sent as one. Every line is checked before any is recorded: one line that cannot be
+    /// taken refuses the whole basket, so there is never half of one in the market. Where real money is involved it
+    /// is the basket's total that decides whether a second person is needed, and one approval starts all of it.
+    /// </summary>
+    public async Task<TradingChange<IReadOnlyList<WorkingOrderDto>>> SubmitBasketAsync(BasketRequest request, Actor actor, CancellationToken cancellationToken)
+    {
+        if (request.Lines is not { Count: >= 2 and <= MostBasketLines })
+        {
+            return TradingChange<IReadOnlyList<WorkingOrderDto>>.Refused($"A basket has between 2 and {MostBasketLines} lines.");
+        }
+
+        string basket = string.IsNullOrWhiteSpace(request.ClientId) ? Guid.NewGuid().ToString("N") : request.ClientId.Trim();
+        if (basket.Length > 40 || !basket.All(c => char.IsLetterOrDigit(c) || c is '-' or '_' or '.'))
+        {
+            return TradingChange<IReadOnlyList<WorkingOrderDto>>.Refused("The basket's own name may be up to 40 letters, digits, dashes, dots and underscores.");
+        }
+
+        // The same basket sent again, after a lost answer, is returned as it stands.
+        List<long> before = await database.WorkingOrders.Where(w => w.Basket == basket).OrderBy(w => w.Id).Select(w => w.Id).ToListAsync(cancellationToken);
+        if (before.Count > 0)
+        {
+            return TradingChange<IReadOnlyList<WorkingOrderDto>>.Ok(await DtosAsync(before, cancellationToken), "A basket with this name already exists; it is returned unchanged.");
+        }
+
+        DateTimeOffset now = clock.GetUtcNow();
+        List<Prepared> lines = [];
+        for (int index = 0; index < request.Lines.Count; index++)
+        {
+            (Prepared? ready, _, string? refusal, bool missing) = await PrepareAsync(request.Lines[index] with { ClientId = $"{basket}.{index + 1}" }, actor, now, cancellationToken);
+            if (ready is null)
+            {
+                return TradingChange<IReadOnlyList<WorkingOrderDto>>.Refused($"Line {index + 1}: {(missing ? "that trading account or manager does not exist." : refusal)} Nothing was sent.");
+            }
+
+            lines.Add(ready);
+        }
+
+        if (lines.Select(l => l.FundId).Distinct().Count() > 1)
+        {
+            return TradingChange<IReadOnlyList<WorkingOrderDto>>.Refused("A basket is for one fund. Nothing was sent.");
+        }
+
+        if (lines.GroupBy(l => (l.Working.ManagerAccountId, l.Working.TradingAccountId, l.Working.Asset, l.Working.InstrumentType)).Any(g => g.Count() > 1))
+        {
+            return TradingChange<IReadOnlyList<WorkingOrderDto>>.Refused("The same instrument is in the basket twice for the same account. Put it on one line. Nothing was sent.");
+        }
+
+        // What is on real-money accounts is weighed as one: its total against the strictest of those accounts.
+        List<Prepared> real = lines.Where(l => l.Strictest is not null).ToList();
+        decimal realTotal = real.Sum(l => l.NotionalUsd);
+        decimal? allowed = real.Count > 0 ? real.Min(l => l.Strictest!.MaxOrderNotionalUsd) : null;
+        bool needsApproval = allowed is decimal most && realTotal > most;
+        foreach (Prepared line in lines)
+        {
+            line.Working.Basket = basket;
+            bool waits = needsApproval && line.Strictest is not null;
+            line.Working.State = waits ? WorkingState.PendingApproval : WorkingState.Working;
+            if (!waits)
+            {
+                Start(line.Working, now);
+            }
+
+            database.WorkingOrders.Add(line.Working);
+        }
+
+        try
+        {
+            await database.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            database.DiscardChanges();
+            return TradingChange<IReadOnlyList<WorkingOrderDto>>.Refused("The basket could not be recorded. Nothing was sent. Try again.");
+        }
+
+        string? notice = null;
+        if (needsApproval)
+        {
+            Ask(real[0].FundId, null, $"Work a basket of {real.Count} orders worth about {realTotal:N0} USD, above the {allowed:N0} USD one order may be: {string.Join("; ", real.Select(l => l.Text))}.", real.Select(l => l.Working.Id).ToList(), actor, now);
+            await database.SaveChangesAsync(cancellationToken);
+            notice = real.Count == lines.Count ? "Recorded. The basket starts when a second administrator approves it." : "Recorded. The lines on paper have started; those on real money start when a second administrator approves them.";
+        }
+
+        await signal.WakeAsync(cancellationToken);
+        return TradingChange<IReadOnlyList<WorkingOrderDto>>.Ok(await DtosAsync(lines.Select(l => l.Working.Id).ToList(), cancellationToken), notice);
+    }
+
+    public const int MostBasketLines = 50;
+
+    private async Task<IReadOnlyList<WorkingOrderDto>> DtosAsync(List<long> ids, CancellationToken cancellationToken)
+    {
+        List<WorkingOrderDto> result = [];
+        foreach (long id in ids)
+        {
+            result.Add((await DtoAsync(id, false, cancellationToken))!);
+        }
+
+        return result;
+    }
+
+    private void Ask(int fundId, int? accountId, string summary, List<long> ids, Actor actor, DateTimeOffset now) =>
+        database.ApprovalRequests.Add(
+            new ApprovalRequest
+            {
+                Kind = ApprovalKind.LargeOrder,
+                FundId = fundId,
+                TradingAccountId = accountId,
+                Summary = summary.Length <= 1000 ? summary : summary[..997] + "…",
+                PayloadJson = JsonSerializer.Serialize(new { workingOrderIds = ids }),
+                RequestedBy = actor.Name,
+                RequestedAt = now,
+            }
+        );
+
+    /// <summary>Checks one request and builds the working order it asks for, without recording it.</summary>
+    private async Task<(Prepared? Ready, WorkingOrder? Existing, string? Refusal, bool Missing)> PrepareAsync(WorkingOrderRequest request, Actor actor, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        (Prepared?, WorkingOrder?, string?, bool) No(string why) => (null, null, why, false);
         string asset = (request.Asset ?? string.Empty).Trim().ToUpperInvariant();
         if (asset.Length is 0 or > 32 || !asset.All(char.IsLetterOrDigit))
         {
-            return TradingChange<WorkingOrderDto>.Refused("Name the asset, for example BTC.");
+            return No("Name the asset, for example BTC.");
         }
 
         if (request.InstrumentType is not (InstrumentType.Perp or InstrumentType.Spot) || !Enum.IsDefined(request.Side) || !Enum.IsDefined(request.Style))
         {
-            return TradingChange<WorkingOrderDto>.Refused("Working orders are for perpetuals or spot, to buy or to sell, in one of the three ways offered.");
+            return No("Working orders are for perpetuals or spot, to buy or to sell, in one of the three ways offered.");
         }
 
         if (request.Quantity <= 0m || request.Quantity > 1_000_000_000m || request.LimitPrice is <= 0m or > 1_000_000_000m || request.PausePrice is <= 0m or > 1_000_000_000m)
         {
-            return TradingChange<WorkingOrderDto>.Refused("The quantity and the prices must be above zero and within reason.");
+            return No("The quantity and the prices must be above zero and within reason.");
         }
 
         if (request.ReduceOnly && request.InstrumentType != InstrumentType.Perp)
         {
-            return TradingChange<WorkingOrderDto>.Refused("Reduce only is for perpetuals.");
+            return No("Reduce only is for perpetuals.");
         }
 
         if (request.MaxSlippageBps is < 1 or > 5000)
         {
-            return TradingChange<WorkingOrderDto>.Refused("The largest slippage is between 1 and 5,000 hundredths of a percent.");
+            return No("The largest slippage is between 1 and 5,000 hundredths of a percent.");
         }
 
         string? shape = request.Style switch
@@ -135,13 +311,13 @@ public sealed class WorkingOrderService(IFtDbContext database, IBookFeed books, 
         };
         if (shape is not null)
         {
-            return TradingChange<WorkingOrderDto>.Refused(shape);
+            return No(shape);
         }
 
         string clientId = string.IsNullOrWhiteSpace(request.ClientId) ? Guid.NewGuid().ToString("N") : request.ClientId.Trim();
         if (clientId.Length > 64 || !clientId.All(c => char.IsLetterOrDigit(c) || c is '-' or '_' or '.'))
         {
-            return TradingChange<WorkingOrderDto>.Refused("The order's own name may be up to 64 letters, digits, dashes, dots and underscores.");
+            return No("The order's own name may be up to 64 letters, digits, dashes, dots and underscores.");
         }
 
         IQueryable<TradingAccount> all = database.TradingAccounts.Include(a => a.ManagerAccount).ThenInclude(m => m.Sleeve).ThenInclude(s => s.Fund);
@@ -150,38 +326,33 @@ public sealed class WorkingOrderService(IFtDbContext database, IBookFeed books, 
             : request.ManagerId is int managerId ? await all.Where(a => a.ManagerAccountId == managerId).OrderBy(a => a.Id).ToListAsync(cancellationToken) : [];
         if (accounts.Count == 0)
         {
-            return request.TradingAccountId is null && request.ManagerId is null ? TradingChange<WorkingOrderDto>.Refused("Say which trading account, or which manager.") : TradingChange<WorkingOrderDto>.Missing;
+            return request.TradingAccountId is null && request.ManagerId is null ? No("Say which trading account, or which manager.") : (null, null, null, true);
         }
 
         Domain.Funds.ManagerAccount manager = accounts[0].ManagerAccount;
         if (manager.Sleeve.Fund.IsDemo)
         {
-            return TradingChange<WorkingOrderDto>.Refused(TradingService.DemoIsFixed);
+            return No(TradingService.DemoIsFixed);
         }
 
         if (!manager.IsActive)
         {
-            return TradingChange<WorkingOrderDto>.Refused(ConnectionService.RetiredManager);
+            return No(ConnectionService.RetiredManager);
         }
 
         WorkingOrder? existing = await database.WorkingOrders.AsNoTracking().FirstOrDefaultAsync(w => w.ManagerAccountId == manager.Id && w.ClientId == clientId, cancellationToken);
         if (existing is not null)
         {
-            return TradingChange<WorkingOrderDto>.Ok(await DtoAsync(existing.Id, false, cancellationToken), "A working order with this name already exists; it is returned unchanged.");
+            return (null, existing, null, false);
         }
 
         // Its size in dollars decides whether a second person is needed, so there has to be a price to size it with.
         decimal? mid = ConsolidatedBook.Mid((await books.ReadAsync(asset, request.InstrumentType, cancellationToken)).ToList());
         if (mid is not decimal price)
         {
-            return TradingChange<WorkingOrderDto>.Refused($"There is no live market for {asset} at the moment, so the order cannot be sized. Open its book and try again in a few seconds.");
+            return No($"There is no live market for {asset} at the moment, so the order cannot be sized. Open its book and try again in a few seconds.");
         }
 
-        decimal notional = request.Quantity * price;
-        // Real money above what an account may send in one order takes a second person. Paper needs nobody's leave.
-        TradingAccount? strictest = accounts.Where(a => a.Mode == TradingMode.Live).OrderBy(a => a.MaxOrderNotionalUsd).FirstOrDefault();
-        bool needsApproval = strictest is not null && notional > strictest.MaxOrderNotionalUsd;
-        DateTimeOffset now = clock.GetUtcNow();
         WorkingOrder working = new()
         {
             ClientId = clientId,
@@ -201,88 +372,46 @@ public sealed class WorkingOrderService(IFtDbContext database, IBookFeed books, 
             WaitSeconds = request.Style == WorkingStyle.Paced ? request.WaitSeconds : null,
             PausePrice = request.PausePrice,
             MaxSlippageBps = request.MaxSlippageBps,
-            State = needsApproval ? WorkingState.PendingApproval : WorkingState.Working,
+            State = WorkingState.Working,
             CreatedBy = actor.Name,
             CreatedAt = now,
         };
-        if (!needsApproval)
-        {
-            Start(working, now);
-        }
-
-        database.WorkingOrders.Add(working);
-        try
-        {
-            await database.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateException)
-        {
-            // The same name arrived twice at the same instant; the other one won.
-            database.DiscardChanges();
-            WorkingOrder? won = await database.WorkingOrders.AsNoTracking().FirstOrDefaultAsync(w => w.ManagerAccountId == manager.Id && w.ClientId == clientId, cancellationToken);
-            return won is null ? TradingChange<WorkingOrderDto>.Refused("The order could not be recorded. Try again.") : TradingChange<WorkingOrderDto>.Ok(await DtoAsync(won.Id, false, cancellationToken));
-        }
-
-        string? notice = null;
-        if (needsApproval)
-        {
-            string where = request.TradingAccountId is null ? $"{manager.Name}, best venue" : $"{manager.Name} · {VenueExposureService.NameOf(accounts[0].Venue)}";
-            database.ApprovalRequests.Add(
-                new ApprovalRequest
-                {
-                    Kind = ApprovalKind.LargeOrder,
-                    FundId = manager.Sleeve.FundId,
-                    TradingAccountId = request.TradingAccountId,
-                    Summary = $"Work an order to {(request.Side == OrderSide.Buy ? "buy" : "sell")} {request.Quantity:0.########} {(request.InstrumentType == InstrumentType.Spot ? asset + " spot" : asset + "-PERP")} on {where}: about {notional:N0} USD, above the {strictest!.MaxOrderNotionalUsd:N0} USD one order may be. {Describe(working)}.",
-                    PayloadJson = JsonSerializer.Serialize(new { workingOrderId = working.Id }),
-                    RequestedBy = actor.Name,
-                    RequestedAt = now,
-                }
-            );
-            await database.SaveChangesAsync(cancellationToken);
-            notice = "Recorded. It starts when a second administrator approves it.";
-        }
-        else
-        {
-            await signal.WakeAsync(cancellationToken);
-        }
-
-        return TradingChange<WorkingOrderDto>.Ok(await DtoAsync(working.Id, false, cancellationToken), notice);
+        string where = request.TradingAccountId is null ? $"{manager.Name}, best venue" : $"{manager.Name} · {VenueExposureService.NameOf(accounts[0].Venue)}";
+        string text = $"{(request.Side == OrderSide.Buy ? "buy" : "sell")} {request.Quantity:0.########} {(request.InstrumentType == InstrumentType.Spot ? asset + " spot" : asset + "-PERP")}";
+        return (new Prepared(working, request.Quantity * price, accounts.Where(a => a.Mode == TradingMode.Live).OrderBy(a => a.MaxOrderNotionalUsd).FirstOrDefault(), where, manager.Sleeve.FundId, text), null, null, false);
     }
 
     /// <summary>What a decision on a large order does to it. Called with the decision, before it is saved.</summary>
     public static async Task<bool> DecideAsync(IFtDbContext database, ApprovalRequest request, bool approve, string by, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        long id;
+        List<long> ids;
         try
         {
-            id = JsonDocument.Parse(request.PayloadJson).RootElement.GetProperty("workingOrderId").GetInt64();
+            ids = JsonDocument.Parse(request.PayloadJson).RootElement.GetProperty("workingOrderIds").EnumerateArray().Select(id => id.GetInt64()).ToList();
         }
         catch (Exception e) when (e is JsonException or KeyNotFoundException or InvalidOperationException or FormatException)
         {
             return false;
         }
 
-        WorkingOrder? working = await database.WorkingOrders.FirstOrDefaultAsync(w => w.Id == id, cancellationToken);
-        if (working is null || working.State != WorkingState.PendingApproval)
+        List<WorkingOrder> waiting = await database.WorkingOrders.Where(w => ids.Contains(w.Id) && w.State == WorkingState.PendingApproval).ToListAsync(cancellationToken);
+        foreach (WorkingOrder working in waiting)
         {
-            return false;
+            if (approve)
+            {
+                working.State = WorkingState.Working;
+                working.ApprovedBy = by;
+                Start(working, now);
+            }
+            else
+            {
+                working.State = WorkingState.Rejected;
+                working.EndedAt = now;
+                working.Note = $"Not approved by {by}.";
+            }
         }
 
-        if (approve)
-        {
-            working.State = WorkingState.Working;
-            working.ApprovedBy = by;
-            Start(working, now);
-        }
-        else
-        {
-            working.State = WorkingState.Rejected;
-            working.EndedAt = now;
-            working.Note = $"Not approved by {by}.";
-        }
-
-        return true;
+        return waiting.Count > 0;
     }
 
     public async Task<TradingChange<WorkingOrderDto>> PauseAsync(long id, Actor actor, CancellationToken cancellationToken) =>
@@ -323,7 +452,18 @@ public sealed class WorkingOrderService(IFtDbContext database, IBookFeed books, 
             // What was waiting for a second person no longer needs one.
             foreach (ApprovalRequest waiting in await database.ApprovalRequests.Where(r => r.Kind == ApprovalKind.LargeOrder && r.Status == ApprovalStatus.Pending).ToListAsync(cancellationToken))
             {
-                if (waiting.PayloadJson.Contains($"\"workingOrderId\":{id}}}", StringComparison.Ordinal))
+                List<long> named;
+                try
+                {
+                    named = JsonDocument.Parse(waiting.PayloadJson).RootElement.GetProperty("workingOrderIds").EnumerateArray().Select(x => x.GetInt64()).ToList();
+                }
+                catch (Exception e) when (e is JsonException or KeyNotFoundException or InvalidOperationException or FormatException)
+                {
+                    continue;
+                }
+
+                // A basket's request stands for as long as any of its lines is still waiting.
+                if (named.Contains(id) && !await database.WorkingOrders.AnyAsync(w => named.Contains(w.Id) && w.State == WorkingState.PendingApproval, cancellationToken))
                 {
                     waiting.Status = ApprovalStatus.Cancelled;
                     waiting.DecidedAt = clock.GetUtcNow();
@@ -442,7 +582,8 @@ public sealed class WorkingOrderService(IFtDbContext database, IBookFeed books, 
             w.CreatedAt,
             w.ApprovedBy,
             paper,
-            slices
+            slices,
+            w.Basket
         );
     }
 

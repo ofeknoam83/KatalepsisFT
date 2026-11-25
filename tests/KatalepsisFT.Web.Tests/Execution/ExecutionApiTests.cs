@@ -485,6 +485,61 @@ public class ExecutionApiTests(TestDatabase database) : IClassFixture<TestDataba
         }
     }
 
+    [Fact]
+    public async Task Basket_IsTakenWholeOrNotAtAll_AndOnRealMoneyItsTotalNeedsOneApproval()
+    {
+        (int fundId, _, int accountId) = await NewAccountAsync(maxOrder: 50_000m, maxPosition: 2_000_000m);
+        Quote(Venue.Binance, "ATOM", 9.99m, 10.01m, 1_000_000m);
+        Quote(Venue.Binance, "NEAR", 4.99m, 5.01m, 1_000_000m);
+        WorkingOrderRequest Line(string asset, OrderSide side, decimal quantity) => new(accountId, null, asset, InstrumentType.Perp, side, quantity, null, false, WorkingStyle.OverTime, 10, 5, null, null, null, null, null, null);
+
+        // One line that cannot be taken refuses all of it, and nothing is recorded.
+        HttpResponseMessage bad = await _admin.PostAsJsonAsync("/api/working-orders/basket", new BasketRequest([Line("ATOM", OrderSide.Buy, 1_000m), Line("NOBOOK", OrderSide.Sell, 5m)], "basket-bad"), Json);
+        bad.IsSuccessStatusCode.Should().BeFalse();
+        (await bad.Content.ReadAsStringAsync()).Should().Contain("Line 2").And.Contain("Nothing was sent");
+        (await _admin.GetFromJsonAsync<List<WorkingOrderDto>>($"/api/funds/{fundId}/working-orders", Json)).Should().BeEmpty();
+        (await _admin.PostAsJsonAsync("/api/working-orders/basket", new BasketRequest([Line("ATOM", OrderSide.Buy, 1_000m)], null), Json)).IsSuccessStatusCode.Should().BeFalse();
+        (await _admin.PostAsJsonAsync("/api/working-orders/basket", new BasketRequest([Line("ATOM", OrderSide.Buy, 1_000m), Line("ATOM", OrderSide.Sell, 10m)], null), Json)).IsSuccessStatusCode.Should().BeFalse();
+
+        // On paper it starts at once, every line carrying the basket's name; sent again, it is the same basket.
+        BasketRequest paper = new([Line("ATOM", OrderSide.Buy, 1_000m), Line("NEAR", OrderSide.Sell, 2_000m)], "basket-1");
+        HttpResponseMessage sent = await _admin.PostAsJsonAsync("/api/working-orders/basket", paper, Json);
+        sent.StatusCode.Should().Be(HttpStatusCode.OK, await sent.Content.ReadAsStringAsync());
+        List<WorkingOrderDto> lines = (await sent.Content.ReadFromJsonAsync<Answer<List<WorkingOrderDto>>>(Json))!.Value!;
+        lines.Should().HaveCount(2).And.OnlyContain(w => w.State == WorkingState.Working && w.Basket == "basket-1");
+        (await (await _admin.PostAsJsonAsync("/api/working-orders/basket", paper, Json)).Content.ReadFromJsonAsync<Answer<List<WorkingOrderDto>>>(Json))!.Value!.Select(w => w.Id).Should().Equal(lines.Select(w => w.Id));
+        (await WorkAsync(lines[0].Id)).SlicesSent.Should().Be(1);
+        (await WorkAsync(lines[1].Id)).Slices.Should().ContainSingle().Which.Quantity.Should().Be(400m);
+        foreach (WorkingOrderDto line in lines)
+        {
+            await _admin.PostAsync($"/api/working-orders/{line.Id}/stop", null);
+            await WorkAsync(line.Id);
+        }
+
+        // On real money, each line is under what one order may be, but together they are over it: one request, for the total.
+        using (IServiceScope scope = _app!.Services.CreateScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<FtDbContext>().TradingAccounts.Where(a => a.Id == accountId).ExecuteUpdateAsync(a => a.SetProperty(x => x.Mode, TradingMode.Live));
+        }
+
+        HttpResponseMessage real = await _admin.PostAsJsonAsync("/api/working-orders/basket", new BasketRequest([Line("ATOM", OrderSide.Buy, 4_000m), Line("NEAR", OrderSide.Sell, 6_000m)], "basket-2"), Json);
+        List<WorkingOrderDto> waiting = (await real.Content.ReadFromJsonAsync<Answer<List<WorkingOrderDto>>>(Json))!.Value!;
+        waiting.Should().OnlyContain(w => w.State == WorkingState.PendingApproval);
+        ApprovalDto request = (await _admin.GetFromJsonAsync<TradingDto>($"/api/funds/{fundId}/trading", Json))!.Approvals.Single(a => a.Kind == ApprovalKind.LargeOrder && a.Status == ApprovalStatus.Pending);
+        request.Summary.Should().Contain("basket of 2 orders worth about 70,000 USD").And.Contain("buy 4000 ATOM-PERP").And.Contain("sell 6000 NEAR-PERP");
+
+        // Withdrawing one line leaves the request standing for the other; approving it starts what is still waiting.
+        (await _admin.PostAsync($"/api/working-orders/{waiting[0].Id}/stop", null)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await (await SignInAsync(Roles.Admin)).PostAsJsonAsync($"/api/approvals/{request.Id}/approve", new DecisionRequest(null), Json)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await _admin.GetFromJsonAsync<WorkingOrderDto>($"/api/working-orders/{waiting[0].Id}", Json))!.State.Should().Be(WorkingState.Stopped);
+        (await _admin.GetFromJsonAsync<WorkingOrderDto>($"/api/working-orders/{waiting[1].Id}", Json))!.State.Should().Be(WorkingState.Working);
+
+        using (IServiceScope scope = _app!.Services.CreateScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<FtDbContext>().WorkingOrders.Where(w => w.TradingAccountId == accountId && (w.State == WorkingState.Working || w.State == WorkingState.Paused)).ExecuteUpdateAsync(w => w.SetProperty(x => x.State, WorkingState.Stopped));
+        }
+    }
+
     [Theory]
     [InlineData("over time without a time", "Say how long")]
     [InlineData("too many slices", "more often than every five seconds")]

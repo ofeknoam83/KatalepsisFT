@@ -1169,6 +1169,11 @@ namespace KatalepsisFT.Persistence.Migrations
                         .HasColumnType("numeric(28,10)")
                         .HasColumnName("average_fill_price");
 
+                    b.Property<string>("Basket")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("basket");
+
                     b.Property<string>("ClientId")
                         .IsRequired()
                         .HasMaxLength(64)

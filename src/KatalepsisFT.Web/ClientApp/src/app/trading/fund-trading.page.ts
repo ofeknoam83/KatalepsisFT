@@ -221,6 +221,32 @@ interface Depth {
                 <div class="field" title="The order pauses itself when its average price is this much worse than the price it started at"><label>Largest slippage, bp</label><nz-input-number [ngModel]="maxSlippage()" (ngModelChange)="maxSlippage.set($event)" [nzMin]="1" [nzMax]="5000" nzPlaceHolder="None" style="width:100%" /></div>
               </div>
               <p class="hint" data-testid="style-hint">{{ styleHint() }}</p>
+              @if (style() !== 'Paced') {
+                <a class="basket-toggle" (click)="basketOpen.set(!basketOpen())" data-testid="basket-toggle">{{ basketOpen() ? 'Send one order instead' : 'Send several at once, as a basket' }}</a>
+              }
+              @if (basketOpen() && style() !== 'Paced') {
+                <div class="field">
+                  <label>One order a line, for example: buy 2 BTC-PERP</label>
+                  <textarea nz-input rows="5" [ngModel]="basketText()" (ngModelChange)="basketText.set($event)" placeholder="buy 2 BTC-PERP&#10;sell 40 ETH-PERP&#10;buy 500 SOL spot" data-testid="basket-text"></textarea>
+                </div>
+                @if (basketLines(); as lines) {
+                  @if (lines.length > 0) {
+                    <div class="basket" data-testid="basket-lines">
+                      @for (l of lines; track $index) {
+                        <div [class.bad]="l.error !== null">
+                          @if (l.error === null) {
+                            <b [style.color]="l.side === 'Buy' ? 'var(--kft-up)' : 'var(--kft-down)'">{{ l.side }}</b> {{ l.quantity }} {{ name(l.asset, l.type) }}
+                          } @else {
+                            Line {{ $index + 1 }}: {{ l.error }}
+                          }
+                        </div>
+                      }
+                    </div>
+                    <p class="hint">All lines are worked the way chosen above, on the account chosen above. They are checked together: if one cannot be taken, none is sent.</p>
+                    <button nz-button nzType="primary" nzBlock [disabled]="!canSendBasket(d)" [nzLoading]="sending()" (click)="sendBasket()" data-testid="send-basket">Send the basket of {{ lines.length }}</button>
+                  }
+                }
+              }
             }
             <div class="est">
               About <b>{{ notional() | usd }}</b>
@@ -520,7 +546,7 @@ interface Depth {
                 @for (w of list; track w.id) {
                   <tr class="rowlink" (click)="openWorking.set(openWorking() === w.id ? null : w.id)" [attr.data-testid]="'working-' + w.id">
                     <td class="nowrap"><b [style.color]="w.side === 'Buy' ? 'var(--kft-up)' : 'var(--kft-down)'">{{ w.side }}</b> {{ w.quantity | dynamicDecimal }} {{ name(w.asset, w.instrumentType) }}{{ w.limitPrice === null ? '' : ' up to ' + (w.limitPrice | dynamicDecimal) }}</td>
-                    <td class="nowrap">{{ how(w) }}</td>
+                    <td class="nowrap">{{ how(w) }} @if (w.basket) { <span class="hint" [title]="'Sent together with other lines as one basket'">basket</span> }</td>
                     <td class="nowrap">{{ w.manager }} · {{ w.where }} @if (w.isPaper) { <span class="hint">paper</span> }</td>
                     <td>
                       <div class="prog"><i [style.width.%]="w.quantity > 0 ? w.filledQuantity / w.quantity * 100 : 0"></i></div>
@@ -757,6 +783,21 @@ interface Depth {
     }
     .mini .num {
       text-align: right;
+    }
+    .basket-toggle {
+      display: block;
+      font-size: 12.5px;
+      margin: -4px 0 10px;
+    }
+    .basket {
+      font-size: 12.5px;
+      border: 1px solid var(--kft-line);
+      border-radius: 8px;
+      padding: 6px 10px;
+      margin-bottom: 8px;
+    }
+    .basket .bad {
+      color: var(--kft-down);
     }
     .quick {
       display: flex;
@@ -1001,6 +1042,75 @@ export class FundTradingPage {
   protected readonly pausePrice = signal<number | null>(null);
   protected readonly maxSlippage = signal<number | null>(null);
 
+  // The basket: several orders typed one a line.
+  protected readonly basketOpen = signal(false);
+  protected readonly basketText = signal('');
+  protected readonly basketLines = computed(() =>
+    this.basketText()
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line !== '')
+      .map((line) => FundTradingPage.readLine(line)),
+  );
+
+  /** Reads "buy 2 BTC-PERP" or "sell 500 SOL spot", in any order of its words. */
+  private static readLine(line: string): { side: OrderSide; quantity: number; asset: string; type: TradedType; error: string | null } {
+    const words = line.replace(/,/g, '').split(/\s+/);
+    const sideWord = words.find((w) => /^(buy|sell)$/i.test(w));
+    const numberWord = words.find((w) => /^\d*\.?\d+$/.test(w));
+    const rest = words.filter((w) => w !== sideWord && w !== numberWord);
+    const spot = rest.some((w) => /^spot$/i.test(w));
+    const named = rest.find((w) => !/^(spot|perp)$/i.test(w)) ?? '';
+    const perp = /-PERP$/i.test(named) || rest.some((w) => /^perp$/i.test(w));
+    const asset = named.replace(/-PERP$/i, '').toUpperCase();
+    const quantity = Number(numberWord);
+    const error =
+      sideWord === undefined ? 'say buy or sell.' : numberWord === undefined || !(quantity > 0) ? 'give a quantity.' : !/^[A-Z0-9]{1,20}$/.test(asset) ? 'name the instrument, like BTC-PERP or SOL spot.' : spot === perp ? 'say whether it is spot or a perpetual, like BTC-PERP or SOL spot.' : null;
+    return { side: /^buy$/i.test(sideWord ?? '') ? 'Buy' : 'Sell', quantity, asset, type: perp ? 'Perp' : 'Spot', error };
+  }
+
+  protected canSendBasket(d: Trading): boolean {
+    const lines = this.basketLines();
+    return d.canTrade && this.target() !== null && lines.length >= 2 && lines.every((l) => l.error === null);
+  }
+
+  protected sendBasket(): void {
+    const target = this.target();
+    if (target === null || this.sending()) {
+      return;
+    }
+
+    const lines = this.basketLines().map((l) => ({
+      tradingAccountId: target[0] === 'a' ? Number(target.slice(1)) : null,
+      managerId: target[0] === 'm' ? Number(target.slice(1)) : null,
+      asset: l.asset,
+      instrumentType: l.type,
+      side: l.side,
+      quantity: l.quantity,
+      limitPrice: null,
+      reduceOnly: false,
+      style: this.style(),
+      durationMinutes: this.durationMinutes(),
+      slices: this.sliceCount(),
+      minSlice: null,
+      maxSlice: null,
+      waitSeconds: null,
+      pausePrice: null,
+      maxSlippageBps: this.maxSlippage(),
+    }));
+    this.sending.set(true);
+    const what = JSON.stringify(lines);
+    if (this.attempt?.what !== what) {
+      this.attempt = { what, name: `ui-${crypto.randomUUID()}` };
+    }
+
+    this.run(this.http.post<Answer>('/api/working-orders/basket', { lines, clientId: this.attempt.name.slice(0, 40) }), `Basket of ${lines.length} recorded.`, () => this.sending.set(false), () => {
+      this.attempt = null;
+      this.basketText.set('');
+      this.basketOpen.set(false);
+    });
+  }
+
   /** In words, what the chosen way of working will do with the quantity entered. */
   protected readonly styleHint = computed(() => {
     const quantity = this.quantity() ?? 0;
@@ -1042,7 +1152,7 @@ export class FundTradingPage {
   protected readonly quantity = signal<number | null>(null);
   protected readonly limitPrice = signal<number | null>(null);
   protected readonly reduceOnly = signal(false);
-  private readonly sending = signal(false);
+  protected readonly sending = signal(false);
 
   /** What each venue's list says about the chosen instrument. Read once per instrument: it changes hourly at most. */
   protected readonly rules = keptData(toObservable(this.instrument), of(0), (i) => this.http.get<VenueRules[]>(`/api/instruments/${i.split(':')[0]}/${encodeURIComponent(i.split(':')[1])}`), (i) => i);

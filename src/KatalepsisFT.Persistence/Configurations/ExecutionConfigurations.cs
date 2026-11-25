@@ -173,6 +173,7 @@ internal sealed class WorkingOrderConfiguration : IEntityTypeConfiguration<Worki
         working.Property(x => x.Note).HasMaxLength(400);
         working.Property(x => x.CreatedBy).HasMaxLength(256);
         working.Property(x => x.ApprovedBy).HasMaxLength(256);
+        working.Property(x => x.Basket).HasMaxLength(40);
         working.Property(x => x.Quantity).HasPrecision(28, 10);
         working.Property(x => x.LimitPrice).HasPrecision(28, 10);
         working.Property(x => x.MinSlice).HasPrecision(28, 10);
