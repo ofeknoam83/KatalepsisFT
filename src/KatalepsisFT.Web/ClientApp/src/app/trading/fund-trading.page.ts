@@ -328,7 +328,9 @@ interface Depth {
 
           <div class="panel" data-testid="book">
             <h3>
-              {{ name(asset(), type2()) }} across venues
+              {{ name(asset(), type2()) }} {{ bookView() === 'Venues' ? 'across venues' : 'depth' }}
+              <nz-segmented [nzOptions]="['Venues', 'Depth']" [ngModel]="bookView()" (ngModelChange)="bookView.set($event)" nzSize="small" style="margin-left:6px" data-testid="book-view" />
+              <span style="flex:1"></span>
               @if (book.data(); as b) {
                 @if (b.spreadBps !== null) {
                   <span class="hint">best bid {{ b.bestBid ?? 0 | dynamicDecimal }} on {{ venueName(d, b.bestBidVenue) }} · best ask {{ b.bestAsk ?? 0 | dynamicDecimal }} on {{ venueName(d, b.bestAskVenue) }} · {{ b.spreadBps | number: '1.2-2' }} bp apart</span>
@@ -340,6 +342,7 @@ interface Depth {
                 <p class="note" data-testid="book-empty">Opening the book for {{ name(asset(), type2()) }}. It takes a few seconds the first time; if nothing appears, no venue has a live book for it and orders are refused until one does.</p>
               } @else {
                 <div class="books">
+                  @if (bookView() === 'Venues') {
                   <nz-table [nzData]="b.venues" nzTemplateMode [nzShowPagination]="false" nzSize="small">
                     <thead>
                       <tr><th>Venue</th><th class="num">Bid size</th><th class="num">Bid</th><th class="num">Ask</th><th class="num">Ask size</th><th class="num">Age</th></tr>
@@ -361,6 +364,8 @@ interface Depth {
                       }
                     </tbody>
                   </nz-table>
+                  } @else {
+                  <p class="hint" style="margin:0 0 6px" data-testid="depth-hint">The best ten prices each side across {{ depth().venues }} venues quoted in {{ depth().quote }}, with the venue each is on and the size building up. {{ depth().left > 0 ? depth().left + ' venue' + (depth().left === 1 ? '' : 's') + ' quoted in another currency ' + (depth().left === 1 ? 'is' : 'are') + ' left out: prices in different currencies do not belong in one ladder.' : '' }}</p>
                   <div class="ladder" data-testid="ladder">
                     <div>
                       @for (l of depth().bids; track $index) {
@@ -373,13 +378,14 @@ interface Depth {
                       }
                     </div>
                   </div>
-                  @if (rules.data(); as listed) {
-                    @if (listed.length > 0) {
+                  }
+                  @if (rules.data(); as every) {
+                    @if (rulesFor(d, every); as listed) {
                       <div class="rules" data-testid="rules">
-                        <span class="hint">Smallest steps, from each venue's list:</span>
-                        @for (r of listed; track r.venue) {
+                        <span class="hint">Smallest steps on the ticket's account{{ listed.length > 1 ? 's' : '' }}:</span>
+                        @for (r of listed; track r.venue + r.quote) {
                           <span class="rule" [class.off]="!r.tradable" [title]="r.tradable ? '' : 'This venue lists it but is not taking orders for it'">
-                            <b>{{ venueName(d, r.venue) }}</b>
+                            <b>{{ venueName(d, r.venue) }}{{ r.quote === 'USDT' || r.quote === 'USD' ? '' : ' in ' + r.quote }}</b>
                             price {{ r.priceStep === null ? '?' : (r.priceStep | dynamicDecimal) }} · quantity {{ r.quantityStep === null ? '?' : (r.quantityStep | dynamicDecimal) }}{{ r.minQuantity === null ? '' : ' · from ' + (r.minQuantity | dynamicDecimal) }}
                           </span>
                         }
@@ -1240,6 +1246,25 @@ export class FundTradingPage {
     return d.approvals.filter((a) => a.status !== 'Pending').slice(0, 5);
   }
 
+  /**
+   * The steps that matter for the order about to be sent: those of the venue the ticket's account is on, in the
+   * currency it trades this instrument in. For a manager's "best venue", those of each of the manager's accounts.
+   * Null when there are none to show.
+   */
+  protected rulesFor(d: Trading, every: VenueRules[]): VenueRules[] | null {
+    const target = this.target();
+    const accounts = d.accounts.filter((a) => (target?.[0] === 'a' ? 'a' + a.id === target : 'm' + a.managerId === target));
+    const shown = every.filter((r) =>
+      accounts.some((a) => {
+        const sameVenue = every.filter((x) => x.venue === a.venue);
+        const wanted = this.type2() === 'Perp' && a.perpQuote === 'USDC' ? 'USDC' : 'USDT';
+        // The account's own market on its venue; where the venue has only one, that one.
+        return r.venue === a.venue && (sameVenue.length === 1 || r.quote === wanted);
+      }),
+    );
+    return shown.length > 0 ? shown : null;
+  }
+
   protected hasPaper(d: Trading): boolean {
     return d.accounts.some((a) => a.mode === 'Paper');
   }
@@ -1322,19 +1347,32 @@ export class FundTradingPage {
   protected readonly notional = computed(() => (this.quantity() ?? 0) * ((this.type() === 'Limit' ? this.limitPrice() : null) ?? this.book.data()?.mid ?? 0));
 
   /** Every venue's levels in one ladder, best first, with a running total for the bars. */
+  /** Which of the two ways the book is shown: each venue's best prices, or the depth of all of them together. */
+  protected readonly bookView = signal<'Venues' | 'Depth'>('Venues');
+
+  /**
+   * The depth across venues, in one currency: the one the ticket's account trades this instrument in, or USDT, or
+   * whatever there is. A book in another currency is left out, because a price in USDC is not a better or worse
+   * price than one in USDT; it is a price for something slightly different.
+   */
   protected readonly depth = computed(() => {
-    const venues = this.book.data()?.venues ?? [];
+    const all = this.book.data()?.venues ?? [];
+    const target = this.target();
+    const account = target?.[0] === 'a' ? this.page.data()?.accounts.find((a) => 'a' + a.id === target) : undefined;
+    const wanted = this.type2() === 'Perp' && account?.perpQuote === 'USDC' ? 'USDC' : 'USDT';
+    const quote = all.some((v) => v.quote === wanted) ? wanted : all.some((v) => v.quote === 'USDT') ? 'USDT' : (all[0]?.quote ?? wanted);
+    const venues = all.filter((v) => v.quote === quote);
     const side = (pick: 'bids' | 'asks'): Depth[] => {
       let total = 0;
       return venues
-        .flatMap((v) => v[pick].map((l) => ({ venue: v.quote === 'USDT' ? v.venueName : `${v.venueName} (${v.quote})`, price: l.price, quantity: l.quantity })))
+        .flatMap((v) => v[pick].map((l) => ({ venue: v.venueName, price: l.price, quantity: l.quantity })))
         .sort((a, b) => (pick === 'bids' ? b.price - a.price : a.price - b.price))
         .slice(0, 10)
         .map((l) => ({ ...l, total: (total += l.quantity) }));
     };
     const bids = side('bids');
     const asks = side('asks');
-    return { bids, asks, most: Math.max(bids.at(-1)?.total ?? 0, asks.at(-1)?.total ?? 0, 1e-12) };
+    return { bids, asks, most: Math.max(bids.at(-1)?.total ?? 0, asks.at(-1)?.total ?? 0, 1e-12), quote, venues: venues.length, left: all.length - venues.length };
   });
 
   // The kill switch.
