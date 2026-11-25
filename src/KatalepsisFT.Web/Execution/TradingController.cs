@@ -46,6 +46,15 @@ public sealed class TradingController(TradingService trading, WorkingOrderServic
         return result is null ? NotFound() : result;
     }
 
+    /// <summary>How many requests in this fund are waiting for someone to approve them; shown as a count on the Trading tab.</summary>
+    [HttpGet("funds/{fundId:int}/approvals/waiting")]
+    public async Task<int> WaitingAsync(int fundId, CancellationToken cancellationToken) =>
+        await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.CountAsync(
+            users.ApprovalRequests,
+            r => r.FundId == fundId && r.Status == KatalepsisFT.Domain.Execution.ApprovalStatus.Pending,
+            cancellationToken
+        );
+
     [HttpGet("funds/{fundId:int}/orders")]
     public async Task<ActionResult<IReadOnlyList<OrderDto>>> OrdersAsync(int fundId, bool open = false, CancellationToken cancellationToken = default)
     {

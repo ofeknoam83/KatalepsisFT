@@ -96,7 +96,7 @@ import { SLEEVE_COLORS } from './models';
 
       <div class="cols">
         <div class="panel">
-          <h3>Top assets by gross exposure <span class="hint">Delta-adjusted · <a [routerLink]="['/funds', d.fund.id, 'holdings']">all holdings</a></span></h3>
+          <h3>Top assets by gross exposure <span class="hint">Delta-adjusted · <a [routerLink]="['/funds', d.fund.id, 'holdings']">all holdings</a>{{ d.fund.isDemo ? '' : ' · Trade opens the order ticket on that position' }}</span></h3>
           <nz-table #assets [nzData]="d.topAssets" [nzShowPagination]="false" [nzFrontPagination]="false" nzSize="small">
             <thead>
               <tr><th>Asset</th><th class="num">Long</th><th class="num">Short</th><th class="num">Net</th><th class="num">Managers</th><th style="width:34%">Short · Long</th></tr>
@@ -104,7 +104,18 @@ import { SLEEVE_COLORS } from './models';
             <tbody>
               @for (row of assets.data; track row.asset.symbol) {
                 <tr>
-                  <td><app-coin [symbol]="row.asset.symbol" /><a [routerLink]="['/funds', d.fund.id, 'assets', row.asset.symbol]"><b>{{ row.asset.symbol }}</b></a></td>
+                  <td class="nowrap"><app-coin [symbol]="row.asset.symbol" /><a [routerLink]="['/funds', d.fund.id, 'assets', row.asset.symbol]"><b>{{ row.asset.symbol }}</b></a>
+                    @if (!d.fund.isDemo) {
+                      <span data-testid="trade-links">
+                        @if (row.netByType['Spot'] !== undefined) {
+                          <a class="trade" [routerLink]="['/funds', d.fund.id, 'trading']" [queryParams]="{ instrument: 'Spot:' + row.asset.symbol }" title="Open the order ticket for this asset's spot market">{{ row.netByType['Perp'] !== undefined ? 'Trade spot' : 'Trade' }}</a>
+                        }
+                        @if (row.netByType['Perp'] !== undefined) {
+                          <a class="trade" [routerLink]="['/funds', d.fund.id, 'trading']" [queryParams]="{ instrument: 'Perp:' + row.asset.symbol }" title="Open the order ticket for this asset's perpetual">{{ row.netByType['Spot'] !== undefined ? 'perp' : 'Trade' }}</a>
+                        }
+                      </span>
+                    }
+                  </td>
                   <td class="num">{{ row.longUsd | usd }}</td>
                   <td class="num">{{ row.shortUsd | usd }}</td>
                   <td class="num" [class]="row.netUsd | tone">{{ row.netUsd | usd }}</td>

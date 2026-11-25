@@ -936,6 +936,34 @@ public class ExecutionApiTests(TestDatabase database) : IClassFixture<TestDataba
     }
 
     [Fact]
+    public async Task AWaitingRequest_IsCountedOnItsFund_AndInTheSecurityReport_UntilItIsDecided()
+    {
+        (int fundId, int managerId, int accountId) = await NewAccountAsync();
+        (int otherFundId, _, _) = await NewAccountAsync();
+        HttpClient secondAdmin = await SignInAsync(Roles.Admin);
+        HttpClient viewer = await SignInAsync(Roles.Viewer);
+        KatalepsisFT.Web.System.SecurityReport before = (await _admin.GetFromJsonAsync<KatalepsisFT.Web.System.SecurityReport>("/api/system/security", Json))!;
+
+        await _admin.PutAsJsonAsync($"/api/trading-accounts/{accountId}", new SaveTradingAccountRequest(managerId, Venue.Binance, "Main", 3m, MarginMode.Cross, 500_000m, 5_000_000m, 100, 1_000_000m), Json);
+        int waiting = await _admin.GetFromJsonAsync<int>($"/api/funds/{fundId}/approvals/waiting", Json);
+        int elsewhere = await _admin.GetFromJsonAsync<int>($"/api/funds/{otherFundId}/approvals/waiting", Json);
+        KatalepsisFT.Web.System.SecurityReport during = (await _admin.GetFromJsonAsync<KatalepsisFT.Web.System.SecurityReport>("/api/system/security", Json))!;
+        ApprovalDto request = (await _admin.GetFromJsonAsync<TradingDto>($"/api/funds/{fundId}/trading", Json))!.Approvals.Single();
+        await secondAdmin.PostAsJsonAsync($"/api/approvals/{request.Id}/approve", new DecisionRequest(null), Json);
+
+        waiting.Should().Be(1);
+        elsewhere.Should().Be(0);
+        (await _admin.GetFromJsonAsync<int>($"/api/funds/{fundId}/approvals/waiting", Json)).Should().Be(0);
+        during.ApprovalsWaiting.Should().Be(before.ApprovalsWaiting + 1);
+        during.PaperAccounts.Should().BeGreaterThanOrEqualTo(2);
+        during.Administrators.Should().BeGreaterThanOrEqualTo(2);
+        during.AuditEntries.Should().BeGreaterThan(before.AuditEntries);
+        during.LastAuditEntryAt.Should().NotBeNull();
+        // The report is for administrators only.
+        (await viewer.GetAsync("/api/system/security")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
     public async Task RaisingALimit_NeedsASecondPerson_LoweringOneDoesNot_AndNobodyApprovesTheirOwnRequest()
     {
         (int fundId, int managerId, int accountId) = await NewAccountAsync();
