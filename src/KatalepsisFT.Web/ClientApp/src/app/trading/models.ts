@@ -136,6 +136,8 @@ export interface Trading {
   pinned: InstrumentRef[];
   /** Instruments last traded on this fund's accounts, the latest first. */
   recent: InstrumentRef[];
+  /** Whether what the paper accounts hold counts in the fund's holdings, exposure, risk and NAV. */
+  paperInBook: boolean;
 }
 
 export interface OrderEvent {

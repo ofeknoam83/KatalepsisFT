@@ -1,6 +1,8 @@
 using System.Text.Json;
 using KatalepsisFT.Analytics.Valuation;
+using KatalepsisFT.Application.Execution;
 using KatalepsisFT.Domain.Connections;
+using KatalepsisFT.Domain.Execution;
 using KatalepsisFT.Domain.Instruments;
 using KatalepsisFT.Domain.Positions;
 using Microsoft.EntityFrameworkCore;
@@ -8,10 +10,12 @@ using Microsoft.EntityFrameworkCore;
 namespace KatalepsisFT.Application.Connections;
 
 /// <summary>
-/// Turns the latest snapshots of a manager's connections into today's valued positions and NAV. Today's rows are
-/// replaced on every write; when the UTC day changes, yesterday's last write stays as its end-of-day record.
+/// Turns the latest snapshots of a manager's connections, its hand-entered positions and what its trading accounts
+/// hold into today's valued positions and NAV. Today's rows are replaced on every write; when the UTC day changes,
+/// yesterday's last write stays as its end-of-day record.
 /// </summary>
-public sealed class ManagerBookWriter(IFtDbContext database)
+/// <param name="books">Live prices for what trading accounts hold; without them the latest daily close is used.</param>
+public sealed class ManagerBookWriter(IFtDbContext database, IBookFeed? books = null)
 {
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -50,6 +54,7 @@ public sealed class ManagerBookWriter(IFtDbContext database)
             .ToListAsync(cancellationToken);
         List<VenuePosition> positions = snapshots.SelectMany(json => JsonSerializer.Deserialize<VenueSnapshot>(json, Json)!.Positions).ToList();
         positions.AddRange(await ManualAsync(managerAccountId, cancellationToken));
+        positions.AddRange(await TradingAsync(managerAccountId, day, cancellationToken));
 
         // The same instrument on two venues is one line in the manager's book. Lines are told apart by the
         // instrument's name, so a balance one source calls cash and another calls spot is still one line: two rows
@@ -156,6 +161,97 @@ public sealed class ManagerBookWriter(IFtDbContext database)
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// What the manager's trading accounts hold, in the shape connections report. An account is counted when nothing
+    /// else already counts it:
+    /// a real-money account, unless the manager also has a read-only key on that venue, which then reads the same
+    /// account and everything traded in it; a paper account, only when its fund has chosen to count paper trading.
+    /// A counted account is counted whole: its positions and its cash, so that its value in the book is what the
+    /// account is worth.
+    /// </summary>
+    private async Task<List<VenuePosition>> TradingAsync(int managerAccountId, DateOnly day, CancellationToken cancellationToken)
+    {
+        List<TradingAccount> accounts = await database.TradingAccounts.Where(a => a.ManagerAccountId == managerAccountId).ToListAsync(cancellationToken);
+        if (accounts.Count == 0)
+        {
+            return [];
+        }
+
+        bool countPaper = await database.ManagerAccounts.Where(m => m.Id == managerAccountId).Select(m => m.Sleeve.Fund.IncludePaperTrading).FirstAsync(cancellationToken);
+        List<Venue> read = await database.VenueConnections.Where(c => c.ManagerAccountId == managerAccountId && c.State != ConnectionState.Disabled).Select(c => c.Venue).Distinct().ToListAsync(cancellationToken);
+        int[] ids = accounts.Select(a => a.Id).ToArray();
+        List<TradingPosition> held = await database.TradingPositions.AsNoTracking().Where(p => ids.Contains(p.TradingAccountId)).ToListAsync(cancellationToken);
+        Dictionary<string, decimal> closes = await LatestClosesAsync(database, held.Select(p => p.Asset).Distinct().ToArray(), cancellationToken);
+        List<VenuePosition> result = [];
+        foreach (TradingAccount account in accounts)
+        {
+            // A real-money account that has not been read yet has no value to count.
+            bool counted = account.Mode == TradingMode.Live ? !read.Contains(account.Venue) && account.LiveEquityUsd is not null : countPaper;
+            List<VenuePosition> lines = [];
+            decimal inPositions = 0m;
+            foreach (TradingPosition position in held.Where(p => p.TradingAccountId == account.Id && p.Quantity != 0m))
+            {
+                decimal mark = await MarkAsync(account, position, closes, cancellationToken);
+                if (position.InstrumentType == InstrumentType.Perp)
+                {
+                    decimal open = position.Quantity * (mark - position.AveragePrice);
+                    lines.Add(new VenuePosition(InstrumentType.Perp, position.Asset, position.Quantity, mark, position.AveragePrice, open));
+                    inPositions += open;
+                }
+                else
+                {
+                    lines.Add(new VenuePosition(InstrumentType.Spot, position.Asset, position.Quantity, mark, position.AveragePrice));
+                    inPositions += position.Quantity * mark;
+                }
+            }
+
+            // On paper: what was put in, what has been made and paid in fees, less what the coins held cost. For real
+            // money: what the venue says the account is worth, less what is in positions.
+            decimal equity = account.Mode == TradingMode.Live
+                ? account.LiveEquityUsd ?? 0m
+                : account.PaperBalanceUsd + held.Where(p => p.TradingAccountId == account.Id).Sum(p => p.RealisedPnlUsd - p.FeesUsd) + lines.Sum(l => l.Type == InstrumentType.Perp ? l.UnsettledPnlUsd!.Value : l.Quantity * (l.MarkPrice - l.EntryPrice!.Value));
+            decimal cash = equity - inPositions;
+            if (cash != 0m)
+            {
+                lines.Add(new VenuePosition(InstrumentType.Cash, account.PerpQuote == "USDC" ? "USDC" : "USDT", Math.Round(cash, 2), 1m));
+            }
+
+            string name = $"{account.Venue} trading account \"{account.Label}\"";
+            if (counted)
+            {
+                result.AddRange(lines);
+                if (account.InBookEquityUsd is null)
+                {
+                    database.CashFlows.Add(ConnectionSyncService.BookChange(managerAccountId, equity, new DateTimeOffset(day.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero), $"{name} added to the book"));
+                }
+
+                account.InBookEquityUsd = Math.Round(equity, 2);
+            }
+            else if (account.InBookEquityUsd is decimal last)
+            {
+                database.CashFlows.Add(ConnectionSyncService.BookChange(managerAccountId, -last, new DateTimeOffset(day.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero), $"{name} taken out of the book"));
+                account.InBookEquityUsd = null;
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>The price of a held position: the account's own venue first, then any venue, then the last daily close, then what it cost.</summary>
+    private async Task<decimal> MarkAsync(TradingAccount account, TradingPosition position, Dictionary<string, decimal> closes, CancellationToken cancellationToken)
+    {
+        if (books is not null)
+        {
+            IReadOnlyList<VenueBook> live = await books.ReadAsync(position.Asset, position.InstrumentType, cancellationToken);
+            if ((ConsolidatedBook.Pick(live, account.Venue, account.QuoteFor(position.InstrumentType))?.Mid ?? ConsolidatedBook.Mid(live.ToList())) is decimal mid)
+            {
+                return mid;
+            }
+        }
+
+        return closes.TryGetValue(position.Asset, out decimal close) ? close : position.AveragePrice;
     }
 
     /// <summary>The most recent daily close of each asset that has any.</summary>

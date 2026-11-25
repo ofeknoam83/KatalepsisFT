@@ -309,6 +309,10 @@ interface Depth {
         <h3>
           Trading accounts <span class="hint">One per manager and venue</span>
           <span style="flex:1"></span>
+          @if (hasPaper(d)) {
+            <label nz-checkbox class="inbook" [ngModel]="d.paperInBook" [nzDisabled]="!d.canAdmin" (ngModelChange)="run(http.post('/api/funds/' + d.fundId + '/paper-in-book', { include: $event }), 'Saved.')" data-testid="paper-in-book"
+              title="On: what the paper accounts hold, and their balance, show in Holdings, exposure, risk and NAV. Their value comes in and goes out as money, not as a gain or a loss. Real-money accounts always count.">Count paper accounts in the fund's book</label>
+          }
           @if (d.canTrade) {
             <button nz-button nzDanger nzSize="small" (click)="halting.set(!halting())" data-testid="kill-switch">Kill switch</button>
           }
@@ -605,6 +609,11 @@ interface Depth {
       }
     }
 
+    .inbook {
+      margin-right: 14px;
+      font-size: 12.5px;
+      font-weight: 400;
+    }
     .quick {
       display: flex;
       flex-wrap: wrap;
@@ -843,6 +852,10 @@ export class FundTradingPage {
 
   /** What each venue's list says about the chosen instrument. Read once per instrument: it changes hourly at most. */
   protected readonly rules = keptData(toObservable(this.instrument), of(0), (i) => this.http.get<VenueRules[]>(`/api/instruments/${i.split(':')[0]}/${encodeURIComponent(i.split(':')[1])}`), (i) => i);
+
+  protected hasPaper(d: Trading): boolean {
+    return d.accounts.some((a) => a.mode === 'Paper');
+  }
 
   protected isPinned(d: Trading): boolean {
     return d.pinned.some((p) => p.asset === this.asset() && p.type === this.type2());

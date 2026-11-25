@@ -92,6 +92,22 @@ performance, risk, liquidity and alerts within the same minute as a fill.
 - Paper accounts are shown but kept out of NAV, behind a switch on the fund ("include paper positions"), so a paper
   demo can show the full loop without mixing paper and real money.
 
+**Status (25 November 2026): built.** A trading account is a third source of its manager's book, beside read-only
+keys and hand-entered positions. It is counted whole, positions and cash, so its value in the book is what the
+account is worth.
+
+- A real-money account counts, unless the manager also has a read-only key on the same venue: that key is taken to
+  read the same account. The rule is by venue, not by the venue's account id, which the system does not hold.
+- A paper account counts only when the fund's switch "Count paper accounts in the fund's book" is on. It is off by
+  default.
+- An account coming into the book or leaving it is recorded as money arriving or leaving, so returns are not moved
+  by it.
+- Managers with no venue read to trigger a rewrite have their book rewritten every twenty seconds by the core
+  worker; that is how a fill reaches holdings.
+
+Not handled: deposits into a real-money trading account that no read-only key sees will look like performance,
+because a trading key's transfers are not read.
+
 **Copied from Katalepsis.** Nothing; this gap is ours.
 
 **Done when.** A paper order placed on the Trading tab appears on Holdings and moves net exposure on Overview.

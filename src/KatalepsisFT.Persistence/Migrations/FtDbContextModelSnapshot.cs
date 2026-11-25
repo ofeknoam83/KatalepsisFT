@@ -927,6 +927,11 @@ namespace KatalepsisFT.Persistence.Migrations
                         .HasColumnType("text")
                         .HasColumnName("encrypted_key");
 
+                    b.Property<decimal?>("InBookEquityUsd")
+                        .HasPrecision(20, 2)
+                        .HasColumnType("numeric(20,2)")
+                        .HasColumnName("in_book_equity_usd");
+
                     b.Property<string>("KeyHint")
                         .HasMaxLength(8)
                         .HasColumnType("character varying(8)")
@@ -1149,6 +1154,10 @@ namespace KatalepsisFT.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
+
+                    b.Property<bool>("IncludePaperTrading")
+                        .HasColumnType("boolean")
+                        .HasColumnName("include_paper_trading");
 
                     b.Property<bool>("IsDemo")
                         .HasColumnType("boolean")

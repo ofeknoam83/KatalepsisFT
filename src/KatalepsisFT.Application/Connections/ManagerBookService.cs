@@ -46,6 +46,23 @@ public sealed class ManagerBookService(IFtDbContext database, ManagerBookWriter 
         return managerIds.Count;
     }
 
+    /// <summary>
+    /// Managers with a trading account that is counted in the book, or was until now and has to be taken out, and
+    /// no venue read to trigger the rewrite. A fill changes what such a manager holds; this is how it reaches the book.
+    /// </summary>
+    public async Task<List<int>> TradedOnlyAsync(CancellationToken cancellationToken) =>
+        await database
+            .TradingAccounts.Where(a =>
+                a.InBookEquityUsd != null
+                || (a.Mode == Domain.Execution.TradingMode.Paper && a.ManagerAccount.Sleeve.Fund.IncludePaperTrading)
+                || (a.Mode == Domain.Execution.TradingMode.Live && a.LiveEquityUsd != null)
+            )
+            .Select(a => a.ManagerAccountId)
+            .Distinct()
+            .Where(id => database.ManagerAccounts.Any(m => m.Id == id && m.IsActive))
+            .Where(id => !database.VenueConnections.Any(c => c.ManagerAccountId == id && c.State == Domain.Connections.ConnectionState.Live))
+            .ToListAsync(cancellationToken);
+
     public async Task<List<int>> ManualOnlyAsync(CancellationToken cancellationToken) =>
         await database
             .ManualPositions.Select(p => p.ManagerAccountId)

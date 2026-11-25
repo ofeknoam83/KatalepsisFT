@@ -10,6 +10,7 @@ internal sealed class TradingAccountConfiguration : IEntityTypeConfiguration<Tra
     {
         account.ToTable("trading_accounts");
         account.Property(x => x.PerpQuote).HasMaxLength(12).HasDefaultValue("USDT");
+        account.Property(x => x.InBookEquityUsd).HasPrecision(20, 2);
         account.Property(x => x.Label).HasMaxLength(100);
         account.Property(x => x.KeyHint).HasMaxLength(8);
         account.Property(x => x.CreatedBy).HasMaxLength(256);

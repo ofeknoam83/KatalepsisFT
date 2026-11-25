@@ -52,6 +52,11 @@ public sealed class TradingController(TradingService trading) : ControllerBase
     [HttpGet("instruments/{type}/{asset}")]
     public async Task<IReadOnlyList<VenueRules>> RulesAsync(InstrumentType type, string asset, CancellationToken cancellationToken) => await trading.RulesAsync(asset, type, cancellationToken);
 
+    [Authorize(Roles = Roles.Admin)]
+    [Audit("Paper trading in the fund's book changed", Fund = "fundId")]
+    [HttpPost("funds/{fundId:int}/paper-in-book")]
+    public async Task<IActionResult> PaperInBookAsync(int fundId, PaperInBookRequest request, CancellationToken cancellationToken) => Result(await trading.SetPaperInBookAsync(fundId, request.Include, Actor, cancellationToken));
+
     [Authorize(Roles = Roles.CanTrade)]
     [HttpPost("funds/{fundId:int}/pins")]
     public async Task<IActionResult> PinAsync(int fundId, InstrumentRef instrument, CancellationToken cancellationToken) => Result(await trading.PinAsync(fundId, instrument, Actor, cancellationToken));

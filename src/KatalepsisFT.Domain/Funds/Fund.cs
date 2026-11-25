@@ -23,6 +23,13 @@ public class Fund
     /// <summary>The built-in example fund. Shown with a label and left out of cross-fund totals.</summary>
     public bool IsDemo { get; set; }
 
+    /// <summary>
+    /// Whether what the fund's paper trading accounts hold counts in its book. Off unless somebody turns it on:
+    /// paper money is not the fund's money. On, a paper account is counted whole, its balance included, which is
+    /// what lets a trial run show holdings, exposure and risk from the first order.
+    /// </summary>
+    public bool IncludePaperTrading { get; set; }
+
     public int? BenchmarkId { get; set; }
     public Benchmarks.Benchmark? Benchmark { get; set; }
     public DateTimeOffset CreatedAt { get; set; }

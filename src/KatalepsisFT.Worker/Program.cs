@@ -63,6 +63,8 @@ if (hasPostgres && group.ToLowerInvariant() is WorkerGroups.Core)
     builder.Services.AddSingleton<KatalepsisFT.Application.Live.IFundChangeNotifier, KatalepsisFT.Infrastructure.KeyValue.KeyValueFundChangeNotifier>();
     builder.Services.AddScoped<ManagerBookService>();
     builder.Services.AddHostedService<PriceHistoryWorker>();
+    // What trading accounts hold reaches the managers' books from here.
+    builder.Services.AddHostedService<TradingBookWorker>();
     builder.Services.AddScoped<KatalepsisFT.Application.Demo.DemoLiveService>();
     builder.Services.AddHostedService<DemoLiveWorker>();
     // Reports that go out by email on their schedule.

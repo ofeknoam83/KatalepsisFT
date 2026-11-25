@@ -48,6 +48,13 @@ public class TradingAccount
     /// </summary>
     public string PerpQuote { get; set; } = "USDT";
 
+    /// <summary>
+    /// What the account was worth when it was last counted in its manager's book; empty while it is not counted.
+    /// Coming into the book and leaving it are recorded as money arriving and leaving, at this value, so that
+    /// neither shows up as a gain or a loss.
+    /// </summary>
+    public decimal? InBookEquityUsd { get; set; }
+
     /// <summary>The currency this account's book for a kind of market must be in; null where the venue has only one.</summary>
     public string? QuoteFor(InstrumentType type) => type == InstrumentType.Perp && PerpQuote != "USDT" ? PerpQuote : null;
 

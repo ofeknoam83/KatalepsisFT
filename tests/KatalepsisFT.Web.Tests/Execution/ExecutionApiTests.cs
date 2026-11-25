@@ -174,6 +174,76 @@ public class ExecutionApiTests(TestDatabase database) : IClassFixture<TestDataba
     }
 
     [Fact]
+    public async Task WhatATradingAccountHolds_ReachesTheManagersBook_AsMoneyArrivingNotAsAGain()
+    {
+        (int fundId, int managerId, int accountId) = await NewAccountAsync();
+        await TradeAsync(new SubmitOrderRequest(accountId, null, "BTC", InstrumentType.Perp, OrderSide.Buy, OrderType.Market, TimeInForce.ImmediateOrCancel, 2m, null, false, Guid.NewGuid().ToString("N")));
+        DateOnly today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        async Task<(decimal Nav, List<string> Lines, List<decimal> Flows)> BookAsync()
+        {
+            using IServiceScope scope = _app!.Services.CreateScope();
+            FtDbContext db = scope.ServiceProvider.GetRequiredService<FtDbContext>();
+            (decimal nav, _, _) = await new ManagerBookWriter(db, scope.ServiceProvider.GetRequiredService<IBookFeed>()).WriteAsync(managerId, today, CancellationToken.None);
+            List<string> lines = await db.PositionSnapshots.Where(p => p.ManagerAccountId == managerId && p.Date == today).OrderBy(p => p.Instrument.Symbol).Select(p => p.Instrument.Symbol + " " + p.Quantity).ToListAsync();
+            return (nav, lines, await db.CashFlows.Where(f => f.ManagerAccountId == managerId && f.IsBookChange).OrderBy(f => f.Id).Select(f => f.AmountUsd).ToListAsync());
+        }
+
+        // Paper money is not the fund's money until the fund says it counts.
+        (decimal before, List<string> none, _) = await BookAsync();
+        before.Should().Be(0m);
+        none.Should().BeEmpty();
+
+        (await _admin.PostAsJsonAsync($"/api/funds/{fundId}/paper-in-book", new PaperInBookRequest(true), Json)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (decimal counted, List<string> lines, List<decimal> flows) = await BookAsync();
+
+        // A two-bitcoin perpetual with what it has lost since it was bought, and the cash less the fee: the account's own value.
+        TradingAccountDto account = (await _admin.GetFromJsonAsync<TradingDto>($"/api/funds/{fundId}/trading", Json))!.Accounts.Single();
+        counted.Should().BeApproximately(account.EquityUsd, 0.01m);
+        lines.Should().HaveCount(2).And.Contain(l => l.StartsWith("BTC") && l.EndsWith(" 2.00000000"));
+        flows.Should().ContainSingle().Which.Should().BeApproximately(account.EquityUsd, 0.01m);
+
+        // Written again, nothing more arrives: the value is booked once.
+        (_, _, List<decimal> again) = await BookAsync();
+        again.Should().HaveCount(1);
+
+        (await _admin.PostAsJsonAsync($"/api/funds/{fundId}/paper-in-book", new PaperInBookRequest(false), Json)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (decimal after, List<string> gone, List<decimal> both) = await BookAsync();
+        after.Should().Be(0m);
+        gone.Should().BeEmpty();
+        both.Sum().Should().Be(0m);
+
+        (await (await SignInAsync(Roles.Trader)).PostAsJsonAsync($"/api/funds/{fundId}/paper-in-book", new PaperInBookRequest(true), Json)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task ARealMoneyAccount_IsCountedOnce_ThroughTheReadOnlyKeyWhereThereIsOne()
+    {
+        (_, int managerId, int accountId) = await NewAccountAsync();
+        DateOnly today = DateOnly.FromDateTime(DateTime.UtcNow);
+        using IServiceScope scope = _app!.Services.CreateScope();
+        FtDbContext db = scope.ServiceProvider.GetRequiredService<FtDbContext>();
+        TradingAccount account = await db.TradingAccounts.SingleAsync(a => a.Id == accountId);
+        account.Mode = TradingMode.Live;
+        account.LiveEquityUsd = 250_000m;
+        db.TradingPositions.Add(new TradingPosition { TradingAccountId = accountId, Asset = "BTC", InstrumentType = InstrumentType.Perp, Quantity = 1m, AveragePrice = 59_000m, UpdatedAt = DateTimeOffset.UtcNow });
+        await db.SaveChangesAsync();
+        ManagerBookWriter writer = new(db, scope.ServiceProvider.GetRequiredService<IBookFeed>());
+
+        // No read-only key on the venue: the trading account is the only thing that sees this money.
+        (decimal alone, decimal gross, _) = await writer.WriteAsync(managerId, today, CancellationToken.None);
+        alone.Should().Be(250_000m);
+        gross.Should().Be(60_000m);
+
+        // With a read-only key on the same venue, that key reads the same account; counting both would double it.
+        db.VenueConnections.Add(new VenueConnection { ManagerAccountId = managerId, Venue = Venue.Binance, Label = "Read", EncryptedCredentials = "x", KeyHint = "…x", State = ConnectionState.Pending, CreatedAt = DateTimeOffset.UtcNow });
+        await db.SaveChangesAsync();
+        (decimal withKey, _, _) = await writer.WriteAsync(managerId, today, CancellationToken.None);
+        withKey.Should().Be(0m);
+        (await db.CashFlows.Where(f => f.ManagerAccountId == managerId && f.IsBookChange).SumAsync(f => f.AmountUsd)).Should().Be(0m);
+    }
+
+    [Fact]
     public async Task InstrumentSearch_FindsWhatTheVenuesList_TheExactNameFirst()
     {
         using (IServiceScope scope = _app!.Services.CreateScope())

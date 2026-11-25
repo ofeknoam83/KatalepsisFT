@@ -97,8 +97,11 @@ public sealed record TradingDto(
     IReadOnlyList<LiveInstrument> Instruments,
     ExecutionStatus? Engine,
     IReadOnlyList<InstrumentRef> Pinned,
-    IReadOnlyList<InstrumentRef> Recent
+    IReadOnlyList<InstrumentRef> Recent,
+    bool PaperInBook = false
 );
+
+public sealed record PaperInBookRequest(bool Include);
 
 /// <summary>An instrument by name: the asset and the kind of market.</summary>
 public sealed record InstrumentRef(string Asset, InstrumentType Type);
@@ -329,7 +332,8 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
             live.Where(i => i.Type is InstrumentType.Perp or InstrumentType.Spot).ToList(),
             await books.StatusAsync(cancellationToken),
             (await database.PinnedInstruments.AsNoTracking().Where(p => p.FundId == fundId).OrderBy(p => p.Id).Select(p => new { p.Asset, p.Type }).ToListAsync(cancellationToken)).Select(p => new InstrumentRef(p.Asset, p.Type)).ToList(),
-            await RecentAsync(accountIds, cancellationToken)
+            await RecentAsync(accountIds, cancellationToken),
+            fund.IncludePaperTrading
         );
     }
 
@@ -372,6 +376,33 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
             .Take(6)
             .ToListAsync(cancellationToken);
         return latest.Select(l => new InstrumentRef(l.Asset, l.InstrumentType)).ToList();
+    }
+
+    /// <summary>
+    /// Says whether what the fund's paper accounts hold counts in its holdings, exposure, risk and NAV. Turning it
+    /// on or off moves the accounts' value into or out of the book as money, not as a gain or a loss.
+    /// </summary>
+    public async Task<TradingChange<int>> SetPaperInBookAsync(int fundId, bool include, Actor actor, CancellationToken cancellationToken)
+    {
+        if (!actor.IsAdmin)
+        {
+            return TradingChange<int>.Refused("Only an administrator can change what counts in the fund's book.");
+        }
+
+        Fund? fund = await database.Funds.FirstOrDefaultAsync(f => f.Id == fundId, cancellationToken);
+        if (fund is null)
+        {
+            return TradingChange<int>.Missing;
+        }
+
+        if (fund.IsDemo)
+        {
+            return TradingChange<int>.Refused(DemoIsFixed);
+        }
+
+        fund.IncludePaperTrading = include;
+        await database.SaveChangesAsync(cancellationToken);
+        return TradingChange<int>.Ok(fundId, include ? "Paper accounts now count in this fund's book. Their value comes in as money arriving, within half a minute." : "Paper accounts no longer count in this fund's book. Their value leaves as money leaving, within half a minute.");
     }
 
     /// <summary>Keeps an instrument at hand on a fund's trading page, with its book always open.</summary>
