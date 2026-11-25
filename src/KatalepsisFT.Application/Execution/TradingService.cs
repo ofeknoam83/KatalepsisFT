@@ -286,13 +286,16 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
             {
                 List<TradingPositionDto> own = positions
                     .Where(p => p.TradingAccountId == a.Id)
-                    .OrderBy(p => p.Asset)
                     .Select(p =>
                     {
                         decimal? mark = marks.GetValueOrDefault((a.Venue, p.Asset, p.InstrumentType, a.QuoteFor(p.InstrumentType)));
                         decimal? distance = mark is decimal at && at > 0m && p.LiquidationPrice is decimal liquidation && p.Quantity != 0m ? Math.Round(Math.Abs(at - liquidation) / at, 4) : null;
                         return new TradingPositionDto(p.Asset, p.InstrumentType, p.Quantity, p.AveragePrice, mark, mark * Math.Abs(p.Quantity), mark is decimal m && p.AveragePrice > 0m ? Math.Round(p.Quantity * (m - p.AveragePrice), 2) : null, p.RealisedPnlUsd, p.FeesUsd, p.Quantity == 0m ? null : p.LiquidationPrice, distance);
                     })
+                    // Largest first, by what the position is worth now; one with no price to value it by comes last.
+                    .OrderByDescending(p => p.NotionalUsd ?? -1m)
+                    .ThenBy(p => p.Asset)
+                    .ThenBy(p => p.Type)
                     .ToList();
                 // A real account is worth what the venue says it is worth; a paper one, its starting balance and what its trades made.
                 decimal equity = a.Mode == TradingMode.Live ? a.LiveEquityUsd ?? 0m : a.PaperBalanceUsd + own.Sum(p => p.RealisedPnlUsd - p.FeesUsd + (p.UnrealisedPnlUsd ?? 0m));

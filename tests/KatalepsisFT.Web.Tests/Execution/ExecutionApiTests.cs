@@ -936,6 +936,32 @@ public class ExecutionApiTests(TestDatabase database) : IClassFixture<TestDataba
     }
 
     [Fact]
+    public async Task AnAccountsPositions_AreListedLargestFirst_ByWhatTheyAreWorthNow()
+    {
+        (int fundId, _, int accountId) = await NewAccountAsync();
+        Books.Update(new VenueBook(Venue.Binance, "BTC", InstrumentType.Perp, [new(60_000m, 5m)], [new(60_010m, 5m)], BookClock.GetUtcNow()));
+        Books.Update(new VenueBook(Venue.Binance, "ETH", InstrumentType.Perp, [new(3_000m, 5m)], [new(3_001m, 5m)], BookClock.GetUtcNow()));
+        Books.Update(new VenueBook(Venue.Binance, "ARB", InstrumentType.Perp, [new(1.00m, 5m)], [new(1.01m, 5m)], BookClock.GetUtcNow()));
+        using (IServiceScope scope = _app!.Services.CreateScope())
+        {
+            FtDbContext db = scope.ServiceProvider.GetRequiredService<FtDbContext>();
+            // In the order of their names ARB comes first; by value it is the short in ETH, then BTC, then ARB.
+            db.TradingPositions.AddRange(
+                new TradingPosition { TradingAccountId = accountId, Asset = "ARB", InstrumentType = InstrumentType.Perp, Quantity = 100m, AveragePrice = 1m, UpdatedAt = DateTimeOffset.UtcNow },
+                new TradingPosition { TradingAccountId = accountId, Asset = "BTC", InstrumentType = InstrumentType.Perp, Quantity = 0.05m, AveragePrice = 59_000m, UpdatedAt = DateTimeOffset.UtcNow },
+                new TradingPosition { TradingAccountId = accountId, Asset = "ETH", InstrumentType = InstrumentType.Perp, Quantity = -2m, AveragePrice = 3_100m, UpdatedAt = DateTimeOffset.UtcNow },
+                new TradingPosition { TradingAccountId = accountId, Asset = "ZZZ", InstrumentType = InstrumentType.Spot, Quantity = 1_000_000m, AveragePrice = 1m, UpdatedAt = DateTimeOffset.UtcNow }
+            );
+            await db.SaveChangesAsync();
+        }
+
+        TradingAccountDto account = (await _admin.GetFromJsonAsync<TradingDto>($"/api/funds/{fundId}/trading", Json))!.Accounts.Single();
+
+        // A short counts by its size, not as a negative; the one with no price to value it by comes last.
+        account.Positions.Select(p => p.Asset).Should().Equal("ETH", "BTC", "ARB", "ZZZ");
+    }
+
+    [Fact]
     public async Task AWaitingRequest_IsCountedOnItsFund_AndInTheSecurityReport_UntilItIsDecided()
     {
         (int fundId, int managerId, int accountId) = await NewAccountAsync();
