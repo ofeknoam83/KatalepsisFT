@@ -64,12 +64,18 @@ them; an upper limit on open books per venue.
 **Done when.** A search for any listed pair finds it, its book opens within a few seconds, and a paper order fills.
 The ten-asset setting is gone.
 
-**Status (25 November 2026): the core is built.** The list is read hourly from 18 venue markets into
-`listed_instruments`; the ticket searches it; a book opens when an instrument is read and closes five minutes after
-the last read, unless an order is working or a position is held in it. The ten assets of `EXEC_ASSETS` stay open
-always, and `EXEC_MAX_BOOKS` (default 80) caps how many more may be open on demand. Still to do in this phase:
-USDC-margined perps on Binance and Bybit, price and quantity steps in the list (they are still fetched per order),
-a pinned list per fund, and Hyperliquid names that count in thousands.
+**Status (25 November 2026): built.** The list is read hourly from 20 venue markets into `listed_instruments`,
+with each venue's price step, quantity step and smallest order where its list gives them. The ticket searches it. A
+book opens when an instrument is read and closes five minutes after the last read, unless an order is working or a
+position is held in it, or a fund has pinned it. The ten assets of `EXEC_ASSETS` stay open always, and
+`EXEC_MAX_BOOKS` (default 80) caps how many more may be open on demand. A fund can pin up to twelve instruments; the
+ticket also shows what was traded lately and how many instruments are open. Hyperliquid's thousand-names (kPEPE) are
+listed under the name other venues use (1000PEPE).
+
+USDC-margined perpetuals on Binance and Bybit have their own books and lists, and a trading account can be set to
+trade them instead of the USDT ones (a manager who wants both has two accounts on the venue). They trade on paper.
+**Going live on a USDC-margined account is refused**: the two venues' real-order calls for those contracts are not
+written, because they could not be tried from the development machine.
 
 **Risk.** Venue limits on the number of streams. The cap and the idle close keep within them; the limit per venue is
 measured, not guessed.

@@ -70,7 +70,7 @@ public sealed class ExecutionEngine(IFtDbContext database, ConsolidatedBook book
         TradingAccount account = order.TradingAccount;
         DateTimeOffset now = clock.GetUtcNow();
         bool halted = halts.Any(h => h.Scope == HaltScope.Global || (h.Scope == HaltScope.Venue && h.Venue == account.Venue) || (h.Scope == HaltScope.Account && h.TradingAccountId == account.Id));
-        VenueBook? book = books.Of(account.Venue, order.Asset, order.InstrumentType);
+        VenueBook? book = books.Of(account.Venue, order.Asset, order.InstrumentType, account.QuoteFor(order.InstrumentType));
         TradingPosition? position = await database.TradingPositions.FirstOrDefaultAsync(p => p.TradingAccountId == account.Id && p.Asset == order.Asset && p.InstrumentType == order.InstrumentType, cancellationToken);
         OrderStatus before = order.Status;
         decimal filledBefore = order.FilledQuantity;

@@ -54,10 +54,10 @@ public sealed class InstrumentListWorker(IServiceScopeFactory scopes, IHttpClien
         {
             using IServiceScope scope = scopes.CreateScope();
             IFtDbContext database = scope.ServiceProvider.GetRequiredService<IFtDbContext>();
-            var stored = await database.ListedInstruments.AsNoTracking().Where(i => i.Tradable).Select(i => new { i.Venue, i.Type, i.Asset }).ToListAsync(stopping);
-            foreach (var group in stored.GroupBy(i => (i.Venue, i.Type)))
+            var stored = await database.ListedInstruments.AsNoTracking().Where(i => i.Tradable).Select(i => new { i.Venue, i.Type, i.Asset, i.Quote }).ToListAsync(stopping);
+            foreach (var group in stored.GroupBy(i => (i.Venue, i.Type, i.Quote)))
             {
-                demand.Listed(group.Key.Venue, group.Key.Type, group.Select(i => i.Asset));
+                demand.Listed(group.Key.Venue, group.Key.Type, group.Select(i => i.Asset), group.Key.Quote);
             }
         }
         catch (Exception e) when (e is not OperationCanceledException)
@@ -66,6 +66,9 @@ public sealed class InstrumentListWorker(IServiceScopeFactory scopes, IHttpClien
             logger.LogInformation("No stored instrument lists were read: {Reason}", e.Message);
         }
     }
+
+    /// <summary>A step as it can be stored: fourteen decimal places, and nothing absurd.</summary>
+    private static decimal? Kept(decimal? step) => step is > 0m and < 1_000_000_000m ? Math.Round(step.Value, 14) : null;
 
     /// <returns>True when every venue answered.</returns>
     private async Task<bool> RefreshAsync(CancellationToken stopping)
@@ -103,9 +106,9 @@ public sealed class InstrumentListWorker(IServiceScopeFactory scopes, IHttpClien
             }
 
             total += symbols.Count;
-            read.Add($"{listing.Venue} {listing.Type} {symbols.Count(s => s.Tradable)} of {symbols.Count} open");
-            demand.Listed(listing.Venue, listing.Type, symbols.Where(s => s.Tradable).Select(s => s.Asset));
-            Dictionary<string, ListedInstrument> stored = await database.ListedInstruments.Where(i => i.Venue == listing.Venue && i.Type == listing.Type).ToDictionaryAsync(i => i.Asset, stopping);
+            read.Add($"{listing.Venue} {listing.Type}{(listing.Quote == "USDT" ? string.Empty : " " + listing.Quote)} {symbols.Count(s => s.Tradable)} of {symbols.Count} open");
+            demand.Listed(listing.Venue, listing.Type, symbols.Where(s => s.Tradable).Select(s => s.Asset), listing.Quote);
+            Dictionary<string, ListedInstrument> stored = await database.ListedInstruments.Where(i => i.Venue == listing.Venue && i.Type == listing.Type && i.Quote == listing.Quote).ToDictionaryAsync(i => i.Asset, stopping);
             foreach (ListedSymbol symbol in symbols)
             {
                 if (!stored.Remove(symbol.Asset, out ListedInstrument? row))
@@ -117,6 +120,9 @@ public sealed class InstrumentListWorker(IServiceScopeFactory scopes, IHttpClien
                 row.Quote = listing.Quote;
                 row.Symbol = symbol.Symbol;
                 row.Tradable = symbol.Tradable;
+                row.PriceStep = Kept(symbol.PriceStep);
+                row.QuantityStep = Kept(symbol.QuantityStep);
+                row.MinQuantity = Kept(symbol.MinQuantity);
                 row.SeenAt = now;
             }
 
@@ -146,7 +152,7 @@ public sealed class InstrumentListWorker(IServiceScopeFactory scopes, IHttpClien
 /// Keeps the list of wanted books up to date: what somebody asked for in the last few minutes, and every instrument
 /// with an open order or a position, which must have a book whether or not anyone is looking.
 /// </summary>
-public sealed class BookDemandWorker(IServiceScopeFactory scopes, IConnectionMultiplexer keyValue, BookDemand demand, ExecutionOptions options, TimeProvider clock, ILogger<BookDemandWorker> logger) : BackgroundService
+public sealed class BookDemandWorker(IServiceScopeFactory scopes, IConnectionMultiplexer keyValue, BookDemand demand, ExecutionOptions options, KatalepsisFT.Application.Execution.VenueStatusBoard board, TimeProvider clock, ILogger<BookDemandWorker> logger) : BackgroundService
 {
     private static readonly TimeSpan Every = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan ReadHeldEvery = TimeSpan.FromSeconds(3);
@@ -154,6 +160,7 @@ public sealed class BookDemandWorker(IServiceScopeFactory scopes, IConnectionMul
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         KeyValueBookFeed feed = new(keyValue);
+        board.MostOnDemand = options.MostBooks;
         List<(string, InstrumentType)> held = [];
         DateTimeOffset heldRead = DateTimeOffset.MinValue;
         DateTimeOffset warned = DateTimeOffset.MinValue;
@@ -201,6 +208,8 @@ public sealed class BookDemandWorker(IServiceScopeFactory scopes, IConnectionMul
         IFtDbContext database = scope.ServiceProvider.GetRequiredService<IFtDbContext>();
         var orders = await database.Orders.AsNoTracking().Where(o => (int)o.Status < (int)OrderStatus.Filled).Select(o => new { o.Asset, o.InstrumentType }).Distinct().ToListAsync(stopping);
         var positions = await database.TradingPositions.AsNoTracking().Where(p => p.Quantity != 0m).Select(p => new { p.Asset, Type = p.InstrumentType }).Distinct().ToListAsync(stopping);
-        return orders.Select(o => (o.Asset, o.InstrumentType)).Concat(positions.Select(p => (p.Asset, p.Type))).Distinct().ToList();
+        // What a fund has pinned is kept open like something held.
+        var pinned = await database.PinnedInstruments.AsNoTracking().Select(p => new { p.Asset, p.Type }).Distinct().ToListAsync(stopping);
+        return orders.Select(o => (o.Asset, o.InstrumentType)).Concat(positions.Select(p => (p.Asset, p.Type))).Concat(pinned.Select(p => (p.Asset, p.Type))).Distinct().ToList();
     }
 }

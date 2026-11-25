@@ -587,3 +587,20 @@ public sealed class DeribitPerpBookStream : BookStream
         return levels;
     }
 }
+
+/// <summary>Binance perpetuals margined in USDC: the same stream as the USDT ones, under symbols that end in USDC.</summary>
+public sealed class BinanceUsdcPerpBookStream : BinanceBookStream
+{
+    public override string Quote => "USDC";
+}
+
+/// <summary>
+/// Bybit perpetuals margined in USDC. They share the linear stream with the USDT ones; Bybit names them after the
+/// asset with PERP on the end (BTCPERP).
+/// </summary>
+public sealed class BybitUsdcPerpBookStream : BybitBookStream
+{
+    public override string Quote => "USDC";
+
+    protected override string Ending => "PERP";
+}

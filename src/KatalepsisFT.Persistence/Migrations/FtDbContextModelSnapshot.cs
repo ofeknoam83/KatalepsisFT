@@ -519,6 +519,21 @@ namespace KatalepsisFT.Persistence.Migrations
                         .HasColumnType("character varying(32)")
                         .HasColumnName("asset");
 
+                    b.Property<decimal?>("MinQuantity")
+                        .HasPrecision(28, 14)
+                        .HasColumnType("numeric(28,14)")
+                        .HasColumnName("min_quantity");
+
+                    b.Property<decimal?>("PriceStep")
+                        .HasPrecision(28, 14)
+                        .HasColumnType("numeric(28,14)")
+                        .HasColumnName("price_step");
+
+                    b.Property<decimal?>("QuantityStep")
+                        .HasPrecision(28, 14)
+                        .HasColumnType("numeric(28,14)")
+                        .HasColumnName("quantity_step");
+
                     b.Property<string>("Quote")
                         .IsRequired()
                         .HasMaxLength(12)
@@ -553,9 +568,9 @@ namespace KatalepsisFT.Persistence.Migrations
                     b.HasIndex("Asset")
                         .HasDatabaseName("ix_listed_instruments_asset");
 
-                    b.HasIndex("Venue", "Type", "Asset")
+                    b.HasIndex("Venue", "Type", "Asset", "Quote")
                         .IsUnique()
-                        .HasDatabaseName("ix_listed_instruments_venue_type_asset");
+                        .HasDatabaseName("ix_listed_instruments_venue_type_asset_quote");
 
                     b.ToTable("listed_instruments", (string)null);
                 });
@@ -760,6 +775,39 @@ namespace KatalepsisFT.Persistence.Migrations
                     b.ToTable("order_events", (string)null);
                 });
 
+            modelBuilder.Entity("KatalepsisFT.Domain.Execution.PinnedInstrument", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Asset")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("asset");
+
+                    b.Property<int>("FundId")
+                        .HasColumnType("integer")
+                        .HasColumnName("fund_id");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("integer")
+                        .HasColumnName("type");
+
+                    b.HasKey("Id")
+                        .HasName("pk_pinned_instruments");
+
+                    b.HasIndex("FundId", "Asset", "Type")
+                        .IsUnique()
+                        .HasDatabaseName("ix_pinned_instruments_fund_id_asset_type");
+
+                    b.ToTable("pinned_instruments", (string)null);
+                });
+
             modelBuilder.Entity("KatalepsisFT.Domain.Execution.StrategyKey", b =>
                 {
                     b.Property<int>("Id")
@@ -936,6 +984,14 @@ namespace KatalepsisFT.Persistence.Migrations
                         .HasColumnType("numeric(20,2)")
                         .HasColumnName("paper_balance_usd");
 
+                    b.Property<string>("PerpQuote")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)")
+                        .HasDefaultValue("USDT")
+                        .HasColumnName("perp_quote");
+
                     b.Property<int>("PriceBandBps")
                         .HasColumnType("integer")
                         .HasColumnName("price_band_bps");
@@ -947,9 +1003,9 @@ namespace KatalepsisFT.Persistence.Migrations
                     b.HasKey("Id")
                         .HasName("pk_trading_accounts");
 
-                    b.HasIndex("ManagerAccountId", "Venue")
+                    b.HasIndex("ManagerAccountId", "Venue", "PerpQuote")
                         .IsUnique()
-                        .HasDatabaseName("ix_trading_accounts_manager_account_id_venue");
+                        .HasDatabaseName("ix_trading_accounts_manager_account_id_venue_perp_quote");
 
                     b.ToTable("trading_accounts", (string)null);
                 });
@@ -2131,6 +2187,18 @@ namespace KatalepsisFT.Persistence.Migrations
                         .HasConstraintName("fk_order_events_orders_order_id");
 
                     b.Navigation("Order");
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Execution.PinnedInstrument", b =>
+                {
+                    b.HasOne("KatalepsisFT.Domain.Funds.Fund", "Fund")
+                        .WithMany()
+                        .HasForeignKey("FundId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_pinned_instruments_funds_fund_id");
+
+                    b.Navigation("Fund");
                 });
 
             modelBuilder.Entity("KatalepsisFT.Domain.Execution.TradingAccount", b =>

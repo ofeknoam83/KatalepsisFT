@@ -90,7 +90,7 @@ public abstract class BookStream
 }
 
 /// <summary>Binance USDT perpetuals. Every message is the whole top of one book, ten times a second.</summary>
-public sealed class BinanceBookStream : BookStream
+public class BinanceBookStream : BookStream
 {
     public override Venue Venue => Venue.Binance;
 
@@ -100,7 +100,7 @@ public sealed class BinanceBookStream : BookStream
 
     // Asked for in a message, not in the address, so that books can be added and dropped on an open connection.
     public override IEnumerable<string> Subscriptions(IReadOnlyList<string> assets) =>
-        assets.Count == 0 ? [] : [JsonSerializer.Serialize(new { method = "SUBSCRIBE", @params = assets.Select(a => a.ToLowerInvariant() + "usdt@depth20@100ms"), id = 1 })];
+        assets.Count == 0 ? [] : [JsonSerializer.Serialize(new { method = "SUBSCRIBE", @params = assets.Select(a => (a + Quote).ToLowerInvariant() + "@depth20@100ms"), id = 1 })];
 
     public override StreamedBook? Read(string message)
     {
@@ -111,7 +111,8 @@ public sealed class BinanceBookStream : BookStream
             return null;
         }
 
-        return AssetOf(symbol.GetString()!) is { } asset ? new StreamedBook(asset, Levels(bids), Levels(asks)) : null;
+        string name = symbol.GetString()!;
+        return name.EndsWith(Quote, StringComparison.OrdinalIgnoreCase) && name.Length > Quote.Length ? new StreamedBook(name[..^Quote.Length].ToUpperInvariant(), Levels(bids), Levels(asks)) : null;
     }
 }
 
@@ -134,7 +135,10 @@ public class BybitBookStream : BookStream
     public override Uri Address(IReadOnlyList<string> assets) => new("wss://stream.bybit.com/v5/public/linear");
 
     public override IEnumerable<string> Subscriptions(IReadOnlyList<string> assets) =>
-        [JsonSerializer.Serialize(new { op = "subscribe", args = assets.Select(a => $"orderbook.50.{a.ToUpperInvariant()}USDT") })];
+        [JsonSerializer.Serialize(new { op = "subscribe", args = assets.Select(a => $"orderbook.50.{a.ToUpperInvariant()}{Ending}") })];
+
+    /// <summary>What comes after the asset in this market's symbols.</summary>
+    protected virtual string Ending => "USDT";
 
     public override void Reset() => _books.Clear();
 
@@ -148,11 +152,12 @@ public class BybitBookStream : BookStream
         }
 
         string symbol = data.GetProperty("s").GetString()!;
-        if (AssetOf(symbol) is not { } asset)
+        if (!symbol.EndsWith(Ending, StringComparison.Ordinal) || symbol.Length == Ending.Length)
         {
             return null;
         }
 
+        string asset = symbol[..^Ending.Length];
         bool whole = root.TryGetProperty("type", out JsonElement type) && type.GetString() == "snapshot";
         if (whole || !_books.TryGetValue(symbol, out var book))
         {
@@ -275,7 +280,15 @@ public sealed class HyperliquidBookStream : BookStream
     public override Uri Address(IReadOnlyList<string> assets) => new("wss://api.hyperliquid.xyz/ws");
 
     public override IEnumerable<string> Subscriptions(IReadOnlyList<string> assets) =>
-        assets.Select(a => JsonSerializer.Serialize(new { method = "subscribe", subscription = new { type = "l2Book", coin = a.ToUpperInvariant() } }));
+        assets.Select(a => JsonSerializer.Serialize(new { method = "subscribe", subscription = new { type = "l2Book", coin = CoinOfAsset(a.ToUpperInvariant()) } }));
+
+    /// <summary>
+    /// Hyperliquid quotes some small coins a thousand at a time and marks them with a small k: kPEPE is a thousand
+    /// PEPE. Other venues call the same thing 1000PEPE, and so does this system.
+    /// </summary>
+    public static string AssetOfCoin(string coin) => coin.Length > 1 && coin[0] == 'k' && coin[1..].All(c => c is >= 'A' and <= 'Z' or >= '0' and <= '9') ? "1000" + coin[1..] : coin;
+
+    public static string CoinOfAsset(string asset) => asset.StartsWith("1000", StringComparison.Ordinal) && asset.Length > 4 ? "k" + asset[4..] : asset;
 
     public override StreamedBook? Read(string message)
     {
@@ -287,7 +300,7 @@ public sealed class HyperliquidBookStream : BookStream
         }
 
         JsonElement levels = data.GetProperty("levels");
-        return new StreamedBook(data.GetProperty("coin").GetString()!.ToUpperInvariant(), Side(levels[0]), Side(levels[1]));
+        return new StreamedBook(AssetOfCoin(data.GetProperty("coin").GetString()!).ToUpperInvariant(), Side(levels[0]), Side(levels[1]));
     }
 
     private static List<BookLevel> Side(JsonElement side)
@@ -502,7 +515,7 @@ public sealed class BookStreamRunner(BookStream stream, ConsolidatedBook books, 
             }
             finally
             {
-                books.Clear(stream.Venue, stream.Type);
+                books.Clear(stream.Venue, stream.Type, stream.Quote);
             }
 
             // A connection that lasted is not a failing one: start the waits over.
@@ -589,7 +602,7 @@ public sealed class BookStreamRunner(BookStream stream, ConsolidatedBook books, 
                 foreach (string asset in dropped)
                 {
                     latest.Remove(asset);
-                    books.Remove(stream.Venue, stream.Type, asset);
+                    books.Remove(stream.Venue, stream.Type, asset, stream.Quote);
                 }
 
                 following = next;

@@ -22,7 +22,7 @@ import { EditName } from '../shared/edit-name';
 import { FORMAT_PIPES } from '../shared/format';
 import { PageHead } from '../shared/page-head';
 import { keptData } from '../shared/page-data';
-import { APPROVAL_LABEL, AccountForm, Book, HaltScope, Order, OrderSide, OrderType, STATUS_COLOR, STATUS_LABEL, TIF_LABEL, TimeInForce, TradedType, Trading, TradingAccount, TradingVenue, instrumentName } from './models';
+import { APPROVAL_LABEL, AccountForm, Book, InstrumentRef, VenueRules, HaltScope, Order, OrderSide, OrderType, STATUS_COLOR, STATUS_LABEL, TIF_LABEL, TimeInForce, TradedType, Trading, TradingAccount, TradingVenue, instrumentName } from './models';
 
 interface Answer {
   notice?: string | null;
@@ -69,6 +69,9 @@ interface Depth {
                 <small>{{ v.roundTripMs | number: '1.0-0' }} ms</small>
               }
             </span>
+          }
+          @if (engine.openInstruments !== null) {
+            <span class="venue open" data-testid="open-books" [title]="'Books are opened when an instrument is looked at and closed a few minutes after. Up to ' + (engine.mostOnDemand ?? 0) + ' can be open on demand, on top of the main assets, pins, open orders and positions.'">{{ engine.openInstruments }} instruments open</span>
           }
         } @else {
           <span class="venue"><i></i>The execution service is not answering</span>
@@ -134,6 +137,21 @@ interface Depth {
         <div class="desk">
           <div class="panel" data-testid="ticket">
             <h3>Order ticket</h3>
+            <div class="quick" data-testid="quick-instruments">
+              @for (i of d.pinned; track i.type + i.asset) {
+                <span class="pick pin" [class.on]="instrument() === i.type + ':' + i.asset" (click)="instrument.set(i.type + ':' + i.asset)" [title]="'Pinned: its book is always open'">{{ name(i.asset, i.type) }}</span>
+              }
+              @for (i of unpinnedRecent(d); track i.type + i.asset) {
+                <span class="pick" [class.on]="instrument() === i.type + ':' + i.asset" (click)="instrument.set(i.type + ':' + i.asset)" title="Traded lately">{{ name(i.asset, i.type) }}</span>
+              }
+              @if (d.canTrade) {
+                @if (isPinned(d)) {
+                  <a class="pinner" (click)="unpin(d)" data-testid="unpin">Unpin {{ name(asset(), type2()) }}</a>
+                } @else {
+                  <a class="pinner" (click)="pin(d)" data-testid="pin">Pin {{ name(asset(), type2()) }}</a>
+                }
+              }
+            </div>
             <div class="field">
               <label>Account</label>
               <nz-select [ngModel]="target()" (ngModelChange)="target.set($event)" style="width:100%" data-testid="ticket-account">
@@ -141,7 +159,7 @@ interface Depth {
                   <nz-option [nzValue]="'m' + m.id" [nzLabel]="m.name + ' · best venue'" />
                 }
                 @for (a of d.accounts; track a.id) {
-                  <nz-option [nzValue]="'a' + a.id" [nzLabel]="a.manager + ' · ' + a.venueName + (a.isHalted ? ' (halted)' : '')" />
+                  <nz-option [nzValue]="'a' + a.id" [nzLabel]="a.manager + ' · ' + a.venueName + (a.perpQuote === 'USDT' ? '' : ' · ' + a.perpQuote + ' perps') + (a.isHalted ? ' (halted)' : '')" />
                 }
               </nz-select>
             </div>
@@ -221,7 +239,7 @@ interface Depth {
                       <tr><th>Venue</th><th class="num">Bid size</th><th class="num">Bid</th><th class="num">Ask</th><th class="num">Ask size</th><th class="num">Age</th></tr>
                     </thead>
                     <tbody>
-                      @for (v of b.venues; track v.venue) {
+                      @for (v of b.venues; track v.venue + v.quote) {
                         <tr>
                           <td>{{ v.venueName }}
                             @if (v.quote !== 'USDT') {
@@ -249,6 +267,19 @@ interface Depth {
                       }
                     </div>
                   </div>
+                  @if (rules.data(); as listed) {
+                    @if (listed.length > 0) {
+                      <div class="rules" data-testid="rules">
+                        <span class="hint">Smallest steps, from each venue's list:</span>
+                        @for (r of listed; track r.venue) {
+                          <span class="rule" [class.off]="!r.tradable" [title]="r.tradable ? '' : 'This venue lists it but is not taking orders for it'">
+                            <b>{{ venueName(d, r.venue) }}</b>
+                            price {{ r.priceStep === null ? '?' : (r.priceStep | dynamicDecimal) }} · quantity {{ r.quantityStep === null ? '?' : (r.quantityStep | dynamicDecimal) }}{{ r.minQuantity === null ? '' : ' · from ' + (r.minQuantity | dynamicDecimal) }}
+                          </span>
+                        }
+                      </div>
+                    }
+                  }
                 </div>
               }
             }
@@ -338,6 +369,11 @@ interface Depth {
             <div class="field"><label>Margin</label>
               <nz-select [ngModel]="f.marginMode" (ngModelChange)="patch({ marginMode: $event })" style="width:110px"><nz-option nzValue="Cross" nzLabel="Cross" /><nz-option nzValue="Isolated" nzLabel="Isolated" /></nz-select>
             </div>
+            @if (editing() === null && (f.venue === 'Binance' || f.venue === 'Bybit')) {
+              <div class="field" title="One account trades one family of perpetuals. A manager who wants both has two accounts. USDC-margined accounts trade on paper for now."><label>Perpetuals in</label>
+                <nz-select [ngModel]="f.perpQuote" (ngModelChange)="patch({ perpQuote: $event })" style="width:100px" data-testid="account-perp-quote"><nz-option nzValue="USDT" nzLabel="USDT" /><nz-option nzValue="USDC" nzLabel="USDC" /></nz-select>
+              </div>
+            }
             <div class="field" title="A limit price further than this through the market is refused"><label>Price band, bp</label><nz-input-number [ngModel]="f.priceBandBps" (ngModelChange)="patch({ priceBandBps: $event })" [nzMin]="10" [nzMax]="2000" style="width:110px" /></div>
             <div class="field"><label>Paper balance, USD</label><nz-input-number [ngModel]="f.paperBalanceUsd" (ngModelChange)="patch({ paperBalanceUsd: $event })" [nzMin]="0" [nzStep]="100000" style="width:160px" /></div>
             <div class="field" style="align-self:flex-end">
@@ -378,7 +414,7 @@ interface Depth {
           <tbody>
             @for (a of d.accounts; track a.id) {
               <tr [attr.data-testid]="'account-' + a.id">
-                <td><b>{{ a.manager }}</b> · {{ a.venueName }} <span class="hint"><app-edit-name [value]="a.label" [url]="d.canAdmin ? '/api/trading-accounts/' + a.id + '/label' : null" what="this trading account" [maxlength]="100" (saved)="again()" /> · {{ a.sleeve }}</span>
+                <td><b>{{ a.manager }}</b> · {{ a.venueName }}{{ a.perpQuote === 'USDT' ? '' : ' · ' + a.perpQuote + ' perps' }} <span class="hint"><app-edit-name [value]="a.label" [url]="d.canAdmin ? '/api/trading-accounts/' + a.id + '/label' : null" what="this trading account" [maxlength]="100" (saved)="again()" /> · {{ a.sleeve }}</span>
                   @if (a.isHalted) {
                     <nz-tag nzColor="red" style="margin-left:6px">Halted</nz-tag>
                   }
@@ -569,6 +605,51 @@ interface Depth {
       }
     }
 
+    .quick {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      margin: -4px 0 12px;
+    }
+    .pick {
+      padding: 2px 9px;
+      border-radius: 6px;
+      background: var(--kft-fill);
+      color: var(--kft-text-2);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .pick.pin {
+      background: var(--kft-brand-soft);
+      color: var(--kft-brand);
+    }
+    .pick.on {
+      outline: 1.5px solid var(--kft-brand);
+    }
+    .pinner {
+      margin-left: auto;
+      font-size: 12px;
+    }
+    .rules {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 14px;
+      margin-top: 12px;
+      font-size: 12px;
+      color: var(--kft-text-2);
+    }
+    .rule b {
+      font-weight: 600;
+      color: var(--kft-text);
+    }
+    .rule.off {
+      opacity: 0.5;
+    }
+    .venue.open {
+      color: var(--kft-text-3);
+    }
     .field {
       margin-bottom: 10px;
     }
@@ -759,6 +840,26 @@ export class FundTradingPage {
   protected readonly limitPrice = signal<number | null>(null);
   protected readonly reduceOnly = signal(false);
   private readonly sending = signal(false);
+
+  /** What each venue's list says about the chosen instrument. Read once per instrument: it changes hourly at most. */
+  protected readonly rules = keptData(toObservable(this.instrument), of(0), (i) => this.http.get<VenueRules[]>(`/api/instruments/${i.split(':')[0]}/${encodeURIComponent(i.split(':')[1])}`), (i) => i);
+
+  protected isPinned(d: Trading): boolean {
+    return d.pinned.some((p) => p.asset === this.asset() && p.type === this.type2());
+  }
+
+  /** Recently traded instruments that are not already shown as pins. */
+  protected unpinnedRecent(d: Trading): InstrumentRef[] {
+    return d.recent.filter((r) => !d.pinned.some((p) => p.asset === r.asset && p.type === r.type));
+  }
+
+  protected pin(d: Trading): void {
+    this.run(this.http.post(`/api/funds/${d.fundId}/pins`, { asset: this.asset(), type: this.type2() }), 'Pinned. Its book now stays open.');
+  }
+
+  protected unpin(d: Trading): void {
+    this.run(this.http.delete(`/api/funds/${d.fundId}/pins/${this.type2()}/${encodeURIComponent(this.asset())}`), 'Unpinned.');
+  }
 
   protected readonly book = keptData(toObservable(this.instrument), this.beat, (i) => this.http.get<Book>(`/api/book/${i.split(':')[0]}/${encodeURIComponent(i.split(':')[1])}`), (i) => i);
   protected readonly notional = computed(() => (this.quantity() ?? 0) * ((this.type() === 'Limit' ? this.limitPrice() : null) ?? this.book.data()?.mid ?? 0));
@@ -961,13 +1062,13 @@ export class FundTradingPage {
   protected startAdd(d: Trading): void {
     this.editing.set(null);
     this.keyAccount.set(null);
-    this.form.set({ managerId: d.managers[0]?.id ?? null, venue: 'Binance', label: 'Main', leverage: 3, marginMode: 'Cross', maxOrderNotionalUsd: 250_000, maxPositionNotionalUsd: 1_000_000, priceBandBps: 100, paperBalanceUsd: 1_000_000 });
+    this.form.set({ managerId: d.managers[0]?.id ?? null, venue: 'Binance', label: 'Main', leverage: 3, marginMode: 'Cross', maxOrderNotionalUsd: 250_000, maxPositionNotionalUsd: 1_000_000, priceBandBps: 100, paperBalanceUsd: 1_000_000, perpQuote: 'USDT' });
   }
 
   protected startEdit(a: TradingAccount): void {
     this.editing.set(a.id);
     this.keyAccount.set(null);
-    this.form.set({ managerId: a.managerId, venue: a.venue, label: a.label, leverage: a.leverage, marginMode: a.marginMode, maxOrderNotionalUsd: a.maxOrderNotionalUsd, maxPositionNotionalUsd: a.maxPositionNotionalUsd, priceBandBps: a.priceBandBps, paperBalanceUsd: a.paperBalanceUsd });
+    this.form.set({ managerId: a.managerId, venue: a.venue, label: a.label, leverage: a.leverage, marginMode: a.marginMode, maxOrderNotionalUsd: a.maxOrderNotionalUsd, maxPositionNotionalUsd: a.maxPositionNotionalUsd, priceBandBps: a.priceBandBps, paperBalanceUsd: a.paperBalanceUsd, perpQuote: a.perpQuote });
   }
 
   protected patch(change: Partial<AccountForm>): void {

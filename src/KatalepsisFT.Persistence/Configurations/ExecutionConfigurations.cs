@@ -9,6 +9,7 @@ internal sealed class TradingAccountConfiguration : IEntityTypeConfiguration<Tra
     public void Configure(EntityTypeBuilder<TradingAccount> account)
     {
         account.ToTable("trading_accounts");
+        account.Property(x => x.PerpQuote).HasMaxLength(12).HasDefaultValue("USDT");
         account.Property(x => x.Label).HasMaxLength(100);
         account.Property(x => x.KeyHint).HasMaxLength(8);
         account.Property(x => x.CreatedBy).HasMaxLength(256);
@@ -19,7 +20,7 @@ internal sealed class TradingAccountConfiguration : IEntityTypeConfiguration<Tra
         account.Property(x => x.LiveEquityUsd).HasPrecision(20, 2);
         account.Property(x => x.LiveSyncError).HasMaxLength(500);
         // One account per manager and venue: two would let the same money be traded twice.
-        account.HasIndex(x => new { x.ManagerAccountId, x.Venue }).IsUnique();
+        account.HasIndex(x => new { x.ManagerAccountId, x.Venue, x.PerpQuote }).IsUnique();
         account.HasOne(x => x.ManagerAccount).WithMany().HasForeignKey(x => x.ManagerAccountId).OnDelete(DeleteBehavior.Restrict);
     }
 }
@@ -141,8 +142,22 @@ internal sealed class ListedInstrumentConfiguration : IEntityTypeConfiguration<L
         instrument.Property(x => x.Asset).HasMaxLength(32);
         instrument.Property(x => x.Quote).HasMaxLength(12);
         instrument.Property(x => x.Symbol).HasMaxLength(64);
-        instrument.HasIndex(x => new { x.Venue, x.Type, x.Asset }).IsUnique();
+        instrument.Property(x => x.PriceStep).HasPrecision(28, 14);
+        instrument.Property(x => x.QuantityStep).HasPrecision(28, 14);
+        instrument.Property(x => x.MinQuantity).HasPrecision(28, 14);
+        instrument.HasIndex(x => new { x.Venue, x.Type, x.Asset, x.Quote }).IsUnique();
         // What the search asks for: an asset by the start of its name.
         instrument.HasIndex(x => x.Asset);
+    }
+}
+
+internal sealed class PinnedInstrumentConfiguration : IEntityTypeConfiguration<PinnedInstrument>
+{
+    public void Configure(EntityTypeBuilder<PinnedInstrument> pin)
+    {
+        pin.ToTable("pinned_instruments");
+        pin.Property(x => x.Asset).HasMaxLength(32);
+        pin.HasIndex(x => new { x.FundId, x.Asset, x.Type }).IsUnique();
+        pin.HasOne(x => x.Fund).WithMany().HasForeignKey(x => x.FundId).OnDelete(DeleteBehavior.Cascade);
     }
 }

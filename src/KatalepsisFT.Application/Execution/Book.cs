@@ -34,33 +34,42 @@ public sealed class ConsolidatedBook(TimeProvider clock)
     /// <summary>A venue's book older than this is not used.</summary>
     public static readonly TimeSpan MaxAge = TimeSpan.FromSeconds(2);
 
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<(string Asset, InstrumentType Type, Venue Venue), VenueBook> _books = new();
+    // A venue can list the same perpetual twice, margined in USDT and in USDC; those are two books.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<(string Asset, InstrumentType Type, Venue Venue, string Quote), VenueBook> _books = new();
 
-    public void Update(VenueBook book) => _books[(book.Asset.ToUpperInvariant(), book.Type, book.Venue)] = book;
+    public void Update(VenueBook book) => _books[(book.Asset.ToUpperInvariant(), book.Type, book.Venue, book.Quote)] = book;
 
     /// <summary>Forgets a venue, for example when its stream drops: its last prices must not be traded on.</summary>
     /// <param name="type">Only this kind of market; a venue's spot stream dropping says nothing about its perpetuals.</param>
-    public void Clear(Venue venue, InstrumentType? type = null)
+    /// <param name="quote">Only the books in this currency; a venue's USDC stream dropping says nothing about its USDT one.</param>
+    public void Clear(Venue venue, InstrumentType? type = null, string? quote = null)
     {
-        foreach ((string Asset, InstrumentType Type, Venue Venue) key in _books.Keys.Where(k => k.Venue == venue && (type is null || k.Type == type)).ToList())
+        foreach ((string Asset, InstrumentType Type, Venue Venue, string Quote) key in _books.Keys.Where(k => k.Venue == venue && (type is null || k.Type == type) && (quote is null || k.Quote == quote)).ToList())
         {
             _books.TryRemove(key, out _);
         }
     }
 
     /// <summary>Forgets one instrument of one venue, when its book is no longer followed.</summary>
-    public void Remove(Venue venue, InstrumentType type, string asset) => _books.TryRemove((asset.ToUpperInvariant(), type, venue), out _);
+    public void Remove(Venue venue, InstrumentType type, string asset, string quote = "USDT") => _books.TryRemove((asset.ToUpperInvariant(), type, venue, quote), out _);
 
     /// <summary>One venue's book for an instrument, if it is fresh.</summary>
-    public VenueBook? Of(Venue venue, string asset, InstrumentType type) =>
-        _books.TryGetValue((asset.ToUpperInvariant(), type, venue), out VenueBook? book) && clock.GetUtcNow() - book.At <= MaxAge ? book : null;
+    /// <param name="quote">The currency the book must be in; left out, the venue's USDT book if it has one, otherwise the one it has.</param>
+    public VenueBook? Of(Venue venue, string asset, InstrumentType type, string? quote = null) => Pick(For(asset, type), venue, quote);
+
+    /// <summary>One venue's book among an instrument's books, in the wanted currency.</summary>
+    public static VenueBook? Pick(IEnumerable<VenueBook> books, Venue venue, string? quote = null)
+    {
+        List<VenueBook> own = books.Where(b => b.Venue == venue && (quote is null || b.Quote == quote)).ToList();
+        return own.FirstOrDefault(b => b.Quote == "USDT") ?? own.FirstOrDefault();
+    }
 
     /// <summary>Every venue's fresh book for an instrument.</summary>
     public IReadOnlyList<VenueBook> For(string asset, InstrumentType type)
     {
         DateTimeOffset now = clock.GetUtcNow();
         string wanted = asset.ToUpperInvariant();
-        return _books.Where(b => b.Key.Asset == wanted && b.Key.Type == type && now - b.Value.At <= MaxAge).Select(b => b.Value).OrderBy(b => b.Venue).ToList();
+        return _books.Where(b => b.Key.Asset == wanted && b.Key.Type == type && now - b.Value.At <= MaxAge).Select(b => b.Value).OrderBy(b => b.Venue).ThenBy(b => b.Quote == "USDT" ? 0 : 1).ToList();
     }
 
     /// <summary>All instruments that have at least one fresh book.</summary>
@@ -70,7 +79,7 @@ public sealed class ConsolidatedBook(TimeProvider clock)
         return _books
             .Where(b => now - b.Value.At <= MaxAge)
             .GroupBy(b => (b.Key.Asset, b.Key.Type))
-            .Select(g => new LiveInstrument(g.Key.Asset, g.Key.Type, g.Select(b => b.Key.Venue).OrderBy(v => v).ToList()))
+            .Select(g => new LiveInstrument(g.Key.Asset, g.Key.Type, g.Select(b => b.Key.Venue).Distinct().OrderBy(v => v).ToList()))
             .OrderBy(i => i.Asset)
             .ThenBy(i => i.Type)
             .ToList();
@@ -306,7 +315,9 @@ public sealed record VenueStatus(Venue Venue, bool Connected, int Books, double?
 
 /// <param name="IsLeader">This copy of the execution service is the one acting on orders.</param>
 /// <param name="RoundMs">How long its last look at the open orders took.</param>
-public sealed record ExecutionStatus(DateTimeOffset At, bool IsLeader, double? RoundMs, IReadOnlyList<VenueStatus> Venues);
+/// <param name="OpenInstruments">How many instruments are being followed right now.</param>
+/// <param name="MostOnDemand">How many may be open only because somebody asked for them.</param>
+public sealed record ExecutionStatus(DateTimeOffset At, bool IsLeader, double? RoundMs, IReadOnlyList<VenueStatus> Venues, int? OpenInstruments = null, int? MostOnDemand = null);
 
 /// <summary>What the execution service knows about its own connections. Written by its streams, read when it reports.</summary>
 public sealed class VenueStatusBoard(TimeProvider clock)
@@ -319,6 +330,11 @@ public sealed class VenueStatusBoard(TimeProvider clock)
     public bool IsLeader { get; set; }
 
     public double? RoundMs { get; set; }
+
+    /// <summary>How many of the open instruments are open only because somebody asked, and how many may be.</summary>
+    public int? OnDemand { get; set; }
+
+    public int? MostOnDemand { get; set; }
 
     public void Heard(Venue venue)
     {
@@ -362,7 +378,9 @@ public sealed class VenueStatusBoard(TimeProvider clock)
                         double? middle = _roundTrips.TryGetValue(venue, out Queue<double>? samples) && samples.Count > 0 ? samples.OrderBy(s => s).ElementAt(samples.Count / 2) : null;
                         return new VenueStatus(venue, last is not null && now - last <= ConsolidatedBook.MaxAge, instruments.Count(i => i.Venues.Contains(venue)), middle is null ? null : Math.Round(middle.Value, 1), last);
                     })
-                    .ToList()
+                    .ToList(),
+                instruments.Count,
+                MostOnDemand
             );
         }
     }

@@ -8,12 +8,12 @@ namespace KatalepsisFT.Infrastructure.Tests;
 /// <summary>The venues' public instrument lists, in the shapes the venues send them, and the list of wanted books built on them.</summary>
 public class InstrumentListTests
 {
-    private static InstrumentListing Of(Venue venue, InstrumentType type) => InstrumentListings.All.Single(l => l.Venue == venue && l.Type == type);
+    private static InstrumentListing Of(Venue venue, InstrumentType type, string? quote = null) => InstrumentListings.All.Single(l => l.Venue == venue && l.Type == type && (quote is null ? l.Quote != "USDC" || !InstrumentListings.All.Any(o => o.Venue == venue && o.Type == type && o.Quote == "USDT") : l.Quote == quote));
 
     [Fact]
     public void EveryMarketWithABookStream_HasAList()
     {
-        InstrumentListings.All.Select(l => (l.Venue, l.Type)).Should().OnlyHaveUniqueItems().And.HaveCount(18);
+        InstrumentListings.All.Select(l => (l.Venue, l.Type, l.Quote)).Should().OnlyHaveUniqueItems().And.HaveCount(20);
     }
 
     [Fact]
@@ -67,8 +67,13 @@ public class InstrumentListTests
         // Bitget lists coins whose names have small letters; an order's asset is capital letters and digits only.
         Of(Venue.Bitget, InstrumentType.Spot).ReadAnswer("""{"data":[{"symbol":"RNNNNUSDT","baseCoin":"rNNNN","quoteCoin":"USDT","status":"online"},{"symbol":"BTCUSDT","baseCoin":"BTC","quoteCoin":"USDT","status":"online"}]}""")
             .Should().Equal(new ListedSymbol("BTC", "BTCUSDT", true));
-        Of(Venue.Hyperliquid, InstrumentType.Perp).ReadAnswer("""{"universe":[{"name":"BTC","szDecimals":5},{"name":"kPEPE","szDecimals":0},{"name":"MATIC","szDecimals":1,"isDelisted":true}]}""")
-            .Should().Equal(new ListedSymbol("BTC", "BTC", true), new ListedSymbol("MATIC", "MATIC", false));
+        // Hyperliquid's kPEPE is a thousand PEPE: the same thing other venues call 1000PEPE.
+        Of(Venue.Hyperliquid, InstrumentType.Perp).ReadAnswer("""{"universe":[{"name":"BTC","szDecimals":5},{"name":"kPEPE","szDecimals":0},{"name":"MATIC","szDecimals":1,"isDelisted":true},{"name":"oddName","szDecimals":1}]}""")
+            .Should().Equal(new ListedSymbol("1000PEPE", "kPEPE", true, null, 1m, 1m), new ListedSymbol("BTC", "BTC", true, null, 0.00001m, 0.00001m), new ListedSymbol("MATIC", "MATIC", false, null, 0.1m, 0.1m));
+        HyperliquidBookStream.CoinOfAsset("1000PEPE").Should().Be("kPEPE");
+        HyperliquidBookStream.CoinOfAsset("BTC").Should().Be("BTC");
+        new HyperliquidBookStream().Subscriptions(["1000pepe"]).Single().Should().Contain("\"coin\":\"kPEPE\"");
+        new HyperliquidBookStream().Read("""{"channel":"l2Book","data":{"coin":"kPEPE","levels":[[{"px":"0.0035","sz":"100","n":1}],[{"px":"0.0036","sz":"50","n":1}]]}}""")!.Asset.Should().Be("1000PEPE");
     }
 
     [Fact]
@@ -83,6 +88,88 @@ public class InstrumentListTests
         Of(Venue.Deribit, InstrumentType.Perp).ReadAnswer("""{"result":[{"instrument_name":"1000BONK_USDC-PERPETUAL","is_active":true},{"instrument_name":"BTC_USDC-27DEC26","is_active":true}]}""").Should().Equal(new ListedSymbol("1000BONK", "1000BONK_USDC-PERPETUAL", true));
         Of(Venue.Kucoin, InstrumentType.Spot).ReadAnswer("""{"data":[{"symbol":"AVA-USDT","baseCurrency":"AVA","quoteCurrency":"USDT","enableTrading":true},{"symbol":"AVA-BTC","baseCurrency":"AVA","quoteCurrency":"BTC","enableTrading":true}]}""").Should().Equal(new ListedSymbol("AVA", "AVA-USDT", true));
         Of(Venue.Bitget, InstrumentType.Perp).ReadAnswer("""{"data":[{"symbol":"BTCUSDT","baseCoin":"BTC","quoteCoin":"USDT","symbolStatus":"normal"},{"symbol":"OLDUSDT","baseCoin":"OLD","quoteCoin":"USDT","symbolStatus":"off"}]}""").Should().Equal(new ListedSymbol("BTC", "BTCUSDT", true), new ListedSymbol("OLD", "OLDUSDT", false));
+    }
+
+    [Fact]
+    public void Steps_AreReadInUnitsOfTheAsset_AlsoWhereTheVenueCountsInContracts()
+    {
+        Of(Venue.Binance, InstrumentType.Spot).ReadAnswer("""{"symbols":[{"symbol":"BTCUSDT","status":"TRADING","baseAsset":"BTC","quoteAsset":"USDT","filters":[{"filterType":"PRICE_FILTER","tickSize":"0.01000000"},{"filterType":"LOT_SIZE","minQty":"0.00001000","stepSize":"0.00001000"}]}]}""")
+            .Single().Should().Be(new ListedSymbol("BTC", "BTCUSDT", true, 0.01m, 0.00001m, 0.00001m));
+        // One OKX swap contract is a hundredth of a bitcoin, and the smallest order is a hundredth of a contract.
+        Of(Venue.Okx, InstrumentType.Perp).ReadAnswer("""{"data":[{"instId":"BTC-USDT-SWAP","state":"live","tickSz":"0.1","lotSz":"0.01","minSz":"0.01","ctVal":"0.01"}]}""")
+            .Single().Should().Be(new ListedSymbol("BTC", "BTC-USDT-SWAP", true, 0.1m, 0.0001m, 0.0001m));
+        Of(Venue.Kucoin, InstrumentType.Perp).ReadAnswer("""{"data":[{"symbol":"XBTUSDTM","baseCurrency":"XBT","quoteCurrency":"USDT","status":"Open","isInverse":false,"tickSize":0.1,"lotSize":1,"multiplier":0.001}]}""")
+            .Single().Should().Be(new ListedSymbol("BTC", "XBTUSDTM", true, 0.1m, 0.001m, 0.001m));
+        // Bitget gives decimal places for spot, and for perpetuals a step counted in the last decimal place.
+        Of(Venue.Bitget, InstrumentType.Spot).ReadAnswer("""{"data":[{"symbol":"BTCUSDT","baseCoin":"BTC","quoteCoin":"USDT","status":"online","pricePrecision":"2","quantityPrecision":"6","minTradeAmount":"0"}]}""")
+            .Single().Should().Be(new ListedSymbol("BTC", "BTCUSDT", true, 0.01m, 0.000001m, null));
+        Of(Venue.Bitget, InstrumentType.Perp).ReadAnswer("""{"data":[{"symbol":"BTCUSDT","baseCoin":"BTC","quoteCoin":"USDT","symbolStatus":"normal","pricePlace":"1","priceEndStep":"5","sizeMultiplier":"0.0001","minTradeNum":"0.0001"}]}""")
+            .Single().Should().Be(new ListedSymbol("BTC", "BTCUSDT", true, 0.5m, 0.0001m, 0.0001m));
+        Of(Venue.Gate, InstrumentType.Perp).ReadAnswer("""[{"name":"BTC_USDT","in_delisting":false,"order_price_round":"0.1","quanto_multiplier":"0.0001","order_size_min":1}]""")
+            .Single().Should().Be(new ListedSymbol("BTC", "BTC_USDT", true, 0.1m, 0.0001m, 0.0001m));
+        Of(Venue.Kraken, InstrumentType.Spot).ReadAnswer("""{"result":{"XXBTZUSD":{"wsname":"XBT/USD","status":"online","tick_size":"0.1","lot_decimals":8,"ordermin":"0.00006"}}}""")
+            .Single().Should().Be(new ListedSymbol("BTC", "BTC/USD", true, 0.1m, 0.00000001m, 0.00006m));
+        Of(Venue.Mexc, InstrumentType.Perp).ReadAnswer("""{"data":[{"symbol":"BTC_USDT","baseCoin":"BTC","quoteCoin":"USDT","state":0,"priceUnit":0.1,"volUnit":1,"minVol":1,"contractSize":0.0001}]}""")
+            .Single().Should().Be(new ListedSymbol("BTC", "BTC_USDT", true, 0.1m, 0.0001m, 0.0001m));
+    }
+
+    [Fact]
+    public void BinanceAndBybit_AlsoListPerpetualsMarginedInUsdc()
+    {
+        const string binance = """{"symbols":[{"symbol":"BTCUSDT","status":"TRADING","contractType":"PERPETUAL","baseAsset":"BTC","quoteAsset":"USDT"},{"symbol":"BTCUSDC","status":"TRADING","contractType":"PERPETUAL","baseAsset":"BTC","quoteAsset":"USDC"}]}""";
+        Of(Venue.Binance, InstrumentType.Perp, "USDC").ReadAnswer(binance).Should().Equal(new ListedSymbol("BTC", "BTCUSDC", true));
+        Of(Venue.Binance, InstrumentType.Perp, "USDT").ReadAnswer(binance).Should().Equal(new ListedSymbol("BTC", "BTCUSDT", true));
+        // Bybit names them after the asset with PERP on the end.
+        const string bybit = """{"result":{"list":[{"symbol":"BTCUSDT","baseCoin":"BTC","quoteCoin":"USDT","status":"Trading","contractType":"LinearPerpetual"},{"symbol":"BTCPERP","baseCoin":"BTC","quoteCoin":"USDC","status":"Trading","contractType":"LinearPerpetual"},{"symbol":"BTC-26DEC26","baseCoin":"BTC","quoteCoin":"USDC","status":"Trading","contractType":"LinearFutures"}]}}""";
+        Of(Venue.Bybit, InstrumentType.Perp, "USDC").ReadAnswer(bybit).Should().Equal(new ListedSymbol("BTC", "BTCPERP", true));
+
+        BinanceUsdcPerpBookStream binanceStream = new();
+        binanceStream.Subscriptions(["BTC"]).Single().Should().Contain("btcusdc@depth20@100ms");
+        binanceStream.Read("""{"stream":"btcusdc@depth20@100ms","data":{"s":"BTCUSDC","b":[["58757.3","1"]],"a":[["58757.4","2"]]}}""")!.Asset.Should().Be("BTC");
+        // A USDT book that strays onto the USDC stream is not taken for a USDC one.
+        binanceStream.Read("""{"stream":"btcusdt@depth20@100ms","data":{"s":"BTCUSDT","b":[["58833.8","1"]],"a":[["58833.9","2"]]}}""").Should().BeNull();
+        BybitUsdcPerpBookStream bybitStream = new();
+        bybitStream.Quote.Should().Be("USDC");
+        bybitStream.Subscriptions(["eth"]).Single().Should().Be("""{"op":"subscribe","args":["orderbook.50.ETHPERP"]}""");
+        bybitStream.Read("""{"topic":"orderbook.50.ETHPERP","type":"snapshot","data":{"s":"ETHPERP","b":[["3000.1","1"]],"a":[["3000.2","1"]]}}""")!.Asset.Should().Be("ETH");
+        bybitStream.Read("""{"topic":"orderbook.50.ETHUSDT","type":"snapshot","data":{"s":"ETHUSDT","b":[["3000.1","1"]],"a":[["3000.2","1"]]}}""").Should().BeNull();
+    }
+
+    [Fact]
+    public void AVenuesSecondMarket_FollowsOnlyWhatItLists()
+    {
+        BookDemand demand = new(["BTC", "DOGE"]);
+        demand.Want(held: [], asked: [("ARB", InstrumentType.Perp)]);
+
+        // Before its list is read, the USDC market follows nothing; the USDT one follows the main assets as always.
+        demand.For(Venue.Binance, InstrumentType.Perp, "USDC", second: true).Should().BeEmpty();
+        demand.For(Venue.Binance, InstrumentType.Perp).Should().Equal("BTC", "DOGE");
+
+        demand.Listed(Venue.Binance, InstrumentType.Perp, ["BTC", "ARB"], "USDC");
+        demand.Listed(Venue.Binance, InstrumentType.Perp, ["BTC", "DOGE"]);
+        demand.For(Venue.Binance, InstrumentType.Perp, "USDC", second: true).Should().Equal("ARB", "BTC");
+        demand.For(Venue.Binance, InstrumentType.Perp).Should().Equal("BTC", "DOGE");
+    }
+
+    [Fact]
+    public void AVenueWithTwoBooksForOneInstrument_GivesTheOneInTheWantedCurrency()
+    {
+        KatalepsisFT.Application.Execution.ConsolidatedBook books = new(TimeProvider.System);
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        books.Update(new(Venue.Binance, "BTC", InstrumentType.Perp, [new(100m, 1m)], [new(101m, 1m)], now));
+        books.Update(new(Venue.Binance, "BTC", InstrumentType.Perp, [new(99m, 1m)], [new(100m, 1m)], now, "USDC"));
+        books.Update(new(Venue.Deribit, "BTC", InstrumentType.Perp, [new(98m, 1m)], [new(99m, 1m)], now, "USDC"));
+
+        books.Of(Venue.Binance, "BTC", InstrumentType.Perp)!.BestBid.Should().Be(100m);
+        books.Of(Venue.Binance, "BTC", InstrumentType.Perp, "USDC")!.BestBid.Should().Be(99m);
+        // A venue with only one book gives it whatever it is in.
+        books.Of(Venue.Deribit, "BTC", InstrumentType.Perp)!.BestBid.Should().Be(98m);
+        books.Instruments().Single().Venues.Should().Equal(Venue.Binance, Venue.Deribit);
+
+        // The USDC stream dropping takes only its own books with it.
+        books.Clear(Venue.Binance, InstrumentType.Perp, "USDC");
+        books.Of(Venue.Binance, "BTC", InstrumentType.Perp, "USDC").Should().BeNull();
+        books.Of(Venue.Binance, "BTC", InstrumentType.Perp)!.BestBid.Should().Be(100m);
     }
 
     [Fact]

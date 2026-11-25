@@ -116,6 +116,64 @@ public class ExecutionApiTests(TestDatabase database) : IClassFixture<TestDataba
     }
 
     [Fact]
+    public async Task UsdcMarginedAccount_FillsAgainstTheUsdcBook_AndCannotGoLiveYet()
+    {
+        (int fundId, int managerId, int usdt) = await NewAccountAsync();
+        // The same manager and venue again, for the other family of perpetuals.
+        HttpResponseMessage added = await _admin.PostAsJsonAsync("/api/trading-accounts", new SaveTradingAccountRequest(managerId, Venue.Binance, "USDC", 3m, MarginMode.Cross, 1_000_000m, 2_000_000m, 100, 1_000_000m, "usdc"), Json);
+        added.StatusCode.Should().Be(HttpStatusCode.OK);
+        int usdc = (await added.Content.ReadFromJsonAsync<Answer<int>>(Json))!.Value;
+        (await _admin.PostAsJsonAsync("/api/trading-accounts", new SaveTradingAccountRequest(managerId, Venue.Binance, "Again", 3m, MarginMode.Cross, 1m, 1m, 100, 1m, "USDC"), Json)).IsSuccessStatusCode.Should().BeFalse();
+        (await _admin.PostAsJsonAsync("/api/trading-accounts", new SaveTradingAccountRequest(managerId, Venue.Okx, "No", 3m, MarginMode.Cross, 1m, 1m, 100, 1m, "USDC"), Json)).IsSuccessStatusCode.Should().BeFalse();
+
+        // The USDC book trades a little below the USDT one.
+        Books.Update(new VenueBook(Venue.Binance, "BTC", InstrumentType.Perp, [new BookLevel(59_900m, 10m)], [new BookLevel(59_910m, 10m)], BookClock.GetUtcNow(), "USDC"));
+        OrderDto onUsdc = await TradeAsync(new SubmitOrderRequest(usdc, null, "BTC", InstrumentType.Perp, OrderSide.Buy, OrderType.Market, TimeInForce.ImmediateOrCancel, 1m, null, false, Guid.NewGuid().ToString("N")));
+        OrderDto onUsdt = await TradeAsync(new SubmitOrderRequest(usdt, null, "BTC", InstrumentType.Perp, OrderSide.Buy, OrderType.Market, TimeInForce.ImmediateOrCancel, 1m, null, false, Guid.NewGuid().ToString("N")));
+
+        onUsdc.Status.Should().Be(OrderStatus.Filled);
+        onUsdc.AverageFillPrice.Should().Be(59_910m);
+        onUsdt.AverageFillPrice.Should().Be(60_010m);
+        TradingDto trading = (await _admin.GetFromJsonAsync<TradingDto>($"/api/funds/{fundId}/trading", Json))!;
+        trading.Accounts.Single(a => a.Id == usdc).PerpQuote.Should().Be("USDC");
+        trading.Accounts.Single(a => a.Id == usdc).Positions.Single().MarkPrice.Should().Be(59_905m);
+
+        HttpResponseMessage live = await _admin.PostAsync($"/api/trading-accounts/{usdc}/go-live", null);
+        live.IsSuccessStatusCode.Should().BeFalse();
+        (await live.Content.ReadAsStringAsync()).Should().Contain("USDC-margined perpetuals are not connected yet");
+        Books.Remove(Venue.Binance, InstrumentType.Perp, "BTC", "USDC");
+    }
+
+    [Fact]
+    public async Task Pins_AreKeptPerFund_AndOnlyForWhatAVenueLists()
+    {
+        (int fundId, _, _) = await NewAccountAsync();
+        using (IServiceScope scope = _app!.Services.CreateScope())
+        {
+            FtDbContext db = scope.ServiceProvider.GetRequiredService<FtDbContext>();
+            if (!db.ListedInstruments.Any(i => i.Asset == "TIA"))
+            {
+                db.ListedInstruments.Add(new ListedInstrument { Venue = Venue.Bybit, Type = InstrumentType.Perp, Asset = "TIA", Quote = "USDT", Symbol = "TIAUSDT", Tradable = true, PriceStep = 0.001m, QuantityStep = 0.1m, MinQuantity = 0.1m, SeenAt = DateTimeOffset.UtcNow });
+                await db.SaveChangesAsync();
+            }
+        }
+
+        (await _admin.PostAsJsonAsync($"/api/funds/{fundId}/pins", new InstrumentRef("tia", InstrumentType.Perp), Json)).StatusCode.Should().Be(HttpStatusCode.OK);
+        // Pinning it again changes nothing; pinning what no venue lists is refused.
+        (await _admin.PostAsJsonAsync($"/api/funds/{fundId}/pins", new InstrumentRef("TIA", InstrumentType.Perp), Json)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await _admin.PostAsJsonAsync($"/api/funds/{fundId}/pins", new InstrumentRef("NOSUCHCOIN", InstrumentType.Perp), Json)).IsSuccessStatusCode.Should().BeFalse();
+        HttpClient viewer = await SignInAsync(Roles.Viewer);
+        (await viewer.PostAsJsonAsync($"/api/funds/{fundId}/pins", new InstrumentRef("TIA", InstrumentType.Perp), Json)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        TradingDto trading = (await _admin.GetFromJsonAsync<TradingDto>($"/api/funds/{fundId}/trading", Json))!;
+        trading.Pinned.Should().Equal(new InstrumentRef("TIA", InstrumentType.Perp));
+        (await _admin.GetFromJsonAsync<List<VenueRules>>("/api/instruments/Perp/tia", Json)).Should().Equal(new VenueRules(Venue.Bybit, "USDT", true, 0.001m, 0.1m, 0.1m));
+
+        (await _admin.DeleteAsync($"/api/funds/{fundId}/pins/Perp/TIA")).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await _admin.GetFromJsonAsync<TradingDto>($"/api/funds/{fundId}/trading", Json))!.Pinned.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task InstrumentSearch_FindsWhatTheVenuesList_TheExactNameFirst()
     {
         using (IServiceScope scope = _app!.Services.CreateScope())

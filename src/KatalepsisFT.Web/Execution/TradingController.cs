@@ -48,6 +48,18 @@ public sealed class TradingController(TradingService trading) : ControllerBase
     [HttpGet("instruments")]
     public async Task<IReadOnlyList<InstrumentHit>> InstrumentsAsync([FromQuery] string? q, CancellationToken cancellationToken) => await trading.SearchInstrumentsAsync(q, cancellationToken);
 
+    /// <summary>What each venue's list says about one instrument: whether it takes orders, and its smallest steps.</summary>
+    [HttpGet("instruments/{type}/{asset}")]
+    public async Task<IReadOnlyList<VenueRules>> RulesAsync(InstrumentType type, string asset, CancellationToken cancellationToken) => await trading.RulesAsync(asset, type, cancellationToken);
+
+    [Authorize(Roles = Roles.CanTrade)]
+    [HttpPost("funds/{fundId:int}/pins")]
+    public async Task<IActionResult> PinAsync(int fundId, InstrumentRef instrument, CancellationToken cancellationToken) => Result(await trading.PinAsync(fundId, instrument, Actor, cancellationToken));
+
+    [Authorize(Roles = Roles.CanTrade)]
+    [HttpDelete("funds/{fundId:int}/pins/{type}/{asset}")]
+    public async Task<IActionResult> UnpinAsync(int fundId, InstrumentType type, string asset, CancellationToken cancellationToken) => Result(await trading.UnpinAsync(fundId, new InstrumentRef(asset, type), Actor, cancellationToken));
+
     /// <summary>The consolidated book of one instrument: every venue's best prices and depth, side by side.</summary>
     [HttpGet("book/{type}/{asset}")]
     public async Task<BookDto> BookAsync(InstrumentType type, string asset, CancellationToken cancellationToken) => await trading.BookAsync(asset, type, cancellationToken);

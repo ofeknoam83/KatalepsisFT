@@ -102,6 +102,8 @@ if (hasPostgres && group.ToLowerInvariant() is WorkerGroups.Exec)
     builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.CoinbaseSpotBookStream>();
     builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.KrakenSpotBookStream>();
     builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.DeribitPerpBookStream>();
+    builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.BinanceUsdcPerpBookStream>();
+    builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.BybitUsdcPerpBookStream>();
     builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookPoller, KatalepsisFT.Infrastructure.Execution.MexcSpotBookPoller>();
     builder.Services.AddSingleton(provider => { ExecutionOptions options = provider.GetRequiredService<ExecutionOptions>(); return new KatalepsisFT.Infrastructure.Execution.BookDemand(options.Assets, options.MostBooks); });
     // The venues' instrument lists are large; they get a client of their own with a longer wait.

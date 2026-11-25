@@ -70,7 +70,8 @@ public sealed record TradingAccountDto(
     IReadOnlyList<TradingPositionDto> Positions,
     bool CanGoLive = false,
     DateTimeOffset? LiveReadAt = null,
-    string? LiveReadError = null
+    string? LiveReadError = null,
+    string PerpQuote = "USDT"
 );
 
 public sealed record HaltDto(int Id, HaltScope Scope, Venue? Venue, int? TradingAccountId, string Where, string Reason, string PulledBy, DateTimeOffset PulledAt, bool ReleaseRequested);
@@ -94,8 +95,16 @@ public sealed record TradingDto(
     IReadOnlyList<VenueOption> Venues,
     IReadOnlyList<ManagerOption> Managers,
     IReadOnlyList<LiveInstrument> Instruments,
-    ExecutionStatus? Engine
+    ExecutionStatus? Engine,
+    IReadOnlyList<InstrumentRef> Pinned,
+    IReadOnlyList<InstrumentRef> Recent
 );
+
+/// <summary>An instrument by name: the asset and the kind of market.</summary>
+public sealed record InstrumentRef(string Asset, InstrumentType Type);
+
+/// <summary>What one venue's list says about an instrument: whether it takes orders, and its smallest steps.</summary>
+public sealed record VenueRules(Venue Venue, string Quote, bool Tradable, decimal? PriceStep, decimal? QuantityStep, decimal? MinQuantity);
 
 public sealed record OrderEventDto(DateTimeOffset At, OrderEventKind Kind, Venue? Venue, decimal? Quantity, decimal? Price, decimal? FeeUsd, string? Detail);
 
@@ -133,7 +142,8 @@ public sealed record BookVenueDto(Venue Venue, string VenueName, decimal? BestBi
 
 public sealed record BookDto(string Asset, InstrumentType Type, decimal? BestBid, Venue? BestBidVenue, decimal? BestAsk, Venue? BestAskVenue, decimal? Mid, decimal? SpreadBps, IReadOnlyList<BookVenueDto> Venues);
 
-public sealed record SaveTradingAccountRequest(int ManagerId, Venue Venue, string Label, decimal Leverage, MarginMode MarginMode, decimal MaxOrderNotionalUsd, decimal MaxPositionNotionalUsd, int PriceBandBps, decimal PaperBalanceUsd);
+/// <param name="PerpQuote">What the account's perpetuals are margined in; USDT when left out.</param>
+public sealed record SaveTradingAccountRequest(int ManagerId, Venue Venue, string Label, decimal Leverage, MarginMode MarginMode, decimal MaxOrderNotionalUsd, decimal MaxPositionNotionalUsd, int PriceBandBps, decimal PaperBalanceUsd, string? PerpQuote = null);
 
 public sealed record TradingKeyRequest(string ApiKey, string ApiSecret, string? Passphrase);
 
@@ -202,6 +212,12 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
     /// works, as Katalepsis accepts it, and the request for approval says in so many words that its permissions were
     /// not checked. Everywhere else a key that cannot be shown to be unable to withdraw is refused.
     /// </summary>
+    /// <summary>How many instruments one fund may keep pinned. Each one is a book held open on every venue.</summary>
+    public const int MostPins = 12;
+
+    /// <summary>Venues that also list perpetuals margined in USDC, which an account can be set to trade instead of the USDT ones.</summary>
+    public static readonly IReadOnlyList<Venue> UsdcPerpVenues = [Venue.Binance, Venue.Bybit];
+
     public static readonly IReadOnlyList<Venue> UncheckableVenues = [Venue.CoinbaseExchange, Venue.Kraken, Venue.Gate, Venue.Mexc];
 
     /// <summary>The venues real orders can be sent to. The others trade on paper only.</summary>
@@ -240,10 +256,10 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
         HashSet<int> releasing = approvals.Where(r => r is { Kind: ApprovalKind.ReleaseHalt, Status: ApprovalStatus.Pending, TradingHaltId: not null }).Select(r => r.TradingHaltId!.Value).ToHashSet();
 
         // One mark per venue and instrument, read once.
-        Dictionary<(Venue, string, InstrumentType), decimal?> marks = [];
-        foreach (var held in positions.Select(p => (Venue: accounts.First(a => a.Id == p.TradingAccountId).Venue, p.Asset, p.InstrumentType)).Distinct())
+        Dictionary<(Venue, string, InstrumentType, string?), decimal?> marks = [];
+        foreach (var held in positions.Select(p => { TradingAccount owner = accounts.First(a => a.Id == p.TradingAccountId); return (owner.Venue, p.Asset, p.InstrumentType, Quote: owner.QuoteFor(p.InstrumentType)); }).Distinct())
         {
-            marks[held] = (await books.ReadAsync(held.Asset, held.InstrumentType, cancellationToken)).FirstOrDefault(b => b.Venue == held.Venue)?.Mid;
+            marks[held] = ConsolidatedBook.Pick(await books.ReadAsync(held.Asset, held.InstrumentType, cancellationToken), held.Venue, held.Quote)?.Mid;
         }
 
         List<TradingAccountDto> rows = accounts
@@ -254,7 +270,7 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
                     .OrderBy(p => p.Asset)
                     .Select(p =>
                     {
-                        decimal? mark = marks.GetValueOrDefault((a.Venue, p.Asset, p.InstrumentType));
+                        decimal? mark = marks.GetValueOrDefault((a.Venue, p.Asset, p.InstrumentType, a.QuoteFor(p.InstrumentType)));
                         decimal? distance = mark is decimal at && at > 0m && p.LiquidationPrice is decimal liquidation && p.Quantity != 0m ? Math.Round(Math.Abs(at - liquidation) / at, 4) : null;
                         return new TradingPositionDto(p.Asset, p.InstrumentType, p.Quantity, p.AveragePrice, mark, mark * Math.Abs(p.Quantity), mark is decimal m && p.AveragePrice > 0m ? Math.Round(p.Quantity * (m - p.AveragePrice), 2) : null, p.RealisedPnlUsd, p.FeesUsd, p.Quantity == 0m ? null : p.LiquidationPrice, distance);
                     })
@@ -282,9 +298,10 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
                     Covers(halts, a),
                     // A real account lists everything the venue holds for it; what is at nothing is left out.
                     a.Mode == TradingMode.Live ? own.Where(p => p.Quantity != 0m).ToList() : own,
-                    a.Mode == TradingMode.Paper && a.EncryptedKey is not null && LiveVenues.Contains(a.Venue),
+                    a.Mode == TradingMode.Paper && a.EncryptedKey is not null && LiveVenues.Contains(a.Venue) && a.PerpQuote == "USDT",
                     a.Mode == TradingMode.Live ? a.LiveSyncedAt : null,
-                    a.Mode == TradingMode.Live ? a.LiveSyncError : null
+                    a.Mode == TradingMode.Live ? a.LiveSyncError : null,
+                    a.PerpQuote
                 );
             })
             .ToList();
@@ -310,7 +327,9 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
             Venues.Select(v => new VenueOption(v, VenueExposureService.NameOf(v), adapters.Find(v)?.NeedsPassphrase ?? false)).ToList(),
             managers,
             live.Where(i => i.Type is InstrumentType.Perp or InstrumentType.Spot).ToList(),
-            await books.StatusAsync(cancellationToken)
+            await books.StatusAsync(cancellationToken),
+            (await database.PinnedInstruments.AsNoTracking().Where(p => p.FundId == fundId).OrderBy(p => p.Id).Select(p => new { p.Asset, p.Type }).ToListAsync(cancellationToken)).Select(p => new InstrumentRef(p.Asset, p.Type)).ToList(),
+            await RecentAsync(accountIds, cancellationToken)
         );
     }
 
@@ -339,6 +358,83 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
             .ThenBy(h => h.Type)
             .Take(40)
             .ToList();
+    }
+
+    /// <summary>The instruments last traded on these accounts, the latest first.</summary>
+    private async Task<IReadOnlyList<InstrumentRef>> RecentAsync(IReadOnlyCollection<int> accountIds, CancellationToken cancellationToken)
+    {
+        var latest = await database
+            .Orders.AsNoTracking()
+            .Where(o => accountIds.Contains(o.TradingAccountId))
+            .GroupBy(o => new { o.Asset, o.InstrumentType })
+            .Select(g => new { g.Key.Asset, g.Key.InstrumentType, Last = g.Max(o => o.Id) })
+            .OrderByDescending(g => g.Last)
+            .Take(6)
+            .ToListAsync(cancellationToken);
+        return latest.Select(l => new InstrumentRef(l.Asset, l.InstrumentType)).ToList();
+    }
+
+    /// <summary>Keeps an instrument at hand on a fund's trading page, with its book always open.</summary>
+    public async Task<TradingChange<int>> PinAsync(int fundId, InstrumentRef instrument, Actor actor, CancellationToken cancellationToken)
+    {
+        if (!actor.CanTrade)
+        {
+            return TradingChange<int>.Refused("Only a trader or an administrator can pin an instrument.");
+        }
+
+        if (!await database.Funds.AnyAsync(f => f.Id == fundId, cancellationToken))
+        {
+            return TradingChange<int>.Missing;
+        }
+
+        string asset = (instrument.Asset ?? string.Empty).Trim().ToUpperInvariant();
+        if (instrument.Type is not (InstrumentType.Spot or InstrumentType.Perp) || !await database.ListedInstruments.AnyAsync(i => i.Asset == asset && i.Type == instrument.Type, cancellationToken))
+        {
+            return TradingChange<int>.Refused("No venue lists that instrument.");
+        }
+
+        List<PinnedInstrument> pins = await database.PinnedInstruments.Where(p => p.FundId == fundId).ToListAsync(cancellationToken);
+        if (pins.FirstOrDefault(p => p.Asset == asset && p.Type == instrument.Type) is { } already)
+        {
+            return TradingChange<int>.Ok(already.Id);
+        }
+
+        if (pins.Count >= MostPins)
+        {
+            return TradingChange<int>.Refused($"A fund can pin {MostPins} instruments. Unpin one first.");
+        }
+
+        PinnedInstrument pin = new() { FundId = fundId, Asset = asset, Type = instrument.Type };
+        database.PinnedInstruments.Add(pin);
+        await database.SaveChangesAsync(cancellationToken);
+        return TradingChange<int>.Ok(pin.Id);
+    }
+
+    public async Task<TradingChange<int>> UnpinAsync(int fundId, InstrumentRef instrument, Actor actor, CancellationToken cancellationToken)
+    {
+        if (!actor.CanTrade)
+        {
+            return TradingChange<int>.Refused("Only a trader or an administrator can unpin an instrument.");
+        }
+
+        string asset = (instrument.Asset ?? string.Empty).Trim().ToUpperInvariant();
+        PinnedInstrument? pin = await database.PinnedInstruments.FirstOrDefaultAsync(p => p.FundId == fundId && p.Asset == asset && p.Type == instrument.Type, cancellationToken);
+        if (pin is null)
+        {
+            return TradingChange<int>.Missing;
+        }
+
+        database.PinnedInstruments.Remove(pin);
+        await database.SaveChangesAsync(cancellationToken);
+        return TradingChange<int>.Ok(pin.Id);
+    }
+
+    /// <summary>What each venue's list says about one instrument.</summary>
+    public async Task<IReadOnlyList<VenueRules>> RulesAsync(string asset, InstrumentType type, CancellationToken cancellationToken)
+    {
+        string name = asset.ToUpperInvariant();
+        var rows = await database.ListedInstruments.AsNoTracking().Where(i => i.Asset == name && i.Type == type && Venues.Contains(i.Venue)).OrderBy(i => i.Venue).ToListAsync(cancellationToken);
+        return rows.Select(i => new VenueRules(i.Venue, i.Quote, i.Tradable, i.PriceStep, i.QuantityStep, i.MinQuantity)).ToList();
     }
 
     public async Task<BookDto> BookAsync(string asset, InstrumentType type, CancellationToken cancellationToken)
@@ -425,9 +521,16 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
             return TradingChange<int>.Refused($"Orders cannot be sent to {VenueExposureService.NameOf(request.Venue)} yet.");
         }
 
-        if (await database.TradingAccounts.AnyAsync(a => a.ManagerAccountId == request.ManagerId && a.Venue == request.Venue, cancellationToken))
+        string perpQuote = string.IsNullOrWhiteSpace(request.PerpQuote) ? "USDT" : request.PerpQuote.Trim().ToUpperInvariant();
+        if (perpQuote != "USDT" && !(perpQuote == "USDC" && UsdcPerpVenues.Contains(request.Venue)))
         {
-            return TradingChange<int>.Refused($"{manager.Name} already has a trading account on {VenueExposureService.NameOf(request.Venue)}.");
+            return TradingChange<int>.Refused($"Perpetuals on {VenueExposureService.NameOf(request.Venue)} are margined in USDT here.");
+        }
+
+        // One account for each family of perpetuals a venue has: a manager can have a USDT and a USDC account on the same venue.
+        if (await database.TradingAccounts.AnyAsync(a => a.ManagerAccountId == request.ManagerId && a.Venue == request.Venue && a.PerpQuote == perpQuote, cancellationToken))
+        {
+            return TradingChange<int>.Refused($"{manager.Name} already has a trading account on {VenueExposureService.NameOf(request.Venue)}{(perpQuote == "USDT" ? string.Empty : " for " + perpQuote + " perpetuals")}.");
         }
 
         TradingAccount account = new()
@@ -442,6 +545,7 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
             MaxPositionNotionalUsd = request.MaxPositionNotionalUsd,
             PriceBandBps = request.PriceBandBps,
             PaperBalanceUsd = request.PaperBalanceUsd,
+            PerpQuote = perpQuote,
             CreatedBy = actor.Name,
             CreatedAt = clock.GetUtcNow(),
         };
@@ -768,6 +872,7 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
         string? refusal =
             account.Mode == TradingMode.Live ? "The account already trades real money."
             : !LiveVenues.Contains(account.Venue) ? $"Real orders cannot be sent to {venue} yet. It trades on paper."
+            : account.PerpQuote != "USDT" ? $"Real orders in {account.PerpQuote}-margined perpetuals are not connected yet. This account trades on paper."
             : account.EncryptedKey is null ? "Add a trading key first, and have it approved."
             : await HasOpenOrdersAsync(accountId, cancellationToken) ? "The account has open paper orders. Cancel them first; real trading starts from a clean sheet."
             : await database.ApprovalRequests.AnyAsync(r => r.TradingAccountId == accountId && r.Kind == ApprovalKind.GoLive && r.Status == ApprovalStatus.Pending, cancellationToken) ? "This has already been asked for and is waiting for a second administrator."
@@ -1026,7 +1131,7 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
 
         IReadOnlyList<VenueBook> live = await books.ReadAsync(asset, request.InstrumentType, cancellationToken);
         // The price after the venue's fee for taking: that, not the raw price, is what the order pays.
-        TradingAccount? best = own.Select(a => (Account: a, Book: live.FirstOrDefault(b => b.Venue == a.Venue)))
+        TradingAccount? best = own.Select(a => (Account: a, Book: ConsolidatedBook.Pick(live, a.Venue, a.QuoteFor(request.InstrumentType))))
             .Where(x => (request.Side == OrderSide.Buy ? x.Book?.BestAsk : x.Book?.BestBid) is not null)
             .OrderBy(x =>
             {

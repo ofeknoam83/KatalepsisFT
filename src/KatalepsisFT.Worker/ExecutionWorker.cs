@@ -57,7 +57,7 @@ public sealed class MarketDataWorker(
     {
         List<BookStream> all = streams.ToList();
         logger.LogInformation("Always following {Assets}, and up to {Most} more instruments on demand, on {Venues}.", string.Join(", ", options.Assets), options.MostBooks, string.Join(", ", all.Select(s => $"{s.Venue} {s.Type}")));
-        List<Task> running = all.Select(s => new BookStreamRunner(s, books, board, clients.CreateClient("exec"), clock, logger).RunAsync(() => demand.For(s.Venue, s.Type), stoppingToken)).ToList();
+        List<Task> running = all.Select(s => new BookStreamRunner(s, books, board, clients.CreateClient("exec"), clock, logger).RunAsync(() => demand.For(s.Venue, s.Type, s.Quote, second: all.Any(o => o != s && o.Venue == s.Venue && o.Type == s.Type && o.Quote == "USDT")), stoppingToken)).ToList();
         running.AddRange(all.Select(s => TimeAsync(s, stoppingToken)));
         running.AddRange(pollers.Select(p => p.RunAsync(() => demand.For(p.Venue, p.Type), books, board, clients.CreateClient("exec"), clock, logger, stoppingToken)));
         running.Add(PublishAsync(all.Select(s => s.Venue).Distinct().ToList(), stoppingToken));

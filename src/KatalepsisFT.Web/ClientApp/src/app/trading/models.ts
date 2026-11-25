@@ -33,6 +33,8 @@ export interface TradingPosition {
 }
 
 export interface TradingAccount {
+  /** What the account's perpetuals are margined in: USDT, or USDC where the venue has those too. */
+  perpQuote: 'USDT' | 'USDC';
   id: number;
   managerId: number;
   manager: string;
@@ -94,6 +96,26 @@ export interface EngineStatus {
   isLeader: boolean;
   roundMs: number | null;
   venues: VenueStatus[];
+  /** How many instruments have a live book right now. */
+  openInstruments: number | null;
+  /** How many may be open only because somebody asked for them. */
+  mostOnDemand: number | null;
+}
+
+/** An instrument by name. */
+export interface InstrumentRef {
+  asset: string;
+  type: TradedType;
+}
+
+/** What one venue's list says about an instrument: whether it takes orders, and its smallest steps. */
+export interface VenueRules {
+  venue: TradingVenue;
+  quote: string;
+  tradable: boolean;
+  priceStep: number | null;
+  quantityStep: number | null;
+  minQuantity: number | null;
 }
 
 export interface Trading {
@@ -110,6 +132,10 @@ export interface Trading {
   managers: { id: number; name: string; sleeve: string }[];
   instruments: LiveInstrument[];
   engine: EngineStatus | null;
+  /** Instruments this fund keeps at hand; their books stay open. */
+  pinned: InstrumentRef[];
+  /** Instruments last traded on this fund's accounts, the latest first. */
+  recent: InstrumentRef[];
 }
 
 export interface OrderEvent {
@@ -191,6 +217,8 @@ export interface AccountForm {
   maxPositionNotionalUsd: number;
   priceBandBps: number;
   paperBalanceUsd: number;
+  /** What the account's perpetuals are margined in. */
+  perpQuote: 'USDT' | 'USDC';
 }
 
 export const TIF_LABEL: Record<TimeInForce, string> = { GoodTillCancelled: 'Rests until cancelled', ImmediateOrCancel: 'Fill now, cancel the rest', PostOnly: 'Maker only' };

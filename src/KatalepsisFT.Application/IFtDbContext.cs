@@ -40,6 +40,7 @@ public interface IFtDbContext
     DbSet<KatalepsisFT.Domain.Execution.TradingPosition> TradingPositions { get; }
     DbSet<KatalepsisFT.Domain.Execution.SystemSetting> SystemSettings { get; }
     DbSet<KatalepsisFT.Domain.Execution.ListedInstrument> ListedInstruments { get; }
+    DbSet<KatalepsisFT.Domain.Execution.PinnedInstrument> PinnedInstruments { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken);
 

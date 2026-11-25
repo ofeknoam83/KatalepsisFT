@@ -42,6 +42,15 @@ public class TradingAccount
     public decimal Leverage { get; set; } = 1m;
     public MarginMode MarginMode { get; set; } = MarginMode.Cross;
 
+    /// <summary>
+    /// What the account's perpetuals are margined and quoted in: USDT nearly everywhere, or USDC where the venue
+    /// also lists those. One account trades one family; a manager who wants both has two accounts.
+    /// </summary>
+    public string PerpQuote { get; set; } = "USDT";
+
+    /// <summary>The currency this account's book for a kind of market must be in; null where the venue has only one.</summary>
+    public string? QuoteFor(InstrumentType type) => type == InstrumentType.Perp && PerpQuote != "USDT" ? PerpQuote : null;
+
     /// <summary>The largest single order, in USD of notional.</summary>
     public decimal MaxOrderNotionalUsd { get; set; }
 
@@ -197,6 +206,28 @@ public class ListedInstrument
     /// <summary>False when the venue has it listed but is not taking orders, or no longer lists it.</summary>
     public bool Tradable { get; set; }
 
+    /// <summary>The smallest step in price the venue takes, where its list says.</summary>
+    public decimal? PriceStep { get; set; }
+
+    /// <summary>The smallest step in quantity, in units of the asset, where the venue's list says.</summary>
+    public decimal? QuantityStep { get; set; }
+
+    /// <summary>The smallest order, in units of the asset, where the venue's list says.</summary>
+    public decimal? MinQuantity { get; set; }
+
     /// <summary>When the venue's list last included it.</summary>
     public DateTimeOffset SeenAt { get; set; }
+}
+
+/// <summary>
+/// An instrument a fund keeps at hand on its trading page. Its book stays open whether or not anyone is looking, so
+/// it is there at once when it is needed.
+/// </summary>
+public class PinnedInstrument
+{
+    public int Id { get; set; }
+    public int FundId { get; set; }
+    public Fund Fund { get; set; } = null!;
+    public required string Asset { get; set; }
+    public InstrumentType Type { get; set; }
 }

@@ -16,15 +16,15 @@ public sealed class BookDemand(IReadOnlyList<string> always, int most = BookDema
 
     private readonly HashSet<string> _always = always.Select(a => a.ToUpperInvariant()).ToHashSet();
     private volatile IReadOnlySet<(string Asset, InstrumentType Type)> _wanted = Both(always.Select(a => a.ToUpperInvariant())).ToHashSet();
-    private volatile IReadOnlyDictionary<(Venue Venue, InstrumentType Type), IReadOnlySet<string>> _listed = new Dictionary<(Venue, InstrumentType), IReadOnlySet<string>>();
+    private volatile IReadOnlyDictionary<(Venue Venue, InstrumentType Type, string Quote), IReadOnlySet<string>> _listed = new Dictionary<(Venue, InstrumentType, string), IReadOnlySet<string>>();
 
     /// <summary>How many instruments are wanted at the moment.</summary>
     public int Count => _wanted.Count;
 
     /// <summary>What a venue lists for one kind of market, as last read. Replaces what was known before.</summary>
-    public void Listed(Venue venue, InstrumentType type, IEnumerable<string> assets)
+    public void Listed(Venue venue, InstrumentType type, IEnumerable<string> assets, string quote = "USDT")
     {
-        Dictionary<(Venue, InstrumentType), IReadOnlySet<string>> next = new(_listed) { [(venue, type)] = assets.Select(a => a.ToUpperInvariant()).ToHashSet() };
+        Dictionary<(Venue, InstrumentType, string), IReadOnlySet<string>> next = new(_listed) { [(venue, type, quote)] = assets.Select(a => a.ToUpperInvariant()).ToHashSet() };
         _listed = next;
     }
 
@@ -61,10 +61,14 @@ public sealed class BookDemand(IReadOnlyList<string> always, int most = BookDema
     /// that are always followed are asked for on every venue whatever its list says, as they were before there was a
     /// list: a venue can report an instrument as closed to where this service runs and still publish its book.
     /// </summary>
-    public IReadOnlyList<string> For(Venue venue, InstrumentType type)
+    /// <param name="second">
+    /// True for a venue's second market of the same kind (its USDC perpetuals beside its USDT ones). There only
+    /// what the venue lists is asked for: nothing was followed there before there was a list.
+    /// </param>
+    public IReadOnlyList<string> For(Venue venue, InstrumentType type, string quote = "USDT", bool second = false)
     {
         IEnumerable<string> assets = _wanted.Where(w => w.Type == type).Select(w => w.Asset);
-        assets = _listed.TryGetValue((venue, type), out IReadOnlySet<string>? listed) ? assets.Where(a => listed.Contains(a) || _always.Contains(a)) : assets.Where(_always.Contains);
+        assets = _listed.TryGetValue((venue, type, quote), out IReadOnlySet<string>? listed) ? assets.Where(a => listed.Contains(a) || (!second && _always.Contains(a))) : assets.Where(a => !second && _always.Contains(a));
         return assets.OrderBy(a => a, StringComparer.Ordinal).ToList();
     }
 
