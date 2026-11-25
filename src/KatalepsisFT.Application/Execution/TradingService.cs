@@ -848,6 +848,13 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
                     account.LiveSyncedAt = null;
                     account.LiveSyncError = null;
                     break;
+                case ApprovalKind.LargeOrder:
+                    if (!await WorkingOrderService.DecideAsync(database, request, true, actor.Name, now, cancellationToken))
+                    {
+                        return TradingChange<int>.Refused("That working order is no longer waiting for approval.");
+                    }
+
+                    break;
                 case ApprovalKind.ReleaseHalt:
                     TradingHalt? halt = await database.TradingHalts.FirstOrDefaultAsync(h => h.Id == request.TradingHaltId && h.ReleasedAt == null, cancellationToken);
                     if (halt is not null)
@@ -860,6 +867,11 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
                 default:
                     return TradingChange<int>.Refused("What this request is about no longer exists.");
             }
+        }
+
+        if (!approve && request.Kind == ApprovalKind.LargeOrder)
+        {
+            await WorkingOrderService.DecideAsync(database, request, false, actor.Name, now, cancellationToken);
         }
 
         // A sealed key that was not approved is not kept.

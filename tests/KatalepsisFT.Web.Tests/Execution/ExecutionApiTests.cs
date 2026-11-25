@@ -55,6 +55,7 @@ public class ExecutionApiTests(TestDatabase database) : IClassFixture<TestDataba
             services.AddSingleton<IExecutionSignal, NoExecutionSignal>();
             services.AddSingleton<IVenueAdapter>(Binance);
             services.AddScoped<ExecutionEngine>();
+            services.AddScoped<WorkingOrderEngine>();
         });
         _admin = await SignInAsync(Roles.Admin);
         Quote(Venue.Binance, "BTC", 59_990m, 60_010m);
@@ -241,6 +242,273 @@ public class ExecutionApiTests(TestDatabase database) : IClassFixture<TestDataba
         (decimal withKey, _, _) = await writer.WriteAsync(managerId, today, CancellationToken.None);
         withKey.Should().Be(0m);
         (await db.CashFlows.Where(f => f.ManagerAccountId == managerId && f.IsBookChange).SumAsync(f => f.AmountUsd)).Should().Be(0m);
+    }
+
+    // ---------------------------------------------------------------- working orders
+
+    /// <summary>Rounds of the two engines, as the execution service runs them, with the wait between slices taken as passed each time.</summary>
+    private async Task<WorkingOrderDto> WorkAsync(long id, int rounds = 1)
+    {
+        for (int round = 0; round < rounds; round++)
+        {
+            using IServiceScope scope = _app!.Services.CreateScope();
+            await scope.ServiceProvider.GetRequiredService<ExecutionEngine>().RunOnceAsync(CancellationToken.None);
+            await scope.ServiceProvider.GetRequiredService<WorkingOrderEngine>().RunOnceAsync(CancellationToken.None);
+            FtDbContext db = scope.ServiceProvider.GetRequiredService<FtDbContext>();
+            await db.WorkingOrders.Where(w => w.Id == id && w.NextSliceAt != null).ExecuteUpdateAsync(w => w.SetProperty(x => x.NextSliceAt, DateTimeOffset.UtcNow.AddMinutes(-1)));
+        }
+
+        await RunEngineAsync();
+        return (await _admin.GetFromJsonAsync<WorkingOrderDto>($"/api/working-orders/{id}", Json))!;
+    }
+
+    private async Task<WorkingOrderDto> StartWorkingAsync(WorkingOrderRequest request, HttpClient? client = null)
+    {
+        HttpResponseMessage sent = await (client ?? _admin).PostAsJsonAsync("/api/working-orders", request, Json);
+        sent.StatusCode.Should().Be(HttpStatusCode.OK, await sent.Content.ReadAsStringAsync());
+        return (await sent.Content.ReadFromJsonAsync<Answer<WorkingOrderDto>>(Json))!.Value!;
+    }
+
+    private static WorkingOrderRequest Paced(int? accountId, int? managerId, string asset, decimal quantity, decimal slice, OrderSide side = OrderSide.Buy, decimal? pausePrice = null, int? maxSlippage = null) =>
+        new(accountId, managerId, asset, InstrumentType.Perp, side, quantity, null, false, WorkingStyle.Paced, null, null, slice, slice, 1, pausePrice, maxSlippage, null);
+
+    [Fact]
+    public async Task PacedOrder_IsWorkedSliceBySlice_AndItsRecordIsTheSumOfItsSlices()
+    {
+        (int fundId, _, int accountId) = await NewAccountAsync();
+        Quote(Venue.Binance, "SOL", 99.9m, 100.1m, 1_000m);
+
+        WorkingOrderDto started = await StartWorkingAsync(Paced(accountId, null, "sol", 30m, 10m));
+        started.State.Should().Be(WorkingState.Working);
+        started.IsPaper.Should().BeTrue();
+
+        WorkingOrderDto done = await WorkAsync(started.Id, 8);
+
+        done.State.Should().Be(WorkingState.Done);
+        done.FilledQuantity.Should().Be(30m);
+        done.AverageFillPrice.Should().Be(100.1m);
+        done.ArrivalPrice.Should().Be(100m);
+        // Bought a tenth of a percent above the middle of the market it started in.
+        done.SlippageBps.Should().Be(10m);
+        done.SlicesSent.Should().Be(3);
+        done.Slices.Should().HaveCount(3).And.OnlyContain(s => s.Status == OrderStatus.Filled && s.Quantity == 10m && s.Venue == Venue.Binance);
+        done.FeesUsd.Should().Be(done.Slices!.Sum(s => s.FeesUsd)).And.BePositive();
+        (await _admin.GetFromJsonAsync<List<WorkingOrderDto>>($"/api/funds/{fundId}/working-orders", Json))!.Should().ContainSingle(w => w.Id == started.Id && w.Slices == null);
+
+        // The same name again is the same working order, not a second one.
+        WorkingOrderRequest named = Paced(accountId, null, "SOL", 5m, 5m) with { ClientId = "again-1" };
+        (await StartWorkingAsync(named)).Id.Should().Be((await StartWorkingAsync(named)).Id);
+    }
+
+    [Fact]
+    public async Task OrderOverTime_SendsEvenSlices_AndMakesUpLostTimeAtNoMoreThanDoubleSpeed()
+    {
+        (_, _, int accountId) = await NewAccountAsync();
+        Quote(Venue.Binance, "LINK", 9.99m, 10.01m, 100_000m);
+        WorkingOrderDto started = await StartWorkingAsync(new WorkingOrderRequest(accountId, null, "LINK", InstrumentType.Perp, OrderSide.Sell, 1_000m, null, false, WorkingStyle.OverTime, 10, 10, null, null, null, null, null, null));
+        started.PlannedEndAt.Should().BeCloseTo(started.StartedAt!.Value.AddMinutes(10), TimeSpan.FromSeconds(1));
+        started.HardEndAt.Should().BeCloseTo(started.StartedAt.Value.AddMinutes(25), TimeSpan.FromSeconds(1));
+
+        WorkingOrderDto first = await WorkAsync(started.Id);
+        first.Slices.Should().ContainSingle().Which.Quantity.Should().Be(100m);
+
+        // Five minutes have gone by with one slice sent: it is behind, and catches up two slices' worth at a time.
+        using (IServiceScope scope = _app!.Services.CreateScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<FtDbContext>().WorkingOrders.Where(w => w.Id == started.Id).ExecuteUpdateAsync(w => w.SetProperty(x => x.StartedAt, DateTimeOffset.UtcNow.AddMinutes(-5)));
+        }
+
+        WorkingOrderDto second = await WorkAsync(started.Id);
+        second.Slices![0].Quantity.Should().Be(200m);
+        second.Side.Should().Be(OrderSide.Sell);
+        second.AverageFillPrice.Should().Be(9.99m);
+        second.SlippageBps.Should().Be(10m);
+    }
+
+    [Fact]
+    public async Task EachSlice_GoesToTheManagersAccountWithTheBestPrice()
+    {
+        (_, int managerId, _) = await NewAccountAsync();
+        await AddAccountAsync(managerId, Venue.Bybit);
+        Quote(Venue.Binance, "AVAX", 29.9m, 30.2m, 10_000m);
+        Quote(Venue.Bybit, "AVAX", 29.9m, 30.0m, 10_000m);
+        WorkingOrderDto started = await StartWorkingAsync(Paced(null, managerId, "AVAX", 200m, 100m));
+        started.Where.Should().Be("Best venue for each slice");
+
+        (await WorkAsync(started.Id)).Slices.Should().ContainSingle().Which.Venue.Should().Be(Venue.Bybit);
+
+        // The better price moves to the other venue; so does the next slice.
+        Quote(Venue.Binance, "AVAX", 29.5m, 29.6m, 10_000m);
+        WorkingOrderDto done = await WorkAsync(started.Id, 3);
+        done.Slices!.Select(s => s.Venue).Should().BeEquivalentTo([Venue.Bybit, Venue.Binance]);
+        done.State.Should().Be(WorkingState.Done);
+        done.AverageFillPrice.Should().Be(29.8m);
+    }
+
+    [Fact]
+    public async Task ItsGuards_HoldItAtThePausePrice_AndPauseItOnSlippage_UntilAPersonSaysCarryOn()
+    {
+        (_, _, int accountId) = await NewAccountAsync();
+        Quote(Venue.Binance, "ADA", 0.499m, 0.501m, 1_000_000m);
+
+        // Buying is held while the market is above the pause price, and carries on by itself when it comes back.
+        WorkingOrderDto held = await WorkAsync((await StartWorkingAsync(Paced(accountId, null, "ADA", 2_000m, 1_000m, pausePrice: 0.45m))).Id, 2);
+        held.State.Should().Be(WorkingState.Working);
+        held.Note.Should().StartWith("Waiting: the market is at 0.501, above the pause price of 0.45");
+        held.SlicesSent.Should().Be(0);
+        Quote(Venue.Binance, "ADA", 0.448m, 0.449m, 1_000_000m);
+        WorkingOrderDto released = await WorkAsync(held.Id);
+        released.SlicesSent.Should().Be(1);
+        released.Note.Should().BeNull();
+
+        // Its average price is now far better than where it started, so the slippage guard has nothing to say. A
+        // fresh order whose price runs away from it is another matter.
+        (await _admin.PostAsync($"/api/working-orders/{held.Id}/stop", null)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await WorkAsync(held.Id)).State.Should().Be(WorkingState.Stopped);
+
+        Quote(Venue.Binance, "ADA", 0.499m, 0.501m, 1_000_000m);
+        WorkingOrderDto guarded = await StartWorkingAsync(Paced(accountId, null, "ADA", 3_000m, 1_000m, maxSlippage: 50));
+        await WorkAsync(guarded.Id);
+        Quote(Venue.Binance, "ADA", 0.519m, 0.521m, 1_000_000m);
+        WorkingOrderDto paused = await WorkAsync(guarded.Id, 3);
+        paused.State.Should().Be(WorkingState.Paused);
+        paused.Note.Should().StartWith(WorkingOrderEngine.SlippageNote);
+        paused.SlicesSent.Should().Be(2);
+
+        // A viewer cannot steer it; a trader can. Resumed, it goes on without the guard that has already spoken.
+        (await (await SignInAsync(Roles.Viewer)).PostAsync($"/api/working-orders/{guarded.Id}/resume", null)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await (await SignInAsync(Roles.Trader)).PostAsync($"/api/working-orders/{guarded.Id}/resume", null)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await WorkAsync(guarded.Id, 3)).State.Should().Be(WorkingState.Done);
+    }
+
+    [Fact]
+    public async Task PausedByAPerson_ItSendsNothing_AndRefusedThreeTimesRunning_ItStopsItself()
+    {
+        (_, _, int accountId) = await NewAccountAsync(maxOrder: 2_500m, maxPosition: 2_500m);
+        Quote(Venue.Binance, "XRP", 0.999m, 1.001m, 1_000_000m);
+        WorkingOrderDto started = await StartWorkingAsync(Paced(accountId, null, "XRP", 10_000m, 1_000m));
+        (await _admin.PostAsync($"/api/working-orders/{started.Id}/pause", null)).StatusCode.Should().Be(HttpStatusCode.OK);
+        WorkingOrderDto paused = await WorkAsync(started.Id, 3);
+        paused.State.Should().Be(WorkingState.Paused);
+        paused.SlicesSent.Should().Be(0);
+        (await _admin.PostAsync($"/api/working-orders/{started.Id}/pause", null)).IsSuccessStatusCode.Should().BeFalse();
+
+        // Two slices fit under the account's position limit. The third, fourth and fifth are refused, and that ends it.
+        (await _admin.PostAsync($"/api/working-orders/{started.Id}/resume", null)).StatusCode.Should().Be(HttpStatusCode.OK);
+        WorkingOrderDto stopped = await WorkAsync(started.Id, 12);
+        stopped.State.Should().Be(WorkingState.Stopped);
+        stopped.Note.Should().StartWith("Stopped: 3 slices in a row were refused.");
+        stopped.FilledQuantity.Should().Be(2_000m);
+        stopped.Slices!.Count(s => s.Status == OrderStatus.Rejected).Should().Be(3);
+        (await _admin.PostAsync($"/api/working-orders/{started.Id}/stop", null)).IsSuccessStatusCode.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task PassiveOrder_RestsAtTheBestPrice_FollowsIt_AndTheKillSwitchEndsIt()
+    {
+        (int fundId, _, int accountId) = await NewAccountAsync();
+        Quote(Venue.Binance, "DOGE", 0.0999m, 0.1001m, 1_000_000m);
+        WorkingOrderDto started = await StartWorkingAsync(new WorkingOrderRequest(accountId, null, "DOGE", InstrumentType.Perp, OrderSide.Buy, 50_000m, null, false, WorkingStyle.Passive, null, null, null, null, null, null, null, null));
+
+        WorkingOrderDto resting = await WorkAsync(started.Id, 2);
+        SliceDto first = resting.Slices.Should().ContainSingle().Subject;
+        first.LimitPrice.Should().Be(0.0999m);
+        first.Type.Should().Be(OrderType.Limit);
+        first.Status.Should().Be(OrderStatus.Working);
+        first.Quantity.Should().Be(50_000m);
+
+        // The best bid moves up. Once the slice has rested a moment it is taken back and put at the new best price.
+        Quote(Venue.Binance, "DOGE", 0.1000m, 0.1002m, 1_000_000m);
+        using (IServiceScope scope = _app!.Services.CreateScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<FtDbContext>().Orders.Where(o => o.Id == first.Id).ExecuteUpdateAsync(o => o.SetProperty(x => x.CreatedAt, DateTimeOffset.UtcNow.AddSeconds(-10)));
+        }
+
+        WorkingOrderDto moved = await WorkAsync(started.Id, 3);
+        moved.Slices.Should().HaveCount(2);
+        moved.Slices![1].Status.Should().Be(OrderStatus.Cancelled);
+        moved.Slices[0].LimitPrice.Should().Be(0.1000m);
+        moved.Slices[0].Status.Should().Be(OrderStatus.Working);
+
+        (await _admin.PostAsJsonAsync($"/api/funds/{fundId}/halts", new PullHaltRequest(HaltScope.Account, null, accountId, "test"), Json)).StatusCode.Should().Be(HttpStatusCode.OK);
+        WorkingOrderDto ended = await WorkAsync(started.Id, 3);
+        ended.State.Should().Be(WorkingState.Stopped);
+        ended.Note.Should().Be("Stopped by the kill switch.");
+        ended.Slices.Should().OnlyContain(s => s.Status == OrderStatus.Cancelled);
+    }
+
+    [Fact]
+    public async Task RealMoneyAboveWhatOneOrderMayBe_WaitsForASecondAdministrator_AndPaperDoesNot()
+    {
+        (int fundId, _, int accountId) = await NewAccountAsync(maxOrder: 50_000m, maxPosition: 2_000_000m);
+        Quote(Venue.Binance, "BNB", 499m, 501m, 100_000m);
+        // On paper, a large order needs nobody's leave.
+        (await StartWorkingAsync(Paced(accountId, null, "BNB", 400m, 50m))).State.Should().Be(WorkingState.Working);
+
+        using (IServiceScope scope = _app!.Services.CreateScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<FtDbContext>().TradingAccounts.Where(a => a.Id == accountId).ExecuteUpdateAsync(a => a.SetProperty(x => x.Mode, TradingMode.Live));
+        }
+
+        // Under the limit it starts at once; above it, it waits.
+        (await StartWorkingAsync(Paced(accountId, null, "BNB", 80m, 40m))).State.Should().Be(WorkingState.Working);
+        WorkingOrderDto waiting = await StartWorkingAsync(Paced(accountId, null, "BNB", 400m, 50m));
+        waiting.State.Should().Be(WorkingState.PendingApproval);
+        waiting.StartedAt.Should().BeNull();
+        (await WorkAsync(waiting.Id, 2)).SlicesSent.Should().Be(0);
+
+        ApprovalDto request = (await _admin.GetFromJsonAsync<TradingDto>($"/api/funds/{fundId}/trading", Json))!.Approvals.Single(a => a.Kind == ApprovalKind.LargeOrder);
+        request.Summary.Should().Contain("buy 400 BNB-PERP").And.Contain("above the 50,000 USD one order may be");
+        // Not by the one who asked.
+        (await _admin.PostAsJsonAsync($"/api/approvals/{request.Id}/approve", new DecisionRequest(null), Json)).IsSuccessStatusCode.Should().BeFalse();
+        HttpClient second = await SignInAsync(Roles.Admin);
+        (await second.PostAsJsonAsync($"/api/approvals/{request.Id}/approve", new DecisionRequest(null), Json)).StatusCode.Should().Be(HttpStatusCode.OK);
+        WorkingOrderDto approved = (await _admin.GetFromJsonAsync<WorkingOrderDto>($"/api/working-orders/{waiting.Id}", Json))!;
+        approved.State.Should().Be(WorkingState.Working);
+        approved.ApprovedBy.Should().NotBeNull();
+        approved.StartedAt.Should().NotBeNull();
+
+        // One that is turned down never starts; one withdrawn takes its request with it.
+        WorkingOrderDto refused = await StartWorkingAsync(Paced(accountId, null, "BNB", 300m, 50m));
+        ApprovalDto second2 = (await _admin.GetFromJsonAsync<TradingDto>($"/api/funds/{fundId}/trading", Json))!.Approvals.Single(a => a.Kind == ApprovalKind.LargeOrder && a.Status == ApprovalStatus.Pending);
+        (await second.PostAsJsonAsync($"/api/approvals/{second2.Id}/reject", new DecisionRequest("No"), Json)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await _admin.GetFromJsonAsync<WorkingOrderDto>($"/api/working-orders/{refused.Id}", Json))!.State.Should().Be(WorkingState.Rejected);
+        WorkingOrderDto withdrawn = await StartWorkingAsync(Paced(accountId, null, "BNB", 300m, 50m));
+        (await _admin.PostAsync($"/api/working-orders/{withdrawn.Id}/stop", null)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await _admin.GetFromJsonAsync<TradingDto>($"/api/funds/{fundId}/trading", Json))!.Approvals.Should().NotContain(a => a.Kind == ApprovalKind.LargeOrder && a.Status == ApprovalStatus.Pending);
+
+        // Back on paper, so the real-money orders left open here are not picked up by another test's engine round.
+        using (IServiceScope scope = _app!.Services.CreateScope())
+        {
+            FtDbContext db = scope.ServiceProvider.GetRequiredService<FtDbContext>();
+            await db.WorkingOrders.Where(w => w.TradingAccountId == accountId && (w.State == WorkingState.Working || w.State == WorkingState.Paused)).ExecuteUpdateAsync(w => w.SetProperty(x => x.State, WorkingState.Stopped));
+        }
+    }
+
+    [Theory]
+    [InlineData("over time without a time", "Say how long")]
+    [InlineData("too many slices", "more often than every five seconds")]
+    [InlineData("paced without sizes", "smallest and the largest slice")]
+    [InlineData("no market", "no live market")]
+    [InlineData("reduce only on spot", "Reduce only is for perpetuals")]
+    public async Task WorkingOrderThatMakesNoSense_IsRefusedWithTheReason(string what, string expected)
+    {
+        (_, _, int accountId) = await NewAccountAsync();
+        Quote(Venue.Binance, "SUI", 1.99m, 2.01m, 100_000m);
+        WorkingOrderRequest good = Paced(accountId, null, "SUI", 100m, 10m);
+        WorkingOrderRequest bad = what switch
+        {
+            "over time without a time" => good with { Style = WorkingStyle.OverTime, Slices = 10 },
+            "too many slices" => good with { Style = WorkingStyle.OverTime, DurationMinutes = 1, Slices = 60 },
+            "paced without sizes" => good with { MinSlice = null },
+            "no market" => good with { Asset = "NOBOOK" },
+            _ => good with { InstrumentType = InstrumentType.Spot, ReduceOnly = true },
+        };
+
+        HttpResponseMessage sent = await _admin.PostAsJsonAsync("/api/working-orders", bad, Json);
+
+        sent.IsSuccessStatusCode.Should().BeFalse();
+        (await sent.Content.ReadAsStringAsync()).Should().Contain(expected);
     }
 
     [Fact]

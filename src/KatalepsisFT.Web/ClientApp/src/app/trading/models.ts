@@ -227,3 +227,63 @@ export const TIF_LABEL: Record<TimeInForce, string> = { GoodTillCancelled: 'Rest
 export const STATUS_LABEL: Record<OrderStatus, string> = { Received: 'Received', Accepted: 'Accepted', Working: 'Working', PartlyFilled: 'Partly filled', Filled: 'Filled', Cancelled: 'Cancelled', Rejected: 'Rejected' };
 export const STATUS_COLOR: Record<OrderStatus, string> = { Received: 'default', Accepted: 'blue', Working: 'blue', PartlyFilled: 'gold', Filled: 'green', Cancelled: 'default', Rejected: 'red' };
 export const APPROVAL_LABEL: Record<Approval['kind'], string> = { AddTradingKey: 'Trading key', RaiseLimits: 'Higher limits', ReleaseHalt: 'Release a halt', GoLive: 'Real money' };
+
+export type WorkingStyle = 'OverTime' | 'Paced' | 'Passive';
+export type WorkingState = 'PendingApproval' | 'Working' | 'Paused' | 'Done' | 'Stopped' | 'Rejected';
+
+/** One slice of a working order: an ordinary order sent on its behalf. */
+export interface Slice {
+  id: number;
+  at: string;
+  venue: TradingVenue;
+  venueName: string;
+  type: OrderType;
+  quantity: number;
+  limitPrice: number | null;
+  filledQuantity: number;
+  averageFillPrice: number;
+  feesUsd: number;
+  status: OrderStatus;
+  rejectReason: string | null;
+}
+
+/** An order too large to send at once, worked over time in slices. */
+export interface WorkingOrder {
+  id: number;
+  manager: string;
+  where: string;
+  asset: string;
+  instrumentType: TradedType;
+  side: OrderSide;
+  quantity: number;
+  limitPrice: number | null;
+  style: WorkingStyle;
+  durationSeconds: number | null;
+  sliceCount: number | null;
+  minSlice: number | null;
+  maxSlice: number | null;
+  waitSeconds: number | null;
+  pausePrice: number | null;
+  maxSlippageBps: number | null;
+  state: WorkingState;
+  note: string | null;
+  stopping: boolean;
+  filledQuantity: number;
+  averageFillPrice: number;
+  arrivalPrice: number | null;
+  slippageBps: number | null;
+  feesUsd: number;
+  slicesSent: number;
+  startedAt: string | null;
+  plannedEndAt: string | null;
+  hardEndAt: string | null;
+  endedAt: string | null;
+  createdBy: string;
+  createdAt: string;
+  approvedBy: string | null;
+  isPaper: boolean;
+  slices: Slice[] | null;
+}
+
+export const WORKING_STATE_LABEL: Record<WorkingState, string> = { PendingApproval: 'Waiting for approval', Working: 'Working', Paused: 'Paused', Done: 'Done', Stopped: 'Stopped', Rejected: 'Not approved' };
+export const WORKING_STATE_COLOR: Record<WorkingState, string> = { PendingApproval: 'gold', Working: 'green', Paused: 'orange', Done: 'default', Stopped: 'red', Rejected: 'red' };

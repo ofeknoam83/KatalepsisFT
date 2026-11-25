@@ -162,3 +162,31 @@ internal sealed class PinnedInstrumentConfiguration : IEntityTypeConfiguration<P
         pin.HasOne(x => x.Fund).WithMany().HasForeignKey(x => x.FundId).OnDelete(DeleteBehavior.Cascade);
     }
 }
+
+internal sealed class WorkingOrderConfiguration : IEntityTypeConfiguration<WorkingOrder>
+{
+    public void Configure(EntityTypeBuilder<WorkingOrder> working)
+    {
+        working.ToTable("working_orders");
+        working.Property(x => x.ClientId).HasMaxLength(64);
+        working.Property(x => x.Asset).HasMaxLength(32);
+        working.Property(x => x.Note).HasMaxLength(400);
+        working.Property(x => x.CreatedBy).HasMaxLength(256);
+        working.Property(x => x.ApprovedBy).HasMaxLength(256);
+        working.Property(x => x.Quantity).HasPrecision(28, 10);
+        working.Property(x => x.LimitPrice).HasPrecision(28, 10);
+        working.Property(x => x.MinSlice).HasPrecision(28, 10);
+        working.Property(x => x.MaxSlice).HasPrecision(28, 10);
+        working.Property(x => x.PausePrice).HasPrecision(28, 10);
+        working.Property(x => x.FilledQuantity).HasPrecision(28, 10);
+        working.Property(x => x.AverageFillPrice).HasPrecision(28, 10);
+        working.Property(x => x.ArrivalPrice).HasPrecision(28, 10);
+        working.Property(x => x.FeesUsd).HasPrecision(20, 6);
+        working.Property(x => x.Version).IsRowVersion();
+        working.HasIndex(x => new { x.ManagerAccountId, x.ClientId }).IsUnique();
+        working.HasIndex(x => x.State);
+        working.HasOne(x => x.ManagerAccount).WithMany().HasForeignKey(x => x.ManagerAccountId).OnDelete(DeleteBehavior.Restrict);
+        working.HasOne(x => x.TradingAccount).WithMany().HasForeignKey(x => x.TradingAccountId).OnDelete(DeleteBehavior.Restrict);
+        working.HasMany(x => x.Children).WithOne(x => x.WorkingOrder).HasForeignKey(x => x.WorkingOrderId).OnDelete(DeleteBehavior.Restrict);
+    }
+}

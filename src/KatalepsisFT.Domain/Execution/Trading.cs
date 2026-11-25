@@ -122,6 +122,9 @@ public enum ApprovalKind
 
     /// <summary>Move an account from paper to real money.</summary>
     GoLive = 4,
+
+    /// <summary>Start a working order larger than its account may send without a second person.</summary>
+    LargeOrder = 5,
 }
 
 public enum ApprovalStatus

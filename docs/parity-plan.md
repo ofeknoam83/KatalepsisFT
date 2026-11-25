@@ -141,6 +141,20 @@ For every style:
 - **Restart safety.** A parent survives a restart of the execution service: it reads its children back and carries
   on from what was actually filled, under the same write-first rule as single orders.
 
+**Status (25 November 2026): the core is built.** The ticket has a "How to work it" choice: Single, Over time,
+Paced, Passive. A working order is a row in `working_orders`; its slices are ordinary orders carrying its id. The
+execution service looks at each open working order every round, after the orders themselves.
+
+- Built: the three styles; the best venue for each slice among a manager's accounts; the pause price; the slippage
+  guard (it pauses the order, and a person resuming it accepts the slippage); pause, resume and stop; the kill
+  switch ending it; a hard end (half the planned time again plus ten minutes, or a day for the open-ended styles),
+  at most 1,000 slices, and a stop after three refused slices in a row; arrival price, average price, slippage and
+  fees; the record surviving a restart, because what is filled is always read back from the slices.
+- Approval: a working order on a real-money account, worth more than that account's largest single order, waits
+  for a second administrator. **Paper accounts need no approval**, so a trial is not held up. The amount is the
+  account's largest-order limit; a separate, editable amount is not built.
+- Still to do: baskets; the stop on low margin for real perp accounts; working orders through the strategy API.
+
 **New here.** Tables `working_orders` and a parent link on `orders`; a step in the execution loop; the approval
 kind "large order".
 

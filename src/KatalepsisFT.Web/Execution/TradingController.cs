@@ -19,7 +19,7 @@ public sealed record SetEnabledBody(bool Enabled);
 /// </summary>
 [ApiController]
 [Route("api")]
-public sealed class TradingController(TradingService trading) : ControllerBase
+public sealed class TradingController(TradingService trading, WorkingOrderService working) : ControllerBase
 {
     private Actor Actor => new(User.Identity?.Name ?? "Unknown", User.IsInRole(Roles.Admin) || User.IsInRole(Roles.Trader), User.IsInRole(Roles.Admin));
 
@@ -123,6 +123,50 @@ public sealed class TradingController(TradingService trading) : ControllerBase
     [Audit("Order sent from the ticket", TradingAccountFromBody = true)]
     [HttpPost("orders")]
     public async Task<IActionResult> SubmitAsync(SubmitOrderRequest request, CancellationToken cancellationToken) => Result(await trading.SubmitAsync(request, Actor, null, cancellationToken));
+
+    /// <summary>A fund's working orders: the open ones and those that ended in the last week.</summary>
+    [HttpGet("funds/{fundId:int}/working-orders")]
+    public async Task<IReadOnlyList<WorkingOrderDto>> WorkingOrdersAsync(int fundId, CancellationToken cancellationToken) => await working.ListAsync(fundId, cancellationToken);
+
+    /// <summary>One working order with its slices.</summary>
+    [HttpGet("working-orders/{id:long}")]
+    public async Task<ActionResult<WorkingOrderDto>> WorkingOrderAsync(long id, CancellationToken cancellationToken)
+    {
+        WorkingOrderDto? found = await working.GetAsync(id, cancellationToken);
+        return found is null ? NotFound() : found;
+    }
+
+    [Authorize(Roles = Roles.CanTrade)]
+    [Audit("Working order sent from the ticket", TradingAccountFromBody = true, ManagerFromBody = true)]
+    [HttpPost("working-orders")]
+    public async Task<IActionResult> SubmitWorkingAsync(WorkingOrderRequest request, CancellationToken cancellationToken) => Result(await working.SubmitAsync(request, Actor, cancellationToken));
+
+    [Authorize(Roles = Roles.CanTrade)]
+    [Audit("Working order paused")]
+    [HttpPost("working-orders/{id:long}/pause")]
+    public async Task<IActionResult> PauseWorkingAsync(long id, CancellationToken cancellationToken)
+    {
+        HttpContext.Items[AuditFilter.SubjectItem] = $"Working order {id}";
+        return Result(await working.PauseAsync(id, Actor, cancellationToken));
+    }
+
+    [Authorize(Roles = Roles.CanTrade)]
+    [Audit("Working order resumed")]
+    [HttpPost("working-orders/{id:long}/resume")]
+    public async Task<IActionResult> ResumeWorkingAsync(long id, CancellationToken cancellationToken)
+    {
+        HttpContext.Items[AuditFilter.SubjectItem] = $"Working order {id}";
+        return Result(await working.ResumeAsync(id, Actor, cancellationToken));
+    }
+
+    [Authorize(Roles = Roles.CanTrade)]
+    [Audit("Working order stopped")]
+    [HttpPost("working-orders/{id:long}/stop")]
+    public async Task<IActionResult> StopWorkingAsync(long id, CancellationToken cancellationToken)
+    {
+        HttpContext.Items[AuditFilter.SubjectItem] = $"Working order {id}";
+        return Result(await working.StopAsync(id, Actor, cancellationToken));
+    }
 
     [Authorize(Roles = Roles.CanTrade)]
     [Audit("Order cancel asked for", Order = "id")]

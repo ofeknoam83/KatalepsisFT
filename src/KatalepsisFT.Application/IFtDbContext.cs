@@ -37,6 +37,7 @@ public interface IFtDbContext
     DbSet<KatalepsisFT.Domain.Execution.StrategyKey> StrategyKeys { get; }
     DbSet<KatalepsisFT.Domain.Execution.Order> Orders { get; }
     DbSet<KatalepsisFT.Domain.Execution.OrderEvent> OrderEvents { get; }
+    DbSet<KatalepsisFT.Domain.Execution.WorkingOrder> WorkingOrders { get; }
     DbSet<KatalepsisFT.Domain.Execution.TradingPosition> TradingPositions { get; }
     DbSet<KatalepsisFT.Domain.Execution.SystemSetting> SystemSettings { get; }
     DbSet<KatalepsisFT.Domain.Execution.ListedInstrument> ListedInstruments { get; }

@@ -22,7 +22,7 @@ import { EditName } from '../shared/edit-name';
 import { FORMAT_PIPES } from '../shared/format';
 import { PageHead } from '../shared/page-head';
 import { keptData } from '../shared/page-data';
-import { APPROVAL_LABEL, AccountForm, Book, InstrumentRef, VenueRules, HaltScope, Order, OrderSide, OrderType, STATUS_COLOR, STATUS_LABEL, TIF_LABEL, TimeInForce, TradedType, Trading, TradingAccount, TradingVenue, instrumentName } from './models';
+import { APPROVAL_LABEL, AccountForm, Book, InstrumentRef, VenueRules, WORKING_STATE_COLOR, WORKING_STATE_LABEL, WorkingOrder, WorkingStyle, HaltScope, Order, OrderSide, OrderType, STATUS_COLOR, STATUS_LABEL, TIF_LABEL, TimeInForce, TradedType, Trading, TradingAccount, TradingVenue, instrumentName } from './models';
 
 interface Answer {
   notice?: string | null;
@@ -201,6 +201,26 @@ interface Depth {
               <label nz-checkbox [ngModel]="reduceOnly()" (ngModelChange)="reduceOnly.set($event)">Reduce only <span class="hint">may shrink a position, never open or flip one</span></label>
             } @else {
               <span class="hint">Spot: you can sell only what the account holds.</span>
+            }
+            <div class="field">
+              <label>How to work it</label>
+              <nz-segmented [nzOptions]="styles" [ngModel]="style()" (ngModelChange)="style.set($event)" data-testid="ticket-style" />
+            </div>
+            @if (style() !== 'Single') {
+              <div class="two">
+                @if (style() === 'OverTime') {
+                  <div class="field"><label>Over, minutes</label><nz-input-number [ngModel]="durationMinutes()" (ngModelChange)="durationMinutes.set($event)" [nzMin]="1" [nzMax]="1440" style="width:100%" data-testid="ticket-duration" /></div>
+                  <div class="field"><label>Slices</label><nz-input-number [ngModel]="sliceCount()" (ngModelChange)="sliceCount.set($event)" [nzMin]="2" [nzMax]="500" style="width:100%" data-testid="ticket-slices" /></div>
+                }
+                @if (style() === 'Paced') {
+                  <div class="field"><label>Slice from, {{ asset() }}</label><nz-input-number [ngModel]="minSlice()" (ngModelChange)="minSlice.set($event)" [nzMin]="0" style="width:100%" data-testid="ticket-min-slice" /></div>
+                  <div class="field"><label>Slice to, {{ asset() }}</label><nz-input-number [ngModel]="maxSlice()" (ngModelChange)="maxSlice.set($event)" [nzMin]="0" style="width:100%" data-testid="ticket-max-slice" /></div>
+                  <div class="field"><label>Wait between, seconds</label><nz-input-number [ngModel]="waitSeconds()" (ngModelChange)="waitSeconds.set($event)" [nzMin]="1" [nzMax]="3600" style="width:100%" /></div>
+                }
+                <div class="field" [title]="'Buying waits while the market is above this price, selling while it is below, and carries on when the price comes back'"><label>Pause price</label><nz-input-number [ngModel]="pausePrice()" (ngModelChange)="pausePrice.set($event)" [nzMin]="0" nzPlaceHolder="None" style="width:100%" data-testid="ticket-pause-price" /></div>
+                <div class="field" title="The order pauses itself when its average price is this much worse than the price it started at"><label>Largest slippage, bp</label><nz-input-number [ngModel]="maxSlippage()" (ngModelChange)="maxSlippage.set($event)" [nzMin]="1" [nzMax]="5000" nzPlaceHolder="None" style="width:100%" /></div>
+              </div>
+              <p class="hint" data-testid="style-hint">{{ styleHint() }}</p>
             }
             <div class="est">
               About <b>{{ notional() | usd }}</b>
@@ -488,6 +508,86 @@ interface Depth {
         </nz-table>
       </div>
 
+      @if (working.data(); as list) {
+        @if (list.length > 0) {
+          <div class="panel" data-testid="working-orders">
+            <h3>Working orders <span class="hint">Large orders worked over time. Each slice is an ordinary order, checked and filled like any other.</span></h3>
+            <nz-table [nzData]="list" nzTemplateMode [nzShowPagination]="false" nzSize="small">
+              <thead>
+                <tr><th>Order</th><th>How</th><th>Where</th><th style="width:190px">Filled</th><th class="num">Average</th><th class="num">Slippage</th><th class="num">Fees</th><th>State</th><th></th></tr>
+              </thead>
+              <tbody>
+                @for (w of list; track w.id) {
+                  <tr class="rowlink" (click)="openWorking.set(openWorking() === w.id ? null : w.id)" [attr.data-testid]="'working-' + w.id">
+                    <td class="nowrap"><b [style.color]="w.side === 'Buy' ? 'var(--kft-up)' : 'var(--kft-down)'">{{ w.side }}</b> {{ w.quantity | dynamicDecimal }} {{ name(w.asset, w.instrumentType) }}{{ w.limitPrice === null ? '' : ' up to ' + (w.limitPrice | dynamicDecimal) }}</td>
+                    <td class="nowrap">{{ how(w) }}</td>
+                    <td class="nowrap">{{ w.manager }} · {{ w.where }} @if (w.isPaper) { <span class="hint">paper</span> }</td>
+                    <td>
+                      <div class="prog"><i [style.width.%]="w.quantity > 0 ? w.filledQuantity / w.quantity * 100 : 0"></i></div>
+                      <span class="hint">{{ w.filledQuantity | dynamicDecimal }} of {{ w.quantity | dynamicDecimal }} · {{ w.slicesSent }} slices</span>
+                    </td>
+                    <td class="num">{{ w.filledQuantity > 0 ? (w.averageFillPrice | dynamicDecimal) : '–' }}</td>
+                    <td class="num" [title]="w.arrivalPrice === null ? '' : 'Against ' + w.arrivalPrice + ', the middle of the market when it started'">{{ w.slippageBps === null ? '–' : (w.slippageBps | number: '1.1-1') + ' bp' }}</td>
+                    <td class="num">{{ w.feesUsd | usd }}</td>
+                    <td>
+                      <nz-tag [nzColor]="workingColor[w.state]">{{ w.stopping ? 'Stopping' : workingLabel[w.state] }}</nz-tag>
+                      @if (w.note) {
+                        <div class="hint wnote">{{ w.note }}</div>
+                      }
+                    </td>
+                    <td class="nowrap" style="text-align:right" (click)="$event.stopPropagation()">
+                      @if (d.canTrade) {
+                        @if (w.state === 'Working' && !w.stopping) {
+                          <a (click)="run(http.post('/api/working-orders/' + w.id + '/pause', {}), 'Paused.')" [attr.data-testid]="'pause-' + w.id">Pause</a>
+                        }
+                        @if (w.state === 'Paused' && !w.stopping) {
+                          <a (click)="run(http.post('/api/working-orders/' + w.id + '/resume', {}), 'Resumed.')" [attr.data-testid]="'resume-' + w.id">Resume</a>
+                        }
+                        @if ((w.state === 'Working' || w.state === 'Paused' || w.state === 'PendingApproval') && !w.stopping) {
+                          <a style="margin-left:12px;color:#cf1322" nz-popconfirm nzPopconfirmTitle="Stop this order? What has been filled stays filled." nzOkText="Stop it" (nzOnConfirm)="run(http.post('/api/working-orders/' + w.id + '/stop', {}), 'Stopping.')" [attr.data-testid]="'stop-' + w.id">Stop</a>
+                        }
+                      }
+                    </td>
+                  </tr>
+                  @if (openWorking() === w.id) {
+                    <tr>
+                      <td colspan="9" class="slices" [attr.data-testid]="'slices-' + w.id">
+                        @if (workingDetail.data(); as detail) {
+                          <div class="hint" style="margin-bottom:6px">
+                            Sent by {{ detail.createdBy }} {{ detail.createdAt | date: 'd MMM HH:mm' : 'UTC' }} UTC{{ detail.approvedBy ? ', approved by ' + detail.approvedBy : '' }}
+                            @if (detail.startedAt) { · started {{ detail.startedAt | date: 'HH:mm:ss' : 'UTC' }} }
+                            @if (detail.plannedEndAt) { · due to finish {{ detail.plannedEndAt | date: 'HH:mm' : 'UTC' }} }
+                            @if (detail.hardEndAt && !detail.endedAt) { · stops by itself at {{ detail.hardEndAt | date: 'd MMM HH:mm' : 'UTC' }} UTC }
+                            @if (detail.endedAt) { · ended {{ detail.endedAt | date: 'd MMM HH:mm:ss' : 'UTC' }} UTC }
+                            @if (detail.pausePrice !== null) { · pause price {{ detail.pausePrice | dynamicDecimal }} }
+                            @if (detail.maxSlippageBps !== null) { · slippage limit {{ detail.maxSlippageBps }} bp }
+                          </div>
+                          @if ((detail.slices ?? []).length === 0) {
+                            <span class="hint">No slice has been sent yet.</span>
+                          } @else {
+                            <table class="mini">
+                              <tr><th>Time (UTC)</th><th>Venue</th><th class="num">Quantity</th><th class="num">Filled</th><th class="num">Price</th><th class="num">Fee</th><th>Status</th></tr>
+                              @for (s of detail.slices ?? []; track s.id) {
+                                <tr>
+                                  <td>{{ s.at | date: 'HH:mm:ss' : 'UTC' }}</td><td>{{ s.venueName }}</td><td class="num">{{ s.quantity | dynamicDecimal }}</td><td class="num">{{ s.filledQuantity | dynamicDecimal }}</td>
+                                  <td class="num">{{ s.filledQuantity > 0 ? (s.averageFillPrice | dynamicDecimal) : s.limitPrice !== null ? 'rests at ' + (s.limitPrice | dynamicDecimal) : '–' }}</td>
+                                  <td class="num">{{ s.feesUsd | usd }}</td>
+                                  <td><nz-tag [nzColor]="statusColor[s.status]">{{ statusLabel[s.status] }}</nz-tag> @if (s.rejectReason) { <span class="hint">{{ s.rejectReason }}</span> }</td>
+                                </tr>
+                              }
+                            </table>
+                          }
+                        }
+                      </td>
+                    </tr>
+                  }
+                }
+              </tbody>
+            </nz-table>
+          </div>
+        }
+      }
+
       <div class="panel" data-testid="orders">
         <h3>
           Orders
@@ -613,6 +713,50 @@ interface Depth {
       margin-right: 14px;
       font-size: 12.5px;
       font-weight: 400;
+    }
+    .prog {
+      height: 6px;
+      border-radius: 99px;
+      background: var(--kft-fill);
+      overflow: hidden;
+      margin: 4px 0 3px;
+    }
+    .prog i {
+      display: block;
+      height: 100%;
+      background: var(--kft-brand);
+      border-radius: 99px;
+    }
+    .rowlink {
+      cursor: pointer;
+    }
+    .wnote {
+      max-width: 340px;
+      white-space: normal;
+      margin-top: 3px;
+    }
+    .slices {
+      background: var(--kft-bg);
+      padding: 10px 16px 12px 28px !important;
+    }
+    .mini {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12.5px;
+    }
+    .mini th {
+      text-align: left;
+      font-weight: 600;
+      color: var(--kft-text-3);
+      font-size: 11px;
+      padding: 3px 8px;
+    }
+    .mini td {
+      padding: 4px 8px;
+      border-top: 1px solid var(--kft-line);
+    }
+    .mini .num {
+      text-align: right;
     }
     .quick {
       display: flex;
@@ -836,6 +980,56 @@ export class FundTradingPage {
   );
   protected readonly shown = signal<number | null>(null);
 
+  // Working orders.
+  protected readonly working = keptData(this.fundId$, this.beat, (id) => this.http.get<WorkingOrder[]>(`/api/funds/${id}/working-orders`), (id) => id);
+  protected readonly openWorking = signal<number | null>(null);
+  protected readonly workingDetail = keptData(toObservable(this.openWorking).pipe(filter((id): id is number => id !== null)), this.beat, (id) => this.http.get<WorkingOrder>(`/api/working-orders/${id}`), (id) => id);
+  protected readonly workingLabel = WORKING_STATE_LABEL;
+  protected readonly workingColor = WORKING_STATE_COLOR;
+  protected readonly styles = [
+    { label: 'Single', value: 'Single' },
+    { label: 'Over time', value: 'OverTime' },
+    { label: 'Paced', value: 'Paced' },
+    { label: 'Passive', value: 'Passive' },
+  ];
+  protected readonly style = signal<'Single' | WorkingStyle>('Single');
+  protected readonly durationMinutes = signal<number | null>(60);
+  protected readonly sliceCount = signal<number | null>(12);
+  protected readonly minSlice = signal<number | null>(null);
+  protected readonly maxSlice = signal<number | null>(null);
+  protected readonly waitSeconds = signal<number | null>(30);
+  protected readonly pausePrice = signal<number | null>(null);
+  protected readonly maxSlippage = signal<number | null>(null);
+
+  /** In words, what the chosen way of working will do with the quantity entered. */
+  protected readonly styleHint = computed(() => {
+    const quantity = this.quantity() ?? 0;
+    switch (this.style()) {
+      case 'OverTime': {
+        const minutes = this.durationMinutes() ?? 0;
+        const slices = this.sliceCount() ?? 0;
+        return slices > 0 && minutes > 0 ? `${slices} slices of about ${+(quantity / slices).toPrecision(4)} ${this.asset()}, one every ${+((minutes * 60) / slices).toFixed(0)} seconds. Each goes to the venue with the best price at that moment.` : '';
+      }
+      case 'Paced':
+        return 'Slices of a size picked at random between the two, with the wait between them, until it is all done or a day has passed.';
+      case 'Passive':
+        return 'Rests at the best price as a maker and follows the market. It never crosses the spread, so it may take a while or not fill at all.';
+      default:
+        return '';
+    }
+  });
+
+  protected how(w: WorkingOrder): string {
+    switch (w.style) {
+      case 'OverTime':
+        return `Over ${Math.round((w.durationSeconds ?? 0) / 60)} min in ${w.sliceCount} slices`;
+      case 'Paced':
+        return `Paced, ${w.minSlice}–${w.maxSlice} every ${w.waitSeconds} s`;
+      default:
+        return 'Passive, at the best price';
+    }
+  }
+
   // The ticket.
   protected readonly target = signal<string | null>(null);
   /** The instrument on the ticket, as "Perp:BTC" or "Spot:BTC". */
@@ -1024,6 +1218,32 @@ export class FundTradingPage {
       return;
     }
 
+    if (this.style() !== 'Single') {
+      this.place(
+        {
+          tradingAccountId: target[0] === 'a' ? Number(target.slice(1)) : null,
+          managerId: target[0] === 'm' ? Number(target.slice(1)) : null,
+          asset: this.asset(),
+          instrumentType: this.type2(),
+          side,
+          quantity: this.quantity(),
+          limitPrice: this.type() === 'Limit' ? this.limitPrice() : null,
+          reduceOnly: this.type2() === 'Perp' && this.reduceOnly(),
+          style: this.style(),
+          durationMinutes: this.durationMinutes(),
+          slices: this.sliceCount(),
+          minSlice: this.minSlice(),
+          maxSlice: this.maxSlice(),
+          waitSeconds: this.waitSeconds(),
+          pausePrice: this.pausePrice(),
+          maxSlippageBps: this.maxSlippage(),
+        },
+        '/api/working-orders',
+        'clientId',
+      );
+      return;
+    }
+
     this.place({
       tradingAccountId: target[0] === 'a' ? Number(target.slice(1)) : null,
       managerId: target[0] === 'm' ? Number(target.slice(1)) : null,
@@ -1045,7 +1265,7 @@ export class FundTradingPage {
   /** The order being sent and the name it goes under, kept until the server has answered for it. */
   private attempt: { what: string; name: string } | null = null;
 
-  private place(order: Record<string, unknown>): void {
+  private place(order: Record<string, unknown>, url = '/api/orders', nameField = 'clientOrderId'): void {
     // A second click while the first is still on its way does nothing.
     if (this.sending()) {
       return;
@@ -1059,8 +1279,8 @@ export class FundTradingPage {
       this.attempt = { what, name: `ui-${crypto.randomUUID()}` };
     }
 
-    const body = { ...order, clientOrderId: this.attempt.name };
-    this.run(this.http.post<Answer>('/api/orders', body), `${order['side']} ${order['quantity']} ${order['asset']} sent.`, () => this.sending.set(false), () => (this.attempt = null));
+    const body = { ...order, [nameField]: this.attempt.name };
+    this.run(this.http.post<Answer>(url, body), url === '/api/orders' ? `${order['side']} ${order['quantity']} ${order['asset']} sent.` : `Working order to ${String(order['side']).toLowerCase()} ${order['quantity']} ${order['asset']} recorded.`, () => this.sending.set(false), () => (this.attempt = null));
   }
 
   protected pull(fundId: number): void {

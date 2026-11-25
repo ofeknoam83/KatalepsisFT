@@ -289,6 +289,8 @@ public sealed class OrderEngineWorker(
             using (IServiceScope scope = scopes.CreateScope())
             {
                 await scope.ServiceProvider.GetRequiredService<ExecutionEngine>().RunOnceAsync(stopping);
+                // After the orders: a working order then sees what its last slice did before it decides on the next.
+                await scope.ServiceProvider.GetRequiredService<WorkingOrderEngine>().RunOnceAsync(stopping);
             }
 
             board.RoundMs = Math.Round(Stopwatch.GetElapsedTime(started).TotalMilliseconds, 1);

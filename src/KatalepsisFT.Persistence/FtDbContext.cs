@@ -69,6 +69,7 @@ public class FtDbContext(DbContextOptions<FtDbContext> options)
     public DbSet<KatalepsisFT.Domain.Execution.StrategyKey> StrategyKeys => Set<KatalepsisFT.Domain.Execution.StrategyKey>();
     public DbSet<KatalepsisFT.Domain.Execution.Order> Orders => Set<KatalepsisFT.Domain.Execution.Order>();
     public DbSet<KatalepsisFT.Domain.Execution.OrderEvent> OrderEvents => Set<KatalepsisFT.Domain.Execution.OrderEvent>();
+    public DbSet<KatalepsisFT.Domain.Execution.WorkingOrder> WorkingOrders => Set<KatalepsisFT.Domain.Execution.WorkingOrder>();
     public DbSet<KatalepsisFT.Domain.Execution.TradingPosition> TradingPositions => Set<KatalepsisFT.Domain.Execution.TradingPosition>();
     public DbSet<KatalepsisFT.Domain.Execution.SystemSetting> SystemSettings => Set<KatalepsisFT.Domain.Execution.SystemSetting>();
     public DbSet<KatalepsisFT.Domain.Execution.ListedInstrument> ListedInstruments => Set<KatalepsisFT.Domain.Execution.ListedInstrument>();

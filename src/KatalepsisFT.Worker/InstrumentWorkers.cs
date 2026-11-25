@@ -208,8 +208,10 @@ public sealed class BookDemandWorker(IServiceScopeFactory scopes, IConnectionMul
         IFtDbContext database = scope.ServiceProvider.GetRequiredService<IFtDbContext>();
         var orders = await database.Orders.AsNoTracking().Where(o => (int)o.Status < (int)OrderStatus.Filled).Select(o => new { o.Asset, o.InstrumentType }).Distinct().ToListAsync(stopping);
         var positions = await database.TradingPositions.AsNoTracking().Where(p => p.Quantity != 0m).Select(p => new { p.Asset, Type = p.InstrumentType }).Distinct().ToListAsync(stopping);
+        // A working order needs its book for as long as it is open, also between slices and while it waits for approval.
+        var working = await database.WorkingOrders.AsNoTracking().Where(w => w.State == WorkingState.Working || w.State == WorkingState.Paused || w.State == WorkingState.PendingApproval).Select(w => new { w.Asset, Type = w.InstrumentType }).Distinct().ToListAsync(stopping);
         // What a fund has pinned is kept open like something held.
         var pinned = await database.PinnedInstruments.AsNoTracking().Select(p => new { p.Asset, p.Type }).Distinct().ToListAsync(stopping);
-        return orders.Select(o => (o.Asset, o.InstrumentType)).Concat(positions.Select(p => (p.Asset, p.Type))).Concat(pinned.Select(p => (p.Asset, p.Type))).Distinct().ToList();
+        return orders.Select(o => (o.Asset, o.InstrumentType)).Concat(positions.Select(p => (p.Asset, p.Type))).Concat(pinned.Select(p => (p.Asset, p.Type))).Concat(working.Select(p => (p.Asset, p.Type))).Distinct().ToList();
     }
 }

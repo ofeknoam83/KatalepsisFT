@@ -705,6 +705,10 @@ namespace KatalepsisFT.Persistence.Migrations
                         .HasColumnType("xid")
                         .HasColumnName("xmin");
 
+                    b.Property<long?>("WorkingOrderId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("working_order_id");
+
                     b.HasKey("Id")
                         .HasName("pk_orders");
 
@@ -713,6 +717,9 @@ namespace KatalepsisFT.Persistence.Migrations
 
                     b.HasIndex("Status")
                         .HasDatabaseName("ix_orders_status");
+
+                    b.HasIndex("WorkingOrderId")
+                        .HasDatabaseName("ix_orders_working_order_id");
 
                     b.HasIndex("TradingAccountId", "ClientOrderId")
                         .IsUnique()
@@ -1130,6 +1137,186 @@ namespace KatalepsisFT.Persistence.Migrations
                         .HasDatabaseName("ix_trading_positions_trading_account_id_asset_instrument_type");
 
                     b.ToTable("trading_positions", (string)null);
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Execution.WorkingOrder", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("ApprovedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("approved_by");
+
+                    b.Property<decimal?>("ArrivalPrice")
+                        .HasPrecision(28, 10)
+                        .HasColumnType("numeric(28,10)")
+                        .HasColumnName("arrival_price");
+
+                    b.Property<string>("Asset")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("asset");
+
+                    b.Property<decimal>("AverageFillPrice")
+                        .HasPrecision(28, 10)
+                        .HasColumnType("numeric(28,10)")
+                        .HasColumnName("average_fill_price");
+
+                    b.Property<string>("ClientId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("client_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("created_by");
+
+                    b.Property<int?>("DurationSeconds")
+                        .HasColumnType("integer")
+                        .HasColumnName("duration_seconds");
+
+                    b.Property<DateTimeOffset?>("EndedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ended_at");
+
+                    b.Property<decimal>("FeesUsd")
+                        .HasPrecision(20, 6)
+                        .HasColumnType("numeric(20,6)")
+                        .HasColumnName("fees_usd");
+
+                    b.Property<decimal>("FilledQuantity")
+                        .HasPrecision(28, 10)
+                        .HasColumnType("numeric(28,10)")
+                        .HasColumnName("filled_quantity");
+
+                    b.Property<DateTimeOffset?>("HardEndAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("hard_end_at");
+
+                    b.Property<int>("InstrumentType")
+                        .HasColumnType("integer")
+                        .HasColumnName("instrument_type");
+
+                    b.Property<decimal?>("LimitPrice")
+                        .HasPrecision(28, 10)
+                        .HasColumnType("numeric(28,10)")
+                        .HasColumnName("limit_price");
+
+                    b.Property<int>("ManagerAccountId")
+                        .HasColumnType("integer")
+                        .HasColumnName("manager_account_id");
+
+                    b.Property<decimal?>("MaxSlice")
+                        .HasPrecision(28, 10)
+                        .HasColumnType("numeric(28,10)")
+                        .HasColumnName("max_slice");
+
+                    b.Property<int?>("MaxSlippageBps")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_slippage_bps");
+
+                    b.Property<decimal?>("MinSlice")
+                        .HasPrecision(28, 10)
+                        .HasColumnType("numeric(28,10)")
+                        .HasColumnName("min_slice");
+
+                    b.Property<DateTimeOffset?>("NextSliceAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_slice_at");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(400)
+                        .HasColumnType("character varying(400)")
+                        .HasColumnName("note");
+
+                    b.Property<decimal?>("PausePrice")
+                        .HasPrecision(28, 10)
+                        .HasColumnType("numeric(28,10)")
+                        .HasColumnName("pause_price");
+
+                    b.Property<decimal>("Quantity")
+                        .HasPrecision(28, 10)
+                        .HasColumnType("numeric(28,10)")
+                        .HasColumnName("quantity");
+
+                    b.Property<bool>("ReduceOnly")
+                        .HasColumnType("boolean")
+                        .HasColumnName("reduce_only");
+
+                    b.Property<int>("Side")
+                        .HasColumnType("integer")
+                        .HasColumnName("side");
+
+                    b.Property<int?>("Slices")
+                        .HasColumnType("integer")
+                        .HasColumnName("slices");
+
+                    b.Property<int>("SlicesSent")
+                        .HasColumnType("integer")
+                        .HasColumnName("slices_sent");
+
+                    b.Property<bool>("SlippageAccepted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("slippage_accepted");
+
+                    b.Property<DateTimeOffset?>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.Property<int>("State")
+                        .HasColumnType("integer")
+                        .HasColumnName("state");
+
+                    b.Property<bool>("StopRequested")
+                        .HasColumnType("boolean")
+                        .HasColumnName("stop_requested");
+
+                    b.Property<int>("Style")
+                        .HasColumnType("integer")
+                        .HasColumnName("style");
+
+                    b.Property<int?>("TradingAccountId")
+                        .HasColumnType("integer")
+                        .HasColumnName("trading_account_id");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<int?>("WaitSeconds")
+                        .HasColumnType("integer")
+                        .HasColumnName("wait_seconds");
+
+                    b.HasKey("Id")
+                        .HasName("pk_working_orders");
+
+                    b.HasIndex("State")
+                        .HasDatabaseName("ix_working_orders_state");
+
+                    b.HasIndex("TradingAccountId")
+                        .HasDatabaseName("ix_working_orders_trading_account_id");
+
+                    b.HasIndex("ManagerAccountId", "ClientId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_working_orders_manager_account_id_client_id");
+
+                    b.ToTable("working_orders", (string)null);
                 });
 
             modelBuilder.Entity("KatalepsisFT.Domain.Funds.Fund", b =>
@@ -2183,7 +2370,15 @@ namespace KatalepsisFT.Persistence.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_orders_trading_accounts_trading_account_id");
 
+                    b.HasOne("KatalepsisFT.Domain.Execution.WorkingOrder", "WorkingOrder")
+                        .WithMany("Children")
+                        .HasForeignKey("WorkingOrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_orders_working_orders_working_order_id");
+
                     b.Navigation("TradingAccount");
+
+                    b.Navigation("WorkingOrder");
                 });
 
             modelBuilder.Entity("KatalepsisFT.Domain.Execution.OrderEvent", b =>
@@ -2230,6 +2425,26 @@ namespace KatalepsisFT.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_trading_positions_trading_accounts_trading_account_id");
+
+                    b.Navigation("TradingAccount");
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Execution.WorkingOrder", b =>
+                {
+                    b.HasOne("KatalepsisFT.Domain.Funds.ManagerAccount", "ManagerAccount")
+                        .WithMany()
+                        .HasForeignKey("ManagerAccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_working_orders_manager_accounts_manager_account_id");
+
+                    b.HasOne("KatalepsisFT.Domain.Execution.TradingAccount", "TradingAccount")
+                        .WithMany()
+                        .HasForeignKey("TradingAccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_working_orders_trading_accounts_trading_account_id");
+
+                    b.Navigation("ManagerAccount");
 
                     b.Navigation("TradingAccount");
                 });
@@ -2469,6 +2684,11 @@ namespace KatalepsisFT.Persistence.Migrations
             modelBuilder.Entity("KatalepsisFT.Domain.Execution.Order", b =>
                 {
                     b.Navigation("Events");
+                });
+
+            modelBuilder.Entity("KatalepsisFT.Domain.Execution.WorkingOrder", b =>
+                {
+                    b.Navigation("Children");
                 });
 
             modelBuilder.Entity("KatalepsisFT.Domain.Funds.Fund", b =>

@@ -86,6 +86,7 @@ if (hasPostgres && group.ToLowerInvariant() is WorkerGroups.Exec)
     builder.Services.AddSingleton<KatalepsisFT.Application.Execution.ConsolidatedBook>();
     builder.Services.AddSingleton<KatalepsisFT.Application.Execution.VenueStatusBoard>();
     builder.Services.AddScoped<KatalepsisFT.Application.Execution.ExecutionEngine>();
+    builder.Services.AddScoped<KatalepsisFT.Application.Execution.WorkingOrderEngine>();
     builder.Services.AddHttpClient("exec", client => client.Timeout = TimeSpan.FromSeconds(10));
     builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.BinanceBookStream>();
     builder.Services.AddSingleton<KatalepsisFT.Infrastructure.Execution.BookStream, KatalepsisFT.Infrastructure.Execution.BybitBookStream>();
