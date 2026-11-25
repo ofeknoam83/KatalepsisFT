@@ -289,3 +289,31 @@ export interface WorkingOrder {
 
 export const WORKING_STATE_LABEL: Record<WorkingState, string> = { PendingApproval: 'Waiting for approval', Working: 'Working', Paused: 'Paused', Done: 'Done', Stopped: 'Stopped', Rejected: 'Not approved' };
 export const WORKING_STATE_COLOR: Record<WorkingState, string> = { PendingApproval: 'gold', Working: 'green', Paused: 'orange', Done: 'default', Stopped: 'red', Rejected: 'red' };
+
+/** What one of the ticket's accounts holds of the instrument. */
+export interface Held {
+  tradingAccountId: number;
+  venueName: string;
+  quantity: number;
+  averagePrice: number;
+  markPrice: number | null;
+  unrealisedPnlUsd: number | null;
+}
+
+/** The most that may be bought, or sold, right now. */
+export interface RoomSide {
+  tradingAccountId: number;
+  venueName: string;
+  /** The largest single order the limits allow. */
+  max: number;
+  /** The largest working order: the position limit alone. */
+  maxWorking: number;
+  limitedBy: string;
+}
+
+export interface Room {
+  held: Held[];
+  buy: RoomSide | null;
+  sell: RoomSide | null;
+  quantityStep: number | null;
+}

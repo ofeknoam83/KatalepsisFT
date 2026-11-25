@@ -567,6 +567,48 @@ public class ExecutionApiTests(TestDatabase database) : IClassFixture<TestDataba
     }
 
     [Fact]
+    public async Task TheTicket_ShowsThePosition_AndTheMostTheLimitsAllow_AndThatMuchIsNotRefused()
+    {
+        (_, int managerId, int accountId) = await NewAccountAsync(maxOrder: 300_000m, maxPosition: 500_000m);
+        Quote(Venue.Binance, "LTC", 99.9m, 100.1m, 100_000m);
+        async Task<RoomDto> RoomAsync(string query = "") => (await _admin.GetFromJsonAsync<RoomDto>($"/api/room/Perp/ltc?account={accountId}{query}", Json))!;
+
+        // Nothing held: the largest order is what one order may be, with a little kept back for the price moving.
+        RoomDto empty = await RoomAsync();
+        empty.Held.Should().BeEmpty();
+        empty.Buy!.Max.Should().Be(2_985m);
+        empty.Buy.LimitedBy.Should().Contain("largest order");
+        empty.Buy.MaxWorking.Should().Be(4_975m);
+        empty.Sell!.Max.Should().Be(2_985m);
+
+        // Offered, taken, not refused.
+        OrderDto bought = await TradeAsync(new SubmitOrderRequest(accountId, null, "LTC", InstrumentType.Perp, OrderSide.Buy, OrderType.Market, TimeInForce.ImmediateOrCancel, empty.Buy.Max, null, false, Guid.NewGuid().ToString("N")));
+        bought.Status.Should().Be(OrderStatus.Filled);
+
+        // Long 2,985: buying more is now held back by the position limit, selling by the largest order.
+        RoomDto longNow = await RoomAsync();
+        HeldDto held = longNow.Held.Should().ContainSingle().Subject;
+        held.Quantity.Should().Be(2_985m);
+        held.AveragePrice.Should().Be(100.1m);
+        held.MarkPrice.Should().Be(100m);
+        held.UnrealisedPnlUsd.Should().Be(-298.5m);
+        longNow.Buy!.Max.Should().Be(1_990m);
+        longNow.Buy.LimitedBy.Should().Contain("largest position");
+        longNow.Sell!.Max.Should().Be(2_985m);
+        longNow.Sell.MaxWorking.Should().Be(7_960m);
+        (await TradeAsync(new SubmitOrderRequest(accountId, null, "LTC", InstrumentType.Perp, OrderSide.Buy, OrderType.Market, TimeInForce.ImmediateOrCancel, longNow.Buy.Max, null, false, Guid.NewGuid().ToString("N")))).Status.Should().Be(OrderStatus.Filled);
+        (await RoomAsync()).Buy!.Max.Should().Be(0m);
+
+        // Asked by manager, the answer is for the account an order would go to; an unknown account has no answer.
+        (await _admin.GetFromJsonAsync<RoomDto>($"/api/room/Perp/LTC?manager={managerId}", Json))!.Held.Single().TradingAccountId.Should().Be(accountId);
+        (await _admin.GetAsync("/api/room/Perp/LTC?account=999999")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        // With no live price there is nothing to size an order with.
+        RoomDto unpriced = (await _admin.GetFromJsonAsync<RoomDto>($"/api/room/Perp/NOBOOK?account={accountId}", Json))!;
+        unpriced.Buy.Should().BeNull();
+        unpriced.Sell.Should().BeNull();
+    }
+
+    [Fact]
     public async Task InstrumentSearch_FindsWhatTheVenuesList_TheExactNameFirst()
     {
         using (IServiceScope scope = _app!.Services.CreateScope())

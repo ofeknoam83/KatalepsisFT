@@ -48,6 +48,14 @@ public sealed class TradingController(TradingService trading, WorkingOrderServic
     [HttpGet("instruments")]
     public async Task<IReadOnlyList<InstrumentHit>> InstrumentsAsync([FromQuery] string? q, CancellationToken cancellationToken) => await trading.SearchInstrumentsAsync(q, cancellationToken);
 
+    /// <summary>What the ticket's account holds of an instrument, and the most its limits let it buy or sell right now.</summary>
+    [HttpGet("room/{type}/{asset}")]
+    public async Task<ActionResult<RoomDto>> RoomAsync(InstrumentType type, string asset, [FromQuery] int? account, [FromQuery] int? manager, CancellationToken cancellationToken)
+    {
+        RoomDto? room = await trading.RoomAsync(account, manager, asset, type, cancellationToken);
+        return room is null ? NotFound() : room;
+    }
+
     /// <summary>What each venue's list says about one instrument: whether it takes orders, and its smallest steps.</summary>
     [HttpGet("instruments/{type}/{asset}")]
     public async Task<IReadOnlyList<VenueRules>> RulesAsync(InstrumentType type, string asset, CancellationToken cancellationToken) => await trading.RulesAsync(asset, type, cancellationToken);

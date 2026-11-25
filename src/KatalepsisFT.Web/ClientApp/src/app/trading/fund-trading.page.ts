@@ -22,7 +22,7 @@ import { EditName } from '../shared/edit-name';
 import { FORMAT_PIPES } from '../shared/format';
 import { PageHead } from '../shared/page-head';
 import { keptData } from '../shared/page-data';
-import { APPROVAL_LABEL, AccountForm, Book, InstrumentRef, VenueRules, WORKING_STATE_COLOR, WORKING_STATE_LABEL, WorkingOrder, WorkingStyle, HaltScope, Order, OrderSide, OrderType, STATUS_COLOR, STATUS_LABEL, TIF_LABEL, TimeInForce, TradedType, Trading, TradingAccount, TradingVenue, instrumentName } from './models';
+import { APPROVAL_LABEL, AccountForm, Book, Held, Room, RoomSide, InstrumentRef, VenueRules, WORKING_STATE_COLOR, WORKING_STATE_LABEL, WorkingOrder, WorkingStyle, HaltScope, Order, OrderSide, OrderType, STATUS_COLOR, STATUS_LABEL, TIF_LABEL, TimeInForce, TradedType, Trading, TradingAccount, TradingVenue, instrumentName } from './models';
 
 interface Answer {
   notice?: string | null;
@@ -180,13 +180,51 @@ interface Depth {
             <div class="two">
               <div class="field">
                 <label>Quantity, {{ asset() }}</label>
-                <nz-input-number [ngModel]="quantity()" (ngModelChange)="quantity.set($event)" [nzMin]="0" [nzStep]="0.01" style="width:100%" data-testid="ticket-quantity" />
+                <nz-input-number [ngModel]="quantity()" (ngModelChange)="quantity.set($event)" [nzMin]="0" [nzStep]="room.data()?.quantityStep ?? 0.01" style="width:100%" data-testid="ticket-quantity" />
               </div>
               <div class="field">
                 <label>Limit price</label>
                 <nz-input-number [ngModel]="limitPrice()" (ngModelChange)="limitPrice.set($event)" [nzMin]="0" [nzDisabled]="type() === 'Market'" [nzPlaceHolder]="type() === 'Market' ? 'Market' : ''" style="width:100%" data-testid="ticket-limit" />
               </div>
             </div>
+            @if (room.data(); as r) {
+              <div class="room" data-testid="room">
+                @if (r.held.length === 0) {
+                  <div class="hint" data-testid="position-line">No position in {{ name(asset(), type2()) }} on {{ r.buy?.venueName ?? r.sell?.venueName ?? 'this account' }}.</div>
+                }
+                @for (h of r.held; track h.tradingAccountId) {
+                  <div data-testid="position-line">
+                    <b [style.color]="h.quantity > 0 ? 'var(--kft-up)' : 'var(--kft-down)'">{{ type2() === 'Spot' ? 'Holds' : h.quantity > 0 ? 'Long' : 'Short' }}</b>
+                    {{ abs(h.quantity) | dynamicDecimal }} {{ asset() }}
+                    <span class="hint">
+                      @if (r.held.length > 1 || target()?.[0] === 'm') { on {{ h.venueName }} · }
+                      entry {{ h.averagePrice | dynamicDecimal }}
+                      @if (h.markPrice !== null) { · worth {{ abs(h.quantity) * h.markPrice | usd }} }
+                      @if (h.unrealisedPnlUsd !== null) { · open <span [style.color]="h.unrealisedPnlUsd >= 0 ? 'var(--kft-up)' : 'var(--kft-down)'">{{ h.unrealisedPnlUsd | usd }}</span> }
+                    </span>
+                    <span class="picks">
+                      @for (share of shares; track share) {
+                        <a (click)="take(h, share, r)" [title]="'Fill in ' + share + '% of this position'" [attr.data-testid]="'take-' + share">{{ share === 100 ? 'All' : share + '%' }}</a>
+                      }
+                    </span>
+                  </div>
+                }
+                @if (r.buy || r.sell) {
+                  <div class="hint">
+                    Most the limits allow:
+                    @if (r.buy; as side) {
+                      <a (click)="takeMost(side)" [title]="'Set by ' + limit(side) + (target()?.[0] === 'm' ? ', on ' + side.venueName : '')" data-testid="max-buy">buy {{ most(side) | dynamicDecimal }}</a>
+                    }
+                    @if (r.sell; as side) {
+                      · <a (click)="takeMost(side)" [title]="'Set by ' + limit(side) + (target()?.[0] === 'm' ? ', on ' + side.venueName : '')" data-testid="max-sell">sell {{ most(side) | dynamicDecimal }}</a>
+                    }
+                    @if (style() !== 'Single') {
+                      <span title="Each slice of a working order is smaller than one order may be, so only the position limit counts"> (for an order worked over time)</span>
+                    }
+                  </div>
+                }
+              </div>
+            }
             @if (type() === 'Limit') {
               <div class="field">
                 <label>How long</label>
@@ -799,6 +837,15 @@ interface Depth {
     .basket .bad {
       color: var(--kft-down);
     }
+    .room {
+      margin: -4px 0 12px;
+      font-size: 12.5px;
+      line-height: 1.7;
+    }
+    .room .picks a {
+      margin-left: 8px;
+      font-weight: 500;
+    }
     .quick {
       display: flex;
       flex-wrap: wrap;
@@ -1176,6 +1223,47 @@ export class FundTradingPage {
 
   protected unpin(d: Trading): void {
     this.run(this.http.delete(`/api/funds/${d.fundId}/pins/${this.type2()}/${encodeURIComponent(this.asset())}`), 'Unpinned.');
+  }
+
+  /** What the ticket's account holds of the chosen instrument, and the most it may buy or sell. */
+  protected readonly room = keptData(
+    combineLatest([toObservable(this.instrument), toObservable(this.target)]).pipe(filter(([, target]) => target !== null)),
+    this.beat,
+    ([i, target]) => this.http.get<Room>(`/api/room/${i.split(':')[0]}/${encodeURIComponent(i.split(':')[1])}`, { params: target![0] === 'a' ? { account: target!.slice(1) } : { manager: target!.slice(1) } }),
+    ([i, target]) => i + target,
+  );
+  protected readonly shares = [25, 50, 75, 100];
+
+  /** The largest order for the way of working chosen: one order, or one worked over time. */
+  protected most(side: RoomSide): number {
+    return this.style() === 'Single' ? side.max : side.maxWorking;
+  }
+
+  /** Fills in the most the limits allow. That is an order that may open or add to a position, so it is not one that only reduces. */
+  protected takeMost(side: RoomSide): void {
+    this.quantity.set(this.most(side));
+    this.reduceOnly.set(false);
+  }
+
+  protected limit(side: RoomSide): string {
+    return this.style() === 'Single' || side.maxWorking === side.max ? side.limitedBy : 'the position limit';
+  }
+
+  /** Fills in a share of a position, rounded down to the venue's step, and for a perpetual marks the order as one that only reduces. */
+  protected take(held: Held, share: number, room: Room): void {
+    const wanted = (Math.abs(held.quantity) * share) / 100;
+    const step = room.quantityStep;
+    // All of it is all of it: rounding must not leave dust behind when the whole position is asked for.
+    const quantity = share === 100 || step === null || step <= 0 ? wanted : Math.floor(wanted / step + 1e-9) * step;
+    this.quantity.set(+quantity.toPrecision(12));
+    if (this.type2() === 'Perp') {
+      this.reduceOnly.set(true);
+    }
+
+    if (this.target()?.[0] === 'm') {
+      // The position is on one account; an order to reduce it has to go there, not to whichever venue is cheapest.
+      this.target.set('a' + held.tradingAccountId);
+    }
   }
 
   protected readonly book = keptData(toObservable(this.instrument), this.beat, (i) => this.http.get<Book>(`/api/book/${i.split(':')[0]}/${encodeURIComponent(i.split(':')[1])}`), (i) => i);

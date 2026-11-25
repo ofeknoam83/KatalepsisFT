@@ -103,6 +103,19 @@ public sealed record TradingDto(
 
 public sealed record PaperInBookRequest(bool Include);
 
+/// <summary>What one of the accounts the ticket is on holds of the instrument.</summary>
+public sealed record HeldDto(int TradingAccountId, string VenueName, decimal Quantity, decimal AveragePrice, decimal? MarkPrice, decimal? UnrealisedPnlUsd);
+
+/// <summary>The most that may be bought, or sold, in the instrument right now.</summary>
+/// <param name="Max">The largest single order the account's limits allow, in units of the asset, rounded down to the venue's step.</param>
+/// <param name="MaxWorking">The largest working order: the position limit alone, because its slices are each smaller than one order may be.</param>
+/// <param name="LimitedBy">In words, which limit sets <paramref name="Max"/>.</param>
+public sealed record RoomSideDto(int TradingAccountId, string VenueName, decimal Max, decimal MaxWorking, string LimitedBy);
+
+/// <summary>What the ticket shows under the quantity: the position, and how much more may be traded each way.</summary>
+/// <param name="Buy">Null when there is no live price to size an order with.</param>
+public sealed record RoomDto(IReadOnlyList<HeldDto> Held, RoomSideDto? Buy, RoomSideDto? Sell, decimal? QuantityStep);
+
 /// <summary>An instrument by name: the asset and the kind of market.</summary>
 public sealed record InstrumentRef(string Asset, InstrumentType Type);
 
@@ -403,6 +416,87 @@ public sealed class TradingService(IFtDbContext database, IBookFeed books, IExec
         fund.IncludePaperTrading = include;
         await database.SaveChangesAsync(cancellationToken);
         return TradingChange<int>.Ok(fundId, include ? "Paper accounts now count in this fund's book. Their value comes in as money arriving, within half a minute." : "Paper accounts no longer count in this fund's book. Their value leaves as money leaving, within half a minute.");
+    }
+
+    /// <summary>
+    /// What the chosen account holds of an instrument, and the most its limits let it buy or sell right now. The
+    /// figures come from the same rules an order is checked against when it arrives, so a quantity offered here is
+    /// not then refused for its size. For a manager with several accounts, each side is worked out for the account an
+    /// order on that side would be sent to: the one whose venue has the best price after its fee.
+    /// </summary>
+    public async Task<RoomDto?> RoomAsync(int? accountId, int? managerId, string asset, InstrumentType type, CancellationToken cancellationToken)
+    {
+        string name = (asset ?? string.Empty).Trim().ToUpperInvariant();
+        List<TradingAccount> accounts = accountId is int one
+            ? await database.TradingAccounts.AsNoTracking().Where(a => a.Id == one).ToListAsync(cancellationToken)
+            : managerId is int manager ? await database.TradingAccounts.AsNoTracking().Where(a => a.ManagerAccountId == manager).OrderBy(a => a.Id).ToListAsync(cancellationToken) : [];
+        if (accounts.Count == 0 || type is not (InstrumentType.Spot or InstrumentType.Perp))
+        {
+            return null;
+        }
+
+        int[] ids = accounts.Select(a => a.Id).ToArray();
+        List<TradingPosition> positions = await database.TradingPositions.AsNoTracking().Where(p => ids.Contains(p.TradingAccountId) && p.Asset == name && p.InstrumentType == type).ToListAsync(cancellationToken);
+        var working = await database
+            .Orders.AsNoTracking()
+            .Where(o => ids.Contains(o.TradingAccountId) && o.Asset == name && o.InstrumentType == type && (o.Status == OrderStatus.Received || o.Status == OrderStatus.Accepted || o.Status == OrderStatus.Working || o.Status == OrderStatus.PartlyFilled))
+            .Select(o => new { o.TradingAccountId, o.Side, Left = o.Quantity - o.FilledQuantity })
+            .ToListAsync(cancellationToken);
+        IReadOnlyList<VenueBook> live = await books.ReadAsync(name, type, cancellationToken);
+        var listed = await database.ListedInstruments.AsNoTracking().Where(i => i.Asset == name && i.Type == type).Select(i => new { i.Venue, i.Quote, i.QuantityStep }).ToListAsync(cancellationToken);
+
+        List<HeldDto> held = [];
+        (RoomSideDto Side, decimal Cost)? bestBuy = null;
+        (RoomSideDto Side, decimal Cost)? bestSell = null;
+        decimal? stepShown = null;
+        foreach (TradingAccount account in accounts)
+        {
+            VenueBook? book = ConsolidatedBook.Pick(live, account.Venue, account.QuoteFor(type));
+            decimal quantity = positions.FirstOrDefault(p => p.TradingAccountId == account.Id)?.Quantity ?? 0m;
+            TradingPosition? position = positions.FirstOrDefault(p => p.TradingAccountId == account.Id);
+            string venue = VenueExposureService.NameOf(account.Venue);
+            if (quantity != 0m)
+            {
+                held.Add(new HeldDto(account.Id, venue, quantity, position!.AveragePrice, book?.Mid, book?.Mid is decimal at && position.AveragePrice > 0m ? Math.Round(quantity * (at - position.AveragePrice), 2) : null));
+            }
+
+            if (book?.Mid is not decimal mid || mid <= 0m)
+            {
+                continue;
+            }
+
+            string quote = account.QuoteFor(type) ?? string.Empty;
+            decimal? step = (listed.FirstOrDefault(i => i.Venue == account.Venue && i.Quote == quote) ?? listed.FirstOrDefault(i => i.Venue == account.Venue))?.QuantityStep;
+            stepShown ??= step;
+            decimal openBuys = working.Where(o => o.TradingAccountId == account.Id && o.Side == OrderSide.Buy).Sum(o => o.Left);
+            decimal openSells = working.Where(o => o.TradingAccountId == account.Id && o.Side == OrderSide.Sell).Sum(o => o.Left);
+            // A little is kept back, because the price the order is checked at will not be exactly this one.
+            decimal single = account.MaxOrderNotionalUsd / mid * 0.995m;
+            decimal positionMost = account.MaxPositionNotionalUsd / mid * 0.995m;
+            decimal Down(decimal value) => value <= 0m ? 0m : step is decimal unit && unit > 0m ? Math.Floor(value / unit) * unit : Math.Round(value, 8, MidpointRounding.ToZero);
+            RoomSideDto Side(decimal byPosition, string positionReason)
+            {
+                decimal max = Math.Min(single, byPosition);
+                return new RoomSideDto(account.Id, venue, Down(max), Down(byPosition), byPosition < single ? positionReason : $"the account's largest order, {account.MaxOrderNotionalUsd:N0} USD");
+            }
+
+            string positionLimit = $"the account's largest position, {account.MaxPositionNotionalUsd:N0} USD";
+            RoomSideDto buy = Side(positionMost - quantity - openBuys, positionLimit);
+            // Spot cannot be sold short: what is held, less what is already being sold.
+            RoomSideDto sell = type == InstrumentType.Spot ? Side(Math.Min(quantity - openSells, positionMost + quantity - openSells), quantity - openSells <= positionMost + quantity - openSells ? "what the account holds" : positionLimit) : Side(positionMost + quantity - openSells, positionLimit);
+            decimal taker = VenueFees.Of(account.Venue, type).Taker;
+            if (book.BestAsk is decimal ask && (bestBuy is null || ask * (1m + taker) < bestBuy.Value.Cost))
+            {
+                bestBuy = (buy, ask * (1m + taker));
+            }
+
+            if (book.BestBid is decimal bid && (bestSell is null || -bid * (1m - taker) < bestSell.Value.Cost))
+            {
+                bestSell = (sell, -bid * (1m - taker));
+            }
+        }
+
+        return new RoomDto(held, bestBuy?.Side, bestSell?.Side, stepShown);
     }
 
     /// <summary>Keeps an instrument at hand on a fund's trading page, with its book always open.</summary>
