@@ -2,7 +2,7 @@ using KatalepsisFT.Domain.Funds;
 
 namespace KatalepsisFT.Domain.Positions;
 
-/// <summary>A manager's NAV and exposure at a moment within the day, kept about every five minutes for ninety days.</summary>
+/// <summary>A manager's NAV and exposure at a moment within the day, kept about every ten seconds for a day and one per five minutes for ninety days.</summary>
 public class NavSample
 {
     public long Id { get; set; }

@@ -10,7 +10,7 @@ namespace KatalepsisFT.Worker;
 public sealed class TradingBookWorker(IServiceScopeFactory scopes, ILogger<TradingBookWorker> logger) : BackgroundService
 {
     /// <summary>A fill is in the book within this long.</summary>
-    public static readonly TimeSpan Interval = TimeSpan.FromSeconds(20);
+    public static readonly TimeSpan Interval = TimeSpan.FromSeconds(10);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {

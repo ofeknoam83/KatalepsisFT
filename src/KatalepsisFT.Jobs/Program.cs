@@ -139,7 +139,7 @@ static async Task RunDemoAsync(IServiceProvider services)
     int pruned = await services.GetRequiredService<KatalepsisFT.Application.Live.IntradayService>().PruneAsync(CancellationToken.None);
     if (pruned > 0)
     {
-        Console.WriteLine($"Intraday samples: {pruned} older than 90 days removed.");
+        Console.WriteLine($"Intraday samples: {pruned} removed (older than 90 days, or thinned to one per five minutes after a day).");
     }
 
     if (demo.WaitingFor is null)

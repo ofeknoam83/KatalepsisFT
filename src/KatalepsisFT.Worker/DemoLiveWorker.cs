@@ -8,7 +8,7 @@ public sealed class DemoLiveWorker(IServiceScopeFactory scopes, TimeProvider clo
     public static readonly TimeSpan Interval = TimeSpan.FromSeconds(2);
 
     /// <summary>Intraday samples and alert rules are heavier and do not need the same pace.</summary>
-    public static readonly TimeSpan FullInterval = TimeSpan.FromSeconds(15);
+    public static readonly TimeSpan FullInterval = TimeSpan.FromSeconds(10);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {

@@ -808,6 +808,58 @@ public class ConnectionsApiTests(TestDatabase database) : IClassFixture<TestData
     }
 
     [Fact]
+    public async Task Intraday_OverAnHour_IsInTenSecondSteps()
+    {
+        (int fundId, int managerId) = await NewFundAsync();
+        using (IServiceScope scope = _app!.Services.CreateScope())
+        {
+            FtDbContext db = scope.ServiceProvider.GetRequiredService<FtDbContext>();
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            db.NavSamples.AddRange(
+                new NavSample { ManagerAccountId = managerId, At = now.AddSeconds(-95), NavUsd = 100m, GrossUsd = 50m, NetUsd = 50m },
+                new NavSample { ManagerAccountId = managerId, At = now.AddSeconds(-45), NavUsd = 110m, GrossUsd = 60m, NetUsd = 60m },
+                new NavSample { ManagerAccountId = managerId, At = now.AddSeconds(-25), NavUsd = 120m, GrossUsd = 60m, NetUsd = 60m }
+            );
+            await db.SaveChangesAsync();
+        }
+
+        IntradayDto hour = await Get<IntradayDto>($"/api/funds/{fundId}/intraday?hours=1");
+
+        hour.NavUsd.Should().ContainInOrder(100m, 110m, 120m);
+        hour.NavUsd[^1].Should().Be(120m);
+        hour.Times.Count.Should().BeGreaterThanOrEqualTo(9);
+        hour.Times.Zip(hour.Times.Skip(1), (a, b) => b - a).Should().OnlyContain(gap => gap == TimeSpan.FromSeconds(10));
+        // A longer window stays on the five-minute grid, where the two later samples fall in one step.
+        IntradayDto day = await Get<IntradayDto>($"/api/funds/{fundId}/intraday?hours=24");
+        day.Times.Should().OnlyContain(t => t.Minute % 5 == 0 && t.Second == 0);
+    }
+
+    [Fact]
+    public async Task Pruning_ThinsSamplesOlderThanADay_ToOnePerFiveMinutes_AndLeavesTheLastDayAlone()
+    {
+        (_, int managerId) = await NewFundAsync();
+        using IServiceScope scope = _app!.Services.CreateScope();
+        FtDbContext db = scope.ServiceProvider.GetRequiredService<FtDbContext>();
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        long five = TimeSpan.FromMinutes(5).Ticks;
+        DateTimeOffset old = new(now.AddHours(-30).UtcTicks / five * five, TimeSpan.Zero);
+        // Ten minutes of ten-second samples from a day and more ago: two five-minute steps.
+        db.NavSamples.AddRange(Enumerable.Range(0, 60).Select(i => new NavSample { ManagerAccountId = managerId, At = old.AddSeconds(10 * i), NavUsd = 100m + i, GrossUsd = 1m, NetUsd = 1m }));
+        db.NavSamples.AddRange(Enumerable.Range(1, 3).Select(i => new NavSample { ManagerAccountId = managerId, At = now.AddSeconds(-10 * i), NavUsd = 500m, GrossUsd = 1m, NetUsd = 1m }));
+        db.NavSamples.Add(new NavSample { ManagerAccountId = managerId, At = now.AddDays(-91), NavUsd = 1m, GrossUsd = 1m, NetUsd = 1m });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        await scope.ServiceProvider.GetRequiredService<IntradayService>().PruneAsync(CancellationToken.None);
+
+        List<NavSample> left = await db.NavSamples.AsNoTracking().Where(s => s.ManagerAccountId == managerId).OrderBy(s => s.At).ToListAsync();
+        left.Count(s => s.At < now.AddHours(-24)).Should().Be(2);
+        // The first of each step is the one kept.
+        left.Where(s => s.At < now.AddHours(-24)).Select(s => s.NavUsd).Should().Equal(100m, 130m);
+        left.Count(s => s.NavUsd == 500m).Should().Be(3);
+    }
+
+    [Fact]
     public async Task Intraday_OfAFundNeverRead_IsEmpty_AndHoursAreChecked()
     {
         (int fundId, _) = await NewFundAsync();
