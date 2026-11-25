@@ -78,7 +78,7 @@ import { SLEEVE_COLORS } from './models';
                   <td class="num" [class]="position.exposureUsd | tone">{{ position.exposureUsd | usd: 2 }}</td>
                   <td class="num">{{ abs(position.exposureUsd) | share: position.managerNavUsd }}</td>
                   <td class="num">{{ abs(position.exposureUsd) | share: sleeve.sleeveNavUsd }}</td>
-                  <td class="num">{{ abs(position.exposureUsd) | share: d.fundNavUsd }}</td>
+                  <td class="num">{{ abs(position.exposureUsd) | share: d.fundNavUsd }}@if (!d.fund.isDemo && (position.type === 'Spot' || position.type === 'Perp')) { <a class="trade" [routerLink]="['/funds', d.fund.id, 'trading']" [queryParams]="{ instrument: position.type + ':' + d.asset.symbol, manager: position.manager.id }" title="Open the order ticket for this position" data-testid="trade-link">Trade</a> }</td>
                 </tr>
               }
             }

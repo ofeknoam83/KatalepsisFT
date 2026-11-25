@@ -67,6 +67,9 @@ import { FundsApi } from './funds.api';
                   } @else {
                     <a [routerLink]="['/funds', d.fund.id, 'assets', row.asset]"><b>{{ row.instrument }}</b></a>
                   }
+                  @if (!d.fund.isDemo && (row.type === 'Spot' || row.type === 'Perp')) {
+                    <a class="trade" [routerLink]="['/funds', d.fund.id, 'trading']" [queryParams]="{ instrument: row.type + ':' + row.asset, manager: d.manager.id }" title="Open the order ticket for this position" data-testid="trade-link">Trade</a>
+                  }
                 </td>
                 <td><nz-tag>{{ row.type }}</nz-tag></td>
                 <td>

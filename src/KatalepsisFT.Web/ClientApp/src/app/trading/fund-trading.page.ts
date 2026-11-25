@@ -1215,6 +1215,13 @@ export class FundTradingPage {
   protected readonly apiSecret = signal('');
   protected readonly passphrase = signal('');
 
+  /** What a Trade link on another page asked the ticket to open on; used once, when the page's data first arrives. */
+  private asked: { instrument: string | null; manager: number | null } | null = (() => {
+    const query = inject(ActivatedRoute).snapshot.queryParamMap;
+    const manager = Number(query.get('manager'));
+    return query.has('instrument') || query.has('manager') ? { instrument: query.get('instrument'), manager: Number.isInteger(manager) && manager > 0 ? manager : null } : null;
+  })();
+
   constructor() {
     effect(() => {
       const d = this.page.data();
@@ -1224,6 +1231,26 @@ export class FundTradingPage {
 
       // The menu on the left follows the fund this page is about.
       this.funds.open(d.fundId);
+      // Arriving from a position's Trade link: the ticket opens on that instrument, and on that manager's account.
+      const asked = this.asked;
+      if (asked !== null) {
+        this.asked = null;
+        if (/^(Spot|Perp):[A-Z0-9]{1,20}$/.test(asked.instrument ?? '')) {
+          this.instrument.set(asked.instrument!);
+        }
+
+        const own = d.accounts.filter((a) => a.managerId === asked.manager);
+        if (own.length === 1) {
+          this.target.set('a' + own[0].id);
+        } else if (own.length > 1) {
+          // Several accounts: the system picks the venue with the best price, unless the person chooses one.
+          this.target.set('m' + asked.manager);
+        } else if (asked.manager !== null) {
+          const manager = d.managers.find((m) => m.id === asked.manager);
+          this.error.set(`${manager?.name ?? 'That manager'} has no trading account yet, so the ticket is on another account. ${d.canAdmin ? 'Add one under Trading accounts below.' : 'An administrator can add one.'}`);
+        }
+      }
+
       const chosen = this.target();
       const exists = chosen !== null && (chosen[0] === 'a' ? d.accounts.some((a) => 'a' + a.id === chosen) : d.managers.some((m) => 'm' + m.id === chosen));
       if (!exists && d.accounts.length > 0) {

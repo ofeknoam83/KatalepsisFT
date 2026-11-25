@@ -34,7 +34,7 @@ import { InstrumentType, SLEEVE_COLORS } from './models';
 
       <div class="panel">
         <h3>Holdings by asset <span class="hint">Exposure is delta-adjusted · hover over an amount for the exact figure · click an asset to see where it sits across sleeves</span></h3>
-        <nz-table #assets [nzData]="d.assets" [nzShowPagination]="false" [nzFrontPagination]="false" nzSize="small" [nzScroll]="{ x: '1180px' }">
+        <nz-table #assets [nzData]="d.assets" [nzShowPagination]="false" [nzFrontPagination]="false" nzSize="small" [nzScroll]="{ x: '1260px' }">
           <thead>
             <tr>
               <th nzWidth="200px">Asset</th><th class="num">Price</th><th class="num">1D</th><th class="num">30D</th><th class="num">YTD</th>
@@ -42,6 +42,9 @@ import { InstrumentType, SLEEVE_COLORS } from './models';
                 <th class="num">{{ type }}</th>
               }
               <th class="num">Long</th><th class="num">Short</th><th class="num">Gross</th><th class="num">Net</th><th class="num">% NAV</th><th class="num">Managers</th><th>Sleeves</th>
+              @if (!d.fund.isDemo) {
+                <th>Trade</th>
+              }
             </tr>
           </thead>
           <tbody>
@@ -73,6 +76,16 @@ import { InstrumentType, SLEEVE_COLORS } from './models';
                     }
                   }
                 </td>
+                @if (!d.fund.isDemo) {
+                  <td class="nowrap" data-testid="trade-links">
+                    @if (row.netByType['Spot'] !== undefined) {
+                      <a [routerLink]="['/funds', d.fund.id, 'trading']" [queryParams]="{ instrument: 'Spot:' + row.asset.symbol }" title="Open the order ticket for this asset's spot market">Spot</a>
+                    }
+                    @if (row.netByType['Perp'] !== undefined) {
+                      <a [routerLink]="['/funds', d.fund.id, 'trading']" [queryParams]="{ instrument: 'Perp:' + row.asset.symbol }" style="margin-left:8px" title="Open the order ticket for this asset's perpetual">Perp</a>
+                    }
+                  </td>
+                }
               </tr>
             }
           </tbody>
